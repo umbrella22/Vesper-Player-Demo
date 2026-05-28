@@ -1,0 +1,537 @@
+name: VesperPlayerKit Release
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Tag to package and publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-lib-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  LINUX_WORKSPACE_EXCLUDES: >-
+    --exclude player-platform-macos
+    --exclude player-platform-windows
+    --exclude player-platform-ios
+    --exclude player-ffi-ios
+    --exclude player-platform-android
+    --exclude player-jni-android
+
+jobs:
+  release-checks:
+    name: Release Metadata and Lightweight Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Verify release tag is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          tag_commit="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          main_commit="$(git rev-parse origin/main)"
+          if ! git merge-base --is-ancestor "$tag_commit" "$main_commit"; then
+            echo "Release tag ${RELEASE_TAG} is not reachable from origin/main." >&2
+            exit 1
+          fi
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libasound2-dev \
+            libudev-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev
+
+      - name: Install cbindgen
+        run: cargo install cbindgen --locked
+
+      - name: Prepare release version metadata
+        run: ./scripts/vesper release prepare-from-tag "${RELEASE_TAG}"
+
+      - name: Verify generated FFI header
+        run: ./scripts/vesper ffi verify
+
+      - name: Test FFmpeg profiles
+        run: scripts/ffmpeg/test-profiles.sh
+
+      - name: Check Rust workspace
+        run: cargo check --workspace ${{ env.LINUX_WORKSPACE_EXCLUDES }}
+
+  android-lib:
+    name: VesperPlayerKit Android ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    needs:
+      - release-checks
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - arm64-v8a
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve Android SDK root
+        run: |
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;29.0.14206865"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.0"
+
+      - name: Prepare release version metadata
+        run: ./scripts/vesper release prepare-from-tag "${RELEASE_TAG}"
+
+      - name: Build VesperPlayerKit Android release asset
+        run: ./scripts/vesper android stage-release release-assets/android ${{ matrix.abi }}
+
+      - name: Verify VesperPlayerKit Android assets are arm64-only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if find release-assets/android -type f \( -name '*x86*' -o -name '*i386*' \) | grep -q .; then
+            echo "Unexpected x86/i386 Android asset was staged." >&2
+            find release-assets/android -type f \( -name '*x86*' -o -name '*i386*' \)
+            exit 1
+          fi
+
+          while IFS= read -r -d '' aar; do
+            if unzip -Z1 "$aar" | grep -E '(^|/)jni/(x86|x86_64)/' >/dev/null; then
+              echo "Found unexpected x86 JNI payload in $aar" >&2
+              unzip -Z1 "$aar" | grep -E '(^|/)jni/(x86|x86_64)/' >&2
+              exit 1
+            fi
+          done < <(find release-assets/android -type f -name '*.aar' -print0)
+
+          source_normalizer="release-assets/android/VesperPlayerKitSourceNormalizerFfmpeg-android-${{ matrix.abi }}.aar"
+          frame_processor="release-assets/android/VesperPlayerKitFrameProcessorDiagnostic-android-${{ matrix.abi }}.aar"
+          runtime="release-assets/android/VesperPlayerKitFfmpegRuntime-android-${{ matrix.abi }}.aar"
+
+          for required in "$source_normalizer" "$frame_processor" "$runtime"; do
+            if [[ ! -f "$required" ]]; then
+              echo "Missing expected Android optional artifact: $required" >&2
+              exit 1
+            fi
+          done
+
+          if unzip -Z1 "$source_normalizer" | grep -E '(^|/)jni/[^/]+/(libav|libsw|libxml2|libssl|libcrypto).*\.so$' >/dev/null; then
+            echo "Android SourceNormalizer plugin AAR must not bundle FFmpeg runtime libraries." >&2
+            unzip -Z1 "$source_normalizer" | grep -E '(^|/)jni/[^/]+/(libav|libsw|libxml2|libssl|libcrypto).*\.so$' >&2
+            exit 1
+          fi
+          if unzip -Z1 "$frame_processor" | grep -E '(^|/)jni/[^/]+/(libav|libsw|libxml2|libssl|libcrypto).*\.so$' >/dev/null; then
+            echo "Android FrameProcessor diagnostic AAR must not bundle FFmpeg runtime libraries." >&2
+            unzip -Z1 "$frame_processor" | grep -E '(^|/)jni/[^/]+/(libav|libsw|libxml2|libssl|libcrypto).*\.so$' >&2
+            exit 1
+          fi
+
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          unzip -q "$runtime" assets/vesper-ffmpeg-runtime/profile-hash.txt -d "$temp_dir/runtime"
+          unzip -q "$source_normalizer" assets/vesper-source-normalizer-ffmpeg/profile-hash.txt -d "$temp_dir/source-normalizer"
+          if ! cmp -s \
+            "$temp_dir/runtime/assets/vesper-ffmpeg-runtime/profile-hash.txt" \
+            "$temp_dir/source-normalizer/assets/vesper-source-normalizer-ffmpeg/profile-hash.txt"; then
+            echo "Android FFmpeg runtime and SourceNormalizer plugin profile hashes differ." >&2
+            exit 1
+          fi
+
+      - name: Upload VesperPlayerKit Android release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: VesperPlayerKit-android-${{ matrix.abi }}
+          path: release-assets/android/*.aar
+
+  android-samples:
+    name: Vesper Android Sample APKs ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    needs:
+      - release-checks
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - arm64-v8a
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve Android SDK root
+        run: |
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;29.0.14206865"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.0"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Prepare release version metadata
+        run: ./scripts/vesper release prepare-from-tag "${RELEASE_TAG}"
+
+      - name: Write Android local.properties
+        run: |
+          cat <<EOF > examples/android-compose-host/local.properties
+          sdk.dir=${ANDROID_SDK_ROOT}
+          EOF
+          cat <<EOF > examples/flutter-host/android/local.properties
+          sdk.dir=${ANDROID_SDK_ROOT}
+          flutter.sdk=${FLUTTER_ROOT}
+          EOF
+
+      - name: Stage Android sample APKs
+        run: ./scripts/vesper android sample-apks release-assets/android-samples ${{ matrix.abi }}
+
+      - name: Verify Android sample APKs are arm64-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apk_files=(release-assets/android-samples/*.apk)
+          if [[ ${#apk_files[@]} -ne 2 ]]; then
+            echo "Expected exactly two Android sample APKs, found ${#apk_files[@]}." >&2
+            printf '%s\n' "${apk_files[@]}" >&2
+            exit 1
+          fi
+
+          for apk in "${apk_files[@]}"; do
+            if unzip -Z1 "$apk" | grep -E '(^|/)lib/(x86|x86_64|armeabi-v7a)/' >/dev/null; then
+              echo "Found unexpected non-arm64 JNI payload in $apk" >&2
+              unzip -Z1 "$apk" | grep -E '(^|/)lib/(x86|x86_64|armeabi-v7a)/' >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload Vesper Android sample APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: VesperPlayerKit-android-samples-${{ matrix.abi }}
+          path: release-assets/android-samples/*.apk
+
+  ios-lib:
+    name: VesperPlayerKit iOS arm64
+    runs-on: macos-latest
+    needs:
+      - release-checks
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Select Xcode 26.3
+        run: xcodebuild -version
+
+      - name: Prepare release version metadata
+        run: ./scripts/vesper release prepare-from-tag "${RELEASE_TAG}"
+
+      - name: Build VesperPlayerKit iOS release assets
+        run: ./scripts/vesper ios stage-release release-assets/ios
+
+      - name: Verify VesperPlayerKit iOS assets are arm64-only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if find release-assets/ios -type f \( -name '*x86_64*' -o -name '*i386*' \) | grep -q .; then
+            echo "Unexpected x86/i386 iOS asset was staged." >&2
+            find release-assets/ios -type f \( -name '*x86_64*' -o -name '*i386*' \)
+            exit 1
+          fi
+          if find release-assets/ios -maxdepth 1 -type f -name '*.dylib' | grep -q .; then
+            echo "iOS release assets must not publish bare dylibs." >&2
+            find release-assets/ios -maxdepth 1 -type f -name '*.dylib'
+            exit 1
+          fi
+
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          unzip -q release-assets/ios/VesperPlayerKit.xcframework.zip -d "$temp_dir"
+          unzip -q release-assets/ios/VesperPlayerFfmpegRuntime.xcframework.zip -d "$temp_dir"
+          unzip -q release-assets/ios/VesperPlayerRemuxFfmpegPlugin.xcframework.zip -d "$temp_dir"
+          unzip -q release-assets/ios/VesperPlayerSourceNormalizerFfmpegPlugin.xcframework.zip -d "$temp_dir"
+          unzip -q release-assets/ios/VesperPlayerFrameProcessorDiagnosticPlugin.xcframework.zip -d "$temp_dir"
+
+          if ! find "$temp_dir" -path '*VesperPlayerFfmpegRuntime.framework/Frameworks/libav*.dylib*' -type f | grep -q .; then
+            echo "Shared iOS FFmpeg runtime does not contain FFmpeg dylibs." >&2
+            exit 1
+          fi
+          if find "$temp_dir" -path '*VesperPlayerRemuxFfmpegPlugin.framework/*' -type f \
+            \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \) | grep -q .; then
+            echo "iOS remux plugin must not bundle FFmpeg runtime dylibs." >&2
+            find "$temp_dir" -path '*VesperPlayerRemuxFfmpegPlugin.framework/*' -type f \
+              \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \)
+            exit 1
+          fi
+          if find "$temp_dir" -path '*VesperPlayerSourceNormalizerFfmpegPlugin.framework/*' -type f \
+            \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \) | grep -q .; then
+            echo "iOS SourceNormalizer plugin must not bundle FFmpeg runtime dylibs." >&2
+            find "$temp_dir" -path '*VesperPlayerSourceNormalizerFfmpegPlugin.framework/*' -type f \
+              \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \)
+            exit 1
+          fi
+          if find "$temp_dir" -path '*VesperPlayerFrameProcessorDiagnosticPlugin.framework/*' -type f \
+            \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \) | grep -q .; then
+            echo "iOS FrameProcessor diagnostic plugin must not bundle FFmpeg runtime dylibs." >&2
+            find "$temp_dir" -path '*VesperPlayerFrameProcessorDiagnosticPlugin.framework/*' -type f \
+              \( -name 'libav*.dylib*' -o -name 'libsw*.dylib*' -o -name 'libxml2*.dylib*' -o -name 'libssl*.dylib*' -o -name 'libcrypto*.dylib*' \)
+            exit 1
+          fi
+          profile_hash_count=0
+          while IFS= read -r runtime_hash; do
+            profile_hash_count=$((profile_hash_count + 1))
+            plugin_hash="${runtime_hash//VesperPlayerFfmpegRuntime/VesperPlayerRemuxFfmpegPlugin}"
+            if [[ ! -f "$plugin_hash" ]]; then
+              echo "Missing matching iOS remux plugin profile hash for $runtime_hash" >&2
+              exit 1
+            fi
+            if ! cmp -s "$runtime_hash" "$plugin_hash"; then
+              echo "iOS FFmpeg runtime and remux plugin profile hashes differ:" >&2
+              echo "  runtime: $runtime_hash" >&2
+              echo "  plugin:  $plugin_hash" >&2
+              exit 1
+            fi
+            source_normalizer_hash="${runtime_hash//VesperPlayerFfmpegRuntime/VesperPlayerSourceNormalizerFfmpegPlugin}"
+            if [[ ! -f "$source_normalizer_hash" ]]; then
+              echo "Missing matching iOS SourceNormalizer plugin profile hash for $runtime_hash" >&2
+              exit 1
+            fi
+            if ! cmp -s "$runtime_hash" "$source_normalizer_hash"; then
+              echo "iOS FFmpeg runtime and SourceNormalizer plugin profile hashes differ:" >&2
+              echo "  runtime:          $runtime_hash" >&2
+              echo "  sourceNormalizer: $source_normalizer_hash" >&2
+              exit 1
+            fi
+          done < <(find "$temp_dir" -path '*VesperPlayerFfmpegRuntime.framework/Resources/profile-hash.txt' -type f | sort)
+          if [[ "$profile_hash_count" -eq 0 ]]; then
+            echo "Shared iOS FFmpeg runtime did not include profile-hash.txt." >&2
+            exit 1
+          fi
+
+          while IFS= read -r -d '' binary; do
+            info="$(lipo -info "$binary")"
+            echo "$info"
+
+            if [[ "$info" == *"x86_64"* || "$info" == *"i386"* ]]; then
+              echo "Found unexpected non-arm64 slice in $binary" >&2
+              exit 1
+            fi
+          done < <(
+            find "$temp_dir" \
+              \( \
+                -path '*VesperPlayerKit.framework/VesperPlayerKit' -o \
+                -path '*VesperPlayerFfmpegRuntime.framework/VesperPlayerFfmpegRuntime' -o \
+                -path '*VesperPlayerFfmpegRuntime.framework/Frameworks/lib*.dylib*' -o \
+                -path '*VesperPlayerRemuxFfmpegPlugin.framework/VesperPlayerRemuxFfmpegPlugin' -o \
+                -path '*VesperPlayerSourceNormalizerFfmpegPlugin.framework/VesperPlayerSourceNormalizerFfmpegPlugin' -o \
+                -path '*VesperPlayerFrameProcessorDiagnosticPlugin.framework/VesperPlayerFrameProcessorDiagnosticPlugin' \
+              \) \
+              -print0
+          )
+
+      - name: Upload VesperPlayerKit iOS release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: VesperPlayerKit-ios-arm64
+          path: release-assets/ios/*
+
+  publish-release:
+    name: Publish VesperPlayerKit Release
+    runs-on: ubuntu-latest
+    needs:
+      - android-lib
+      - android-samples
+      - ios-lib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Verify release tag is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          tag_commit="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          main_commit="$(git rev-parse origin/main)"
+          if ! git merge-base --is-ancestor "$tag_commit" "$main_commit"; then
+            echo "Release tag ${RELEASE_TAG} is not reachable from origin/main." >&2
+            exit 1
+          fi
+
+      - name: Download VesperPlayerKit release bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare release version metadata
+        run: ./scripts/vesper release prepare-from-tag "${RELEASE_TAG}"
+
+      - name: Generate VesperPlayerKit release notes
+        run: ./scripts/vesper release notes "${RELEASE_TAG}" release-assets/RELEASE_NOTES.md
+
+      - name: Resolve release channel
+        id: release-meta
+        shell: bash
+        run: |
+          tag="${RELEASE_TAG}"
+          prerelease=true
+          if [[ "$tag" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prerelease=false
+          fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Generate VesperPlayerKit package checksums
+        run: |
+          cd release-assets
+          shopt -s nullglob
+          shasum -a 256 *.aar *.zip *.apk > SHA256SUMS.txt
+
+      - name: Publish VesperPlayerKit GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: VesperPlayerKit ${{ env.RELEASE_TAG }}
+          body_path: release-assets/RELEASE_NOTES.md
+          prerelease: ${{ steps.release-meta.outputs.prerelease }}
+          files: |
+            release-assets/*.aar
+            release-assets/*.zip
+            release-assets/*.apk
+            release-assets/SHA256SUMS.txt

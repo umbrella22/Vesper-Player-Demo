@@ -1,0 +1,78 @@
+group = "io.github.ikaros.vesper.player.flutter.externalplayback"
+version = "0.3.0"
+
+buildscript {
+    ext.kotlin_version = "2.3.10"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath "com.android.tools.build:gradle:9.1.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+def sdkRootDir = projectDir.parentFile.parentFile.parentFile.parentFile
+def androidKitDir = new File(sdkRootDir, "lib/android")
+
+def hostKitProject = findProject(":vesper-player-kit")
+def flutterAndroidProject = findProject(":vesper_player_android")
+def externalPlaybackProject = findProject(":vesper-player-kit-external-playback")
+
+android {
+    namespace = "io.github.ikaros.vesper.player.flutter.externalplayback"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 26
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    if (hostKitProject != null) {
+        implementation hostKitProject
+    } else if (flutterAndroidProject != null) {
+        implementation flutterAndroidProject
+    } else {
+        throw new GradleException(
+            "vesper_player_external_playback requires ':vesper-player-kit' or " +
+            "the Flutter ':vesper_player_android' project to be included in the Android build."
+        )
+    }
+
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+
+    if (externalPlaybackProject == null) {
+        throw new GradleException(
+            "vesper_player_external_playback requires ':vesper-player-kit-external-playback' " +
+            "to be included in the Android build. Expected source module under " +
+            new File(androidKitDir, "vesper-player-kit-external-playback").absolutePath + "."
+        )
+    }
+
+    implementation externalPlaybackProject
+}

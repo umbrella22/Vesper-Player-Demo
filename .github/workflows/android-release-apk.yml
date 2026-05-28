@@ -1,0 +1,140 @@
+name: Android Release APK
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build Android release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      ANDROID_NDK_VERSION: 29.0.14206865
+      VESPER_ANDROID_NDK_VERSION: 29.0.14206865
+      RUST_ANDROID_ABIS: arm64-v8a
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.0"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            third_party/vesper-player-sdk
+
+      - name: Cache Vesper Android native prebuilts
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/vesper-player-sdk/third_party/ffmpeg/android
+            third_party/vesper-player-sdk/third_party/openssl/android
+            third_party/vesper-player-sdk/third_party/libxml2/android
+          key: vesper-android-native-${{ runner.os }}-${{ hashFiles('third_party/vesper-player-sdk/Cargo.lock', 'third_party/vesper-player-sdk/scripts/lib/ffmpeg.sh', 'third_party/vesper-player-sdk/scripts/lib/ffmpeg-profile.sh', 'third_party/vesper-player-sdk/scripts/android/**/*.sh') }}
+          restore-keys: |
+            vesper-android-native-${{ runner.os }}-
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            libtool \
+            nasm \
+            pkg-config \
+            yasm
+          cargo install cargo-ndk --locked
+
+      - name: Prepare Flutter workspace
+        run: |
+          flutter --version
+          bash scripts/prepare_flutter_workspace.sh
+
+      - name: Build release APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Stage APK artifact
+        run: |
+          mkdir -p artifacts
+          tag_name="${GITHUB_REF_NAME//\//-}"
+          apk_name="bilibili-player-${tag_name}-android-arm64-release.apk"
+          apk_path="build/app/outputs/flutter-apk/app-release.apk"
+          if [[ ! -f "$apk_path" ]]; then
+            apk_path="$(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*release*.apk' | sort | head -n 1)"
+          fi
+          if [[ -z "$apk_path" || ! -f "$apk_path" ]]; then
+            echo "Release APK was not found." >&2
+            find build/app/outputs -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
+          cp "$apk_path" "artifacts/$apk_name"
+          (cd artifacts && sha256sum "$apk_name" > "$apk_name.sha256")
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

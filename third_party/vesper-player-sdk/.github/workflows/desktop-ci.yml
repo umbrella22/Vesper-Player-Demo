@@ -1,0 +1,410 @@
+name: Vesper Desktop CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-ci.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/**"
+      - "crates/model/**"
+      - "crates/core/**"
+      - "crates/ffi/**"
+      - "crates/plugin/**"
+      - "crates/audio/**"
+      - "crates/render/**"
+      - "crates/backend/**"
+      - "crates/plugin-decoder/**"
+      - "crates/plugin-remux/**"
+      - "crates/platform/common/**"
+      - "crates/platform/desktop/**"
+      - "examples/basic-player/**"
+  push:
+    branches:
+      - main
+      - "codex-*"
+    paths:
+      - ".github/workflows/desktop-ci.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/**"
+      - "crates/model/**"
+      - "crates/core/**"
+      - "crates/ffi/**"
+      - "crates/plugin/**"
+      - "crates/audio/**"
+      - "crates/render/**"
+      - "crates/backend/**"
+      - "crates/plugin-decoder/**"
+      - "crates/plugin-remux/**"
+      - "crates/platform/common/**"
+      - "crates/platform/desktop/**"
+      - "examples/basic-player/**"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LINUX_WORKSPACE_EXCLUDES: >-
+    --exclude player-platform-macos
+    --exclude player-platform-windows
+    --exclude player-platform-ios
+    --exclude player-ffi-ios
+    --exclude player-platform-android
+    --exclude player-jni-android
+
+jobs:
+  rust-lint:
+    name: Rust Format and Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libasound2-dev \
+            libudev-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets ${{ env.LINUX_WORKSPACE_EXCLUDES }}
+
+  msrv-check:
+    name: Rust MSRV Check
+    runs-on: ubuntu-latest
+    needs: rust-lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1.94
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libasound2-dev \
+            libudev-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev
+
+      - name: Workspace check
+        run: cargo check --workspace ${{ env.LINUX_WORKSPACE_EXCLUDES }}
+
+  rust-shared-tests:
+    name: Rust Shared Tests
+    runs-on: ubuntu-latest
+    needs: rust-lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libasound2-dev \
+            libudev-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev
+
+      - name: Workspace shared tests
+        run: cargo test --workspace --no-fail-fast --exclude basic-player ${{ env.LINUX_WORKSPACE_EXCLUDES }} --exclude player-platform-linux
+
+  desktop-matrix:
+    name: Vesper Desktop ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    needs: rust-lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+            platform_crate: player-platform-linux
+          - os: macos-latest
+            label: macOS
+            platform_crate: player-platform-macos
+          - os: windows-latest
+            label: Windows
+            platform_crate: player-platform-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            pkg-config \
+            clang \
+            libclang-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libasound2-dev \
+            libudev-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev
+
+      - name: Install macOS system dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ffmpeg pkg-config
+
+      - name: Install Windows FFmpeg toolchain via vcpkg
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $VcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          $Triplet = "x64-windows"
+          $CloneUrl = "https://github.com/microsoft/vcpkg"
+          if (Test-Path $VcpkgRoot) {
+            Remove-Item -Recurse -Force $VcpkgRoot
+          }
+
+          $Cloned = $false
+          foreach ($Attempt in 1..3) {
+            Write-Host "Cloning vcpkg (attempt $Attempt/3)..."
+            git clone $CloneUrl $VcpkgRoot
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "$VcpkgRoot\bootstrap-vcpkg.bat")) {
+              $Cloned = $true
+              break
+            }
+
+            if (Test-Path $VcpkgRoot) {
+              Remove-Item -Recurse -Force $VcpkgRoot
+            }
+
+            if ($Attempt -lt 3) {
+              Start-Sleep -Seconds (5 * $Attempt)
+            }
+          }
+
+          if (-not $Cloned) {
+            throw "Failed to clone vcpkg after 3 attempts from $CloneUrl"
+          }
+
+          & "$VcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
+          & "$VcpkgRoot\vcpkg.exe" install "ffmpeg:$Triplet"
+          $FfmpegRoot = Join-Path $VcpkgRoot "installed\$Triplet"
+          $FfmpegBinDir = Join-Path $FfmpegRoot "bin"
+          $FfmpegDebugBinDir = Join-Path $FfmpegRoot "debug\bin"
+          "VCPKG_ROOT=$VcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_DEFAULT_TRIPLET=$Triplet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKGRS_TRIPLET=$Triplet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFMPEG_DIR=$FfmpegRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFMPEG_BIN_DIR=$FfmpegBinDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFMPEG_DEBUG_BIN_DIR=$FfmpegDebugBinDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $FfmpegBinDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $FfmpegDebugBinDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Windows FFmpeg CLI tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ffmpeg -y --no-progress
+
+      - name: Verify Windows FFmpeg layout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "$env:FFMPEG_DIR\include")) {
+            throw "FFMPEG_DIR is missing include/: $env:FFMPEG_DIR"
+          }
+          if (-not (Test-Path "$env:FFMPEG_DIR\lib")) {
+            throw "FFMPEG_DIR is missing lib/: $env:FFMPEG_DIR"
+          }
+          if (-not (Test-Path "$env:FFMPEG_BIN_DIR")) {
+            throw "FFMPEG_BIN_DIR is missing: $env:FFMPEG_BIN_DIR"
+          }
+          if (-not (Test-Path "$env:FFMPEG_DEBUG_BIN_DIR")) {
+            throw "FFMPEG_DEBUG_BIN_DIR is missing: $env:FFMPEG_DEBUG_BIN_DIR"
+          }
+          Get-ChildItem "$env:FFMPEG_DIR\lib" | Select-Object -First 5
+
+      - name: Verify Windows FFmpeg tools on PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ffmpeg -version | Select-Object -First 1
+          ffprobe -version | Select-Object -First 1
+
+      - name: Verify bundled desktop fixture
+        shell: bash
+        run: |
+          if [[ ! -f fixtures/media/tiny-h264-aac.m4v ]]; then
+            echo "fixtures/media/tiny-h264-aac.m4v is unavailable; fixture-backed platform tests may skip."
+          else
+            ls -lh fixtures/media/tiny-h264-aac.m4v
+          fi
+
+      - name: Install cbindgen
+        if: runner.os == 'Linux'
+        run: cargo install cbindgen --locked
+
+      - name: Verify generated FFI header
+        if: runner.os == 'Linux'
+        run: ./scripts/vesper ffi verify
+
+      - name: Desktop platform check
+        run: cargo check -p ${{ matrix.platform_crate }}
+
+      - name: Desktop platform tests
+        run: cargo test -p ${{ matrix.platform_crate }} --no-fail-fast
+
+      - name: Verify decoder fixture diagnostics
+        run: ./scripts/vesper desktop verify-decoder-diagnostics
+
+      - name: Verify VideoToolbox decoder plugin
+        if: runner.os == 'macOS'
+        run: ./scripts/vesper desktop verify-decoder-videotoolbox loader
+
+      - name: Example host check
+        run: cargo check -p basic-player -p player-ffi
+
+      - name: Build C host smoke example
+        if: runner.os == 'macOS'
+        run: ./scripts/vesper ffi c-host-smoke --build-only
+
+      - name: Verify desktop player-remux-ffmpeg remux path
+        shell: bash
+        run: ./scripts/vesper desktop verify-remux
+
+      - name: Build Vesper desktop demo
+        if: github.event_name == 'workflow_dispatch'
+        run: cargo build -p basic-player --release
+
+      - name: Stage Vesper desktop artifact
+        if: github.event_name == 'workflow_dispatch' && runner.os != 'Windows'
+        run: |
+          mkdir -p artifacts/desktop
+          cp target/release/basic-player artifacts/desktop/vesper-basic-player-${{ matrix.label }}
+
+      - name: Stage Vesper desktop artifact (Windows)
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/desktop | Out-Null
+          Copy-Item target\release\basic-player.exe artifacts/desktop/vesper-basic-player-Windows.exe
+
+      - name: Upload Vesper desktop artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vesper-basic-player-${{ matrix.label }}
+          path: artifacts/desktop/**
