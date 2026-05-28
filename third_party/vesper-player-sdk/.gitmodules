@@ -1,3 +1,0 @@
-[submodule ".rust-skills"]
-	path = .rust-skills
-	url = https://github.com/actionbook/rust-skills.git

@@ -1,7 +1,7 @@
 # Vesper Player Demo
 
 Vesper Player Demo 是一个 Flutter 移动端客户端 demo，核心目标是验证
-`vesper-player-sdk` 在真实业务外壳中的集成可行性。项目用视频平台客户端
+[`vesper-player-sdk`](https://github.com/umbrella22/Vesper) 在真实业务外壳中的集成可行性。项目用视频平台客户端
 常见的浏览、登录、搜索和播放流程作为测试场景，观察 Vesper Player 在
 Android 原生 DASH、iOS DASH-to-HLS bridge、progressive 后备、本地会话、
 构建打包等链路里的表现。
@@ -21,7 +21,7 @@ Vesper Player Demo 从未在任何平台上架和收费（包括AppStore与Testf
   和离线缓存入口。
 - TV 模式：面向大屏和遥控器操作场景，提供更适合横屏浏览的首页和视频
   观看体验。
-- 通过本地 path dependency 接入 `vesper-player-sdk`，用于验证 Vesper Player
+- 通过本地 path dependency 接入 [`vesper-player-sdk`](https://github.com/umbrella22/Vesper)，用于验证 Vesper Player
   在 Flutter 移动应用中的真实集成效果。
 - 已实现登录态、搜索、播放历史、分 P 播放、SDK 调试信息展示等接近真实
   客户端的基础链路。
