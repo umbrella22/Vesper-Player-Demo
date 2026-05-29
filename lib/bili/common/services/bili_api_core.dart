@@ -92,6 +92,22 @@ bool? readBool(Object? value) {
   };
 }
 
+Map<String, Object?> readObjectMap(Object? value) {
+  if (value is! Map<Object?, Object?>) {
+    return const <String, Object?>{};
+  }
+
+  final result = <String, Object?>{};
+  for (final entry in value.entries) {
+    result[entry.key.toString()] = entry.value;
+  }
+  return result;
+}
+
+List<Object?> readObjectList(Object? value) {
+  return value is List<Object?> ? value : const <Object?>[];
+}
+
 double? parseDashFrameRate(String? value) {
   final raw = value?.trim();
   if (raw == null || raw.isEmpty) {
@@ -139,8 +155,8 @@ String readDurationLabel(Object? value) {
 }
 
 String? readRecommendationReason(Object? value) {
-  if (value is Map) {
-    final map = Map<String, Object?>.from(value);
+  final map = readObjectMap(value);
+  if (map.isNotEmpty) {
     final content =
         readString(map['content']) ??
         readString(map['reason_name']) ??
@@ -171,7 +187,7 @@ String? readPublishedAtLabel(Object? value) {
 }
 
 List<String> readStringList(Object? value) {
-  if (value is List) {
+  if (value is List<Object?>) {
     return value
         .map(readString)
         .whereType<String>()
@@ -339,12 +355,8 @@ BiliFeedVideo? parseBiliFeedVideo(Map<String, Object?> value) {
     return null;
   }
 
-  final owner = value['owner'] is Map
-      ? Map<String, Object?>.from(value['owner'] as Map)
-      : const <String, Object?>{};
-  final stat = value['stat'] is Map
-      ? Map<String, Object?>.from(value['stat'] as Map)
-      : const <String, Object?>{};
+  final owner = readObjectMap(value['owner']);
+  final stat = readObjectMap(value['stat']);
   final reason = readRecommendationReason(value['rcmd_reason']);
   final publishedAtLabel = readPublishedAtLabel(
     value['pubdate'] ?? value['ctime'],

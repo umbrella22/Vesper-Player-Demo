@@ -34,7 +34,7 @@ final class BiliOfflineDownloadStore {
         _ => const <dynamic>[],
       };
       final entries = rawEntries
-          .whereType<Map>()
+          .whereType<Map<Object?, Object?>>()
           .map((value) => Map<String, Object?>.from(value))
           .map(BiliOfflineDownloadMetadata.fromJson)
           .where((entry) => entry.assetId.isNotEmpty)

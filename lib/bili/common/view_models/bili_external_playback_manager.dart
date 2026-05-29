@@ -72,6 +72,7 @@ class BiliExternalPlaybackManager {
     _routesSubscription = null;
     _sessionSubscription?.cancel();
     _sessionSubscription = null;
+    _dlnaController.dispose();
     _listeners.clear();
   }
 

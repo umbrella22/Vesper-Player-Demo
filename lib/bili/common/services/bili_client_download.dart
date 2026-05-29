@@ -215,27 +215,25 @@ extension BiliClientDownload on BiliClient {
   }
 
   BiliDashParseResult _parseDashManifest(Map<String, Object?> data) {
-    final dash = data['dash'] is Map
-        ? Map<String, Object?>.from(data['dash'] as Map)
-        : const <String, Object?>{};
+    final dash = readObjectMap(data['dash']);
     if (dash.isEmpty) {
       return BiliDashParseResult.failure(
         'no dash object; data keys=${formatKeys(data)}',
       );
     }
 
-    final rawVideos = dash['video'] as List<dynamic>? ?? const <dynamic>[];
-    final rawAudios = <dynamic>[
-      ...(dash['audio'] as List<dynamic>? ?? const <dynamic>[]),
+    final rawVideos = readObjectList(dash['video']);
+    final rawAudios = <Object?>[
+      ...readObjectList(dash['audio']),
       ..._readDashAudioList(dash['flac']),
       ..._readDashAudioList(dash['dolby']),
     ];
 
     final videos = <BiliDashStream>[];
     final videoRejectReasons = <String, int>{};
-    for (final raw in rawVideos.whereType<Map>()) {
+    for (final raw in rawVideos.whereType<Map<Object?, Object?>>()) {
       final parsed = _parseDashStream(
-        Map<String, Object?>.from(raw),
+        readObjectMap(raw),
         qualityLabels: const <int, String>{},
         index: videos.length,
         rejectReasons: videoRejectReasons,
@@ -247,9 +245,9 @@ extension BiliClientDownload on BiliClient {
 
     final audios = <BiliDashStream>[];
     final audioRejectReasons = <String, int>{};
-    for (final raw in rawAudios.whereType<Map>()) {
+    for (final raw in rawAudios.whereType<Map<Object?, Object?>>()) {
       final parsed = _parseDashStream(
-        Map<String, Object?>.from(raw),
+        readObjectMap(raw),
         qualityLabels: const <int, String>{},
         index: audios.length,
         rejectReasons: audioRejectReasons,
@@ -279,15 +277,13 @@ extension BiliClientDownload on BiliClient {
     );
   }
 
-  List<dynamic> _readDashAudioList(Object? value) {
-    final map = value is Map
-        ? Map<String, Object?>.from(value)
-        : const <String, Object?>{};
+  List<Object?> _readDashAudioList(Object? value) {
+    final map = readObjectMap(value);
     final audio = map['audio'];
     return switch (audio) {
-      List raw => raw,
-      Map raw => <dynamic>[raw],
-      _ => const <dynamic>[],
+      List<Object?> raw => raw,
+      Map<Object?, Object?> raw => <Object?>[raw],
+      _ => const <Object?>[],
     };
   }
 
@@ -298,9 +294,9 @@ extension BiliClientDownload on BiliClient {
     required Map<String, int> rejectReasons,
   }) {
     final segmentMap = switch (value['SegmentBase']) {
-      Map map => Map<String, Object?>.from(map),
+      Map<Object?, Object?> map => readObjectMap(map),
       _ => switch (value['segment_base']) {
-        Map map => Map<String, Object?>.from(map),
+        Map<Object?, Object?> map => readObjectMap(map),
         _ => const <String, Object?>{},
       },
     };

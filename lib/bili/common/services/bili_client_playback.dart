@@ -111,30 +111,28 @@ extension BiliClientPlayback on BiliClient {
   }
 
   BiliDashParseResult _parseDashManifest(Map<String, Object?> data) {
-    final dash = data['dash'] is Map
-        ? Map<String, Object?>.from(data['dash'] as Map)
-        : const <String, Object?>{};
+    final dash = readObjectMap(data['dash']);
     if (dash.isEmpty) {
       return BiliDashParseResult.failure(
         'no dash object; data keys=${formatKeys(data)}',
       );
     }
 
-    final rawVideos = dash['video'] as List<dynamic>? ?? const <dynamic>[];
-    final rawAudios = <dynamic>[
-      ...(dash['audio'] as List<dynamic>? ?? const <dynamic>[]),
+    final rawVideos = readObjectList(dash['video']);
+    final rawAudios = <Object?>[
+      ...readObjectList(dash['audio']),
       ..._readDashAudioList(dash['flac']),
       ..._readDashAudioList(dash['dolby']),
     ];
     final qualityLabels = _parseSupportQualityLabels(
-      data['support_formats'] as List<dynamic>? ?? const <dynamic>[],
+      readObjectList(data['support_formats']),
     );
 
     final videos = <BiliDashStream>[];
     final videoRejectReasons = <String, int>{};
-    for (final raw in rawVideos.whereType<Map>()) {
+    for (final raw in rawVideos.whereType<Map<Object?, Object?>>()) {
       final parsed = _parseDashStream(
-        Map<String, Object?>.from(raw),
+        readObjectMap(raw),
         qualityLabels: qualityLabels,
         index: videos.length,
         rejectReasons: videoRejectReasons,
@@ -146,9 +144,9 @@ extension BiliClientPlayback on BiliClient {
 
     final audios = <BiliDashStream>[];
     final audioRejectReasons = <String, int>{};
-    for (final raw in rawAudios.whereType<Map>()) {
+    for (final raw in rawAudios.whereType<Map<Object?, Object?>>()) {
       final parsed = _parseDashStream(
-        Map<String, Object?>.from(raw),
+        readObjectMap(raw),
         qualityLabels: const <int, String>{},
         index: audios.length,
         rejectReasons: audioRejectReasons,
@@ -178,22 +176,20 @@ extension BiliClientPlayback on BiliClient {
     );
   }
 
-  List<dynamic> _readDashAudioList(Object? value) {
-    final map = value is Map
-        ? Map<String, Object?>.from(value)
-        : const <String, Object?>{};
+  List<Object?> _readDashAudioList(Object? value) {
+    final map = readObjectMap(value);
     final audio = map['audio'];
     return switch (audio) {
-      List raw => raw,
-      Map raw => <dynamic>[raw],
-      _ => const <dynamic>[],
+      List<Object?> raw => raw,
+      Map<Object?, Object?> raw => <Object?>[raw],
+      _ => const <Object?>[],
     };
   }
 
-  Map<int, String> _parseSupportQualityLabels(List<dynamic> values) {
+  Map<int, String> _parseSupportQualityLabels(List<Object?> values) {
     final labels = <int, String>{};
-    for (final raw in values.whereType<Map>()) {
-      final value = Map<String, Object?>.from(raw);
+    for (final raw in values.whereType<Map<Object?, Object?>>()) {
+      final value = readObjectMap(raw);
       final quality = readInt(value['quality']);
       if (quality == null) {
         continue;
@@ -217,9 +213,9 @@ extension BiliClientPlayback on BiliClient {
     required Map<String, int> rejectReasons,
   }) {
     final segmentMap = switch (value['SegmentBase']) {
-      Map map => Map<String, Object?>.from(map),
+      Map<Object?, Object?> map => readObjectMap(map),
       _ => switch (value['segment_base']) {
-        Map map => Map<String, Object?>.from(map),
+        Map<Object?, Object?> map => readObjectMap(map),
         _ => const <String, Object?>{},
       },
     };
@@ -345,11 +341,23 @@ extension BiliClientPlayback on BiliClient {
     required int cid,
     required String manifestText,
   }) async {
-    final directory = await Directory.systemTemp.createTemp(
-      'bilibili-player-dash-',
+    final directory = Directory(
+      '${Directory.systemTemp.path}/bilibili-player-dash',
     );
-    final file = File('${directory.path}/$bvid-$cid.mpd');
-    await file.writeAsString(manifestText);
+    await directory.create(recursive: true);
+    final file = File('${directory.path}/${sanitizeAssetPart(bvid)}-$cid.mpd');
+    final tempFile = File(
+      '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-$pid',
+    );
+    await tempFile.writeAsString(manifestText, flush: true);
+    try {
+      await tempFile.rename(file.path);
+    } on FileSystemException {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tempFile.rename(file.path);
+    }
     return file;
   }
 
@@ -380,15 +388,13 @@ extension BiliClientPlayback on BiliClient {
         referer: referer,
       );
 
-      final durlList = data['durl'] as List<dynamic>? ?? const <dynamic>[];
+      final durlList = readObjectList(data['durl']);
       if (durlList.isEmpty) {
         continue;
       }
 
-      final first = Map<String, Object?>.from(
-        durlList.first as Map? ?? const <String, Object?>{},
-      );
-      final url = first['url'] as String? ?? '';
+      final first = readObjectMap(durlList.first);
+      final url = readString(first['url']) ?? '';
       if (url.isEmpty) {
         continue;
       }

@@ -2505,7 +2505,12 @@ void main() {
 
     await tester.runAsync(() => settings.setForceTvMode(false));
     await tester.pumpWidget(
-      MaterialApp(home: BiliSettingsPage(appSettings: settings)),
+      MaterialApp(
+        home: BiliSettingsPage(
+          appSettings: settings,
+          sessionStore: BiliSessionStore(baseDirectory: root),
+        ),
+      ),
     );
     await _pumpUntilFound(tester, find.text('当前：根据设备自动选择'));
 

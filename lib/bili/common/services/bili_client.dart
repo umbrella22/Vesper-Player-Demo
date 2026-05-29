@@ -82,14 +82,9 @@ class BiliClient {
       useWbi: true,
     );
 
-    final rawResults = data['result'];
-    if (rawResults is! List) {
-      return const <BiliSearchResult>[];
-    }
-
-    return rawResults
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    return readObjectList(data['result'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(_parseSearchResult)
         .whereType<BiliSearchResult>()
         .toList(growable: false);
@@ -113,48 +108,42 @@ class BiliClient {
       params: <String, Object?>{'bvid': bvid},
     );
 
-    final pages = (data['pages'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    final pages = readObjectList(data['pages'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(
           (value) => BiliVideoPageEntry(
-            cid: (value['cid'] as num?)?.toInt() ?? 0,
-            pageNumber: (value['page'] as num?)?.toInt() ?? 0,
-            title: biliStripHtmlTags(value['part'] as String? ?? 'P'),
-            durationSeconds: (value['duration'] as num?)?.toInt() ?? 0,
-            aid: (data['aid'] as num?)?.toInt(),
-            bvid: data['bvid'] as String? ?? bvid,
-            coverUrl: biliNormalizeImageUrl(data['pic'] as String? ?? ''),
+            cid: readInt(value['cid']) ?? 0,
+            pageNumber: readInt(value['page']) ?? 0,
+            title: biliStripHtmlTags(readString(value['part']) ?? 'P'),
+            durationSeconds: readInt(value['duration']) ?? 0,
+            aid: readInt(data['aid']),
+            bvid: readString(data['bvid']) ?? bvid,
+            coverUrl: biliNormalizeImageUrl(readString(data['pic']) ?? ''),
           ),
         )
         .toList(growable: false);
 
-    final owner = Map<String, Object?>.from(
-      data['owner'] as Map? ?? const <String, Object?>{},
-    );
-    final stat = Map<String, Object?>.from(
-      data['stat'] as Map? ?? const <String, Object?>{},
-    );
+    final owner = readObjectMap(data['owner']);
+    final stat = readObjectMap(data['stat']);
 
     return BiliVideoDetail(
-      aid: (data['aid'] as num?)?.toInt() ?? 0,
-      bvid: data['bvid'] as String? ?? bvid,
-      title: biliStripHtmlTags(data['title'] as String? ?? bvid),
+      aid: readInt(data['aid']) ?? 0,
+      bvid: readString(data['bvid']) ?? bvid,
+      title: biliStripHtmlTags(readString(data['title']) ?? bvid),
       ownerMid: readInt(owner['mid']) ?? 0,
-      ownerName: owner['name'] as String? ?? 'UP',
-      ownerAvatarUrl: biliNormalizeImageUrl(owner['face'] as String? ?? ''),
-      coverUrl: biliNormalizeImageUrl(data['pic'] as String? ?? ''),
-      description: (data['desc'] as String? ?? '').trim(),
+      ownerName: readString(owner['name']) ?? 'UP',
+      ownerAvatarUrl: biliNormalizeImageUrl(readString(owner['face']) ?? ''),
+      coverUrl: biliNormalizeImageUrl(readString(data['pic']) ?? ''),
+      description: readString(data['desc']) ?? '',
       publishedAtLabel: readPublishedAtLabel(data['pubdate'] ?? data['ctime']),
-      playCountLabel: biliFormatCount((stat['view'] as num?)?.toDouble()),
-      danmakuCountLabel: biliFormatCount((stat['danmaku'] as num?)?.toDouble()),
-      replyCountLabel: biliFormatCount((stat['reply'] as num?)?.toDouble()),
-      likeCountLabel: biliFormatCount((stat['like'] as num?)?.toDouble()),
-      coinCountLabel: biliFormatCount((stat['coin'] as num?)?.toDouble()),
-      favoriteCountLabel: biliFormatCount(
-        (stat['favorite'] as num?)?.toDouble(),
-      ),
-      shareCountLabel: biliFormatCount((stat['share'] as num?)?.toDouble()),
+      playCountLabel: biliFormatCount(readDouble(stat['view'])),
+      danmakuCountLabel: biliFormatCount(readDouble(stat['danmaku'])),
+      replyCountLabel: biliFormatCount(readDouble(stat['reply'])),
+      likeCountLabel: biliFormatCount(readDouble(stat['like'])),
+      coinCountLabel: biliFormatCount(readDouble(stat['coin'])),
+      favoriteCountLabel: biliFormatCount(readDouble(stat['favorite'])),
+      shareCountLabel: biliFormatCount(readDouble(stat['share'])),
       pages: pages,
     );
   }
@@ -170,43 +159,34 @@ class BiliClient {
     );
 
     final isLogin = data['isLogin'] == true;
-    final levelInfo = Map<String, Object?>.from(
-      data['level_info'] as Map? ?? const <String, Object?>{},
-    );
-    final vipInfo = Map<String, Object?>.from(
-      data['vip_label'] as Map? ?? const <String, Object?>{},
-    );
-    final walletInfo = Map<String, Object?>.from(
-      data['wallet'] as Map? ?? const <String, Object?>{},
-    );
+    final levelInfo = readObjectMap(data['level_info']);
+    final vipInfo = readObjectMap(data['vip_label']);
+    final walletInfo = readObjectMap(data['wallet']);
     final statInfo = isLogin
         ? await _fetchCurrentUserNavStat()
         : const <String, Object?>{};
+    final userName = readString(data['uname']);
+    final vipLabel = readString(vipInfo['text']);
 
     final profile = BiliUserProfile(
       isLoggedIn: isLogin,
-      name: (data['uname'] as String? ?? '').trim().isEmpty
-          ? '未登录'
-          : (data['uname'] as String).trim(),
-      avatarUrl: biliNormalizeImageUrl(data['face'] as String? ?? ''),
-      mid: (data['mid'] as num?)?.toInt(),
-      level: (levelInfo['current_level'] as num?)?.toInt(),
-      vipLabel: (vipInfo['text'] as String?)?.trim().isEmpty ?? true
-          ? null
-          : (vipInfo['text'] as String).trim(),
+      name: userName == null || userName.isEmpty ? '未登录' : userName,
+      avatarUrl: biliNormalizeImageUrl(readString(data['face']) ?? ''),
+      mid: readInt(data['mid']),
+      level: readInt(levelInfo['current_level']),
+      vipLabel: vipLabel == null || vipLabel.isEmpty ? null : vipLabel,
       bCoinBalance:
-          (walletInfo['bcoin_balance'] as num?)?.toDouble() ??
-          (walletInfo['bcoinBalance'] as num?)?.toDouble(),
-      coinBalance: (data['money'] as num?)?.toDouble(),
+          readDouble(walletInfo['bcoin_balance']) ??
+          readDouble(walletInfo['bcoinBalance']),
+      coinBalance: readDouble(data['money']),
       dynamicCount:
-          (statInfo['dynamic_count'] as num?)?.toInt() ??
-          (statInfo['dynamicCount'] as num?)?.toInt(),
+          readInt(statInfo['dynamic_count']) ??
+          readInt(statInfo['dynamicCount']),
       followingCount:
-          (statInfo['following'] as num?)?.toInt() ??
-          (statInfo['following_count'] as num?)?.toInt(),
+          readInt(statInfo['following']) ??
+          readInt(statInfo['following_count']),
       followerCount:
-          (statInfo['follower'] as num?)?.toInt() ??
-          (statInfo['follower_count'] as num?)?.toInt(),
+          readInt(statInfo['follower']) ?? readInt(statInfo['follower_count']),
     );
     _currentUserMid = profile.mid;
     return profile;
@@ -240,19 +220,17 @@ class BiliClient {
     }
 
     final map = Map<String, Object?>.from(decoded);
-    final code = (map['code'] as num?)?.toInt() ?? -1;
+    final code = readInt(map['code']) ?? -1;
     if (code != 0) {
       throw BiliApiException(
-        map['message'] as String? ?? 'QR login generation failed.',
+        readString(map['message']) ?? 'QR login generation failed.',
         code: code,
       );
     }
 
-    final data = Map<String, Object?>.from(
-      map['data'] as Map? ?? const <String, Object?>{},
-    );
-    final url = data['url'] as String? ?? '';
-    final key = data['qrcode_key'] as String? ?? '';
+    final data = readObjectMap(map['data']);
+    final url = readString(data['url']) ?? '';
+    final key = readString(data['qrcode_key']) ?? '';
     if (url.isEmpty || key.isEmpty) {
       throw const BiliApiException('QR login payload is incomplete.');
     }
@@ -275,30 +253,28 @@ class BiliClient {
     }
 
     final map = Map<String, Object?>.from(decoded);
-    final code = (map['code'] as num?)?.toInt() ?? -1;
+    final code = readInt(map['code']) ?? -1;
     if (code != 0) {
       throw BiliApiException(
-        map['message'] as String? ?? 'QR login poll failed.',
+        readString(map['message']) ?? 'QR login poll failed.',
         code: code,
       );
     }
 
-    final data = Map<String, Object?>.from(
-      map['data'] as Map? ?? const <String, Object?>{},
-    );
+    final data = readObjectMap(map['data']);
     _transport.restoreCookies({
       ..._transport.cookies,
-      ...parseBiliLoginCookiesFromUrl(data['url'] as String?),
+      ...parseBiliLoginCookiesFromUrl(readString(data['url'])),
     });
-    final statusCode = (data['code'] as num?)?.toInt() ?? -1;
+    final statusCode = readInt(data['code']) ?? -1;
     final status = BiliQrLoginStatus.fromCode(statusCode);
     return BiliQrLoginPollResult(
       status: status,
-      message: data['message'] as String? ?? map['message'] as String? ?? '',
-      timestampMs: ((data['timestamp'] as num?)?.toInt()) != null
-          ? ((data['timestamp'] as num).toInt()) * 1000
+      message: readString(data['message']) ?? readString(map['message']) ?? '',
+      timestampMs: readInt(data['timestamp']) != null
+          ? readInt(data['timestamp'])! * 1000
           : null,
-      refreshToken: data['refresh_token'] as String?,
+      refreshToken: readString(data['refresh_token']),
     );
   }
 
@@ -320,14 +296,9 @@ class BiliClient {
       useWbi: true,
     );
 
-    final rawItems = data['item'];
-    if (rawItems is! List) {
-      return const <BiliFeedVideo>[];
-    }
-
-    return rawItems
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    return readObjectList(data['item'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(parseBiliFeedVideo)
         .whereType<BiliFeedVideo>()
         .toList(growable: false);
@@ -497,8 +468,8 @@ class BiliClient {
       data: <String, Object?>{'aid': detail.aid, 'bvid': detail.bvid},
       referer: 'https://www.bilibili.com/video/${detail.bvid}',
     );
-    if (data is Map) {
-      final map = Map<String, Object?>.from(data);
+    final map = readObjectMap(data);
+    if (map.isNotEmpty) {
       return readInt(map['share']) ??
           readInt(map['count']) ??
           readInt(map['num']);
@@ -525,10 +496,10 @@ class BiliClient {
       referer: 'https://www.bilibili.com/video/${detail.bvid}',
     );
 
-    final rawFolders = data['list'] as List<dynamic>? ?? const <dynamic>[];
+    final rawFolders = readObjectList(data['list']);
     return rawFolders
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(_parseFavoriteFolder)
         .whereType<BiliFavoriteFolder>()
         .toList(growable: false);

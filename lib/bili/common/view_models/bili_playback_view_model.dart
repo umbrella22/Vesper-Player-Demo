@@ -951,6 +951,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       unawaited(_persistLatestHistory(controller, fallback: snapshot));
     }
     unawaited(_castEventsSubscription?.cancel() ?? Future<void>.value());
+    _externalPlaybackForCast.dispose();
     _dlnaManager.dispose();
     _controller = null;
     if (controller != null) {

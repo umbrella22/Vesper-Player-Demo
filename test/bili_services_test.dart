@@ -62,6 +62,12 @@ void main() {
       );
     });
 
+    test('does not throw when WBI keys are shorter than expected', () {
+      const signer = BiliWbiSigner();
+
+      expect(signer.getMixinKey('a', 'b'), 'ab');
+    });
+
     test('signs parameters using documented sample', () {
       const signer = BiliWbiSigner();
 
@@ -78,6 +84,68 @@ void main() {
   });
 
   group('BiliTransport API decoding', () {
+    test('times out requests that never complete', () async {
+      final transport = BiliTransport(
+        httpClient: _NeverCompletingHttpClient(),
+        requestTimeout: const Duration(milliseconds: 10),
+      );
+
+      expect(
+        transport.sendRequest(
+          Uri.https('api.bilibili.com', '/x/test'),
+          referer: 'https://www.bilibili.com/',
+        ),
+        throwsA(
+          isA<BiliApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('timed out'),
+          ),
+        ),
+      );
+    });
+
+    test('stores only trusted non-expired Bilibili cookies', () async {
+      final httpClient = _CookieHttpClient();
+      final transport = BiliTransport(httpClient: httpClient);
+
+      httpClient.cookies = <Cookie>[
+        Cookie('SESSDATA', 'trusted')
+          ..domain = '.bilibili.com'
+          ..path = '/',
+        Cookie('scoped_out', 'ignored')
+          ..domain = '.bilibili.com'
+          ..path = '/passport',
+      ];
+      await transport.sendRequest(
+        Uri.https('api.bilibili.com', '/x/test'),
+        referer: 'https://www.bilibili.com/',
+      );
+
+      expect(transport.cookieValue('SESSDATA'), 'trusted');
+      expect(transport.cookieValue('scoped_out'), isNull);
+
+      httpClient.cookies = <Cookie>[
+        Cookie('SESSDATA', 'media-overwrite')..domain = '.bilivideo.com',
+      ];
+      await transport.sendRequest(
+        Uri.https('upos-sz-mirrorcoso1.bilivideo.com', '/video.m4s'),
+        referer: 'https://www.bilibili.com/video/BV1xx411c7mD',
+      );
+      expect(transport.cookieValue('SESSDATA'), 'trusted');
+
+      httpClient.cookies = <Cookie>[
+        Cookie('SESSDATA', '')
+          ..domain = '.bilibili.com'
+          ..maxAge = 0,
+      ];
+      await transport.sendRequest(
+        Uri.https('api.bilibili.com', '/x/test'),
+        referer: 'https://www.bilibili.com/',
+      );
+      expect(transport.cookieValue('SESSDATA'), isNull);
+    });
+
     test('can read unauthenticated nav data that still carries WBI keys', () {
       final transport = BiliTransport();
       addTearDown(() => transport.httpClient.close(force: true));
@@ -237,6 +305,29 @@ void main() {
         hasLength(greaterThanOrEqualTo(2)),
       );
     });
+
+    test(
+      'parses video detail and search fields without throwing on type drift',
+      () async {
+        final httpClient = _TypeDriftHttpClient();
+        final client = BiliClient(httpClient: httpClient)
+          ..restoreCookies(const <String, String>{
+            'buvid3': 'fake-buvid3',
+            'buvid4': 'fake-buvid4',
+          });
+        addTearDown(() => client.transport.httpClient.close(force: true));
+
+        final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+        final results = await client.searchVideos('typedrift');
+
+        expect(detail.title, '12345');
+        expect(detail.ownerName, '99');
+        expect(detail.pages.single.title, '1');
+        expect(results.single.title, '67890');
+        expect(results.single.author, '42');
+        expect(results.single.durationLabel, '02:05');
+      },
+    );
   });
 
   group('bili text helpers', () {
@@ -1138,6 +1229,45 @@ void main() {
       expect(entries.first.lastPositionMs, 1500);
     });
 
+    test('serializes concurrent history writes', () async {
+      final root = await Directory.systemTemp.createTemp('bili-history-race-');
+      addTearDown(() => root.delete(recursive: true));
+
+      final store = BiliHistoryStore(baseDirectory: root);
+      await Future.wait(<Future<void>>[
+        store.saveEntry(
+          const BiliPlaybackHistoryEntry(
+            bvid: 'BV1',
+            cid: 1,
+            videoTitle: 'First',
+            pageTitle: 'P1',
+            coverUrl: '',
+            ownerName: 'UP',
+            playedAtMs: 100,
+            lastPositionMs: 1000,
+            durationMs: 2000,
+          ),
+        ),
+        store.saveEntry(
+          const BiliPlaybackHistoryEntry(
+            bvid: 'BV2',
+            cid: 2,
+            videoTitle: 'Second',
+            pageTitle: 'P1',
+            coverUrl: '',
+            ownerName: 'UP',
+            playedAtMs: 200,
+            lastPositionMs: 3000,
+            durationMs: 4000,
+          ),
+        ),
+      ]);
+
+      final entries = await store.loadEntries();
+
+      expect(entries.map((entry) => entry.bvid), <String>['BV2', 'BV1']);
+    });
+
     test('migrates history from the legacy temp directory', () async {
       final root = await Directory.systemTemp.createTemp('bili-history-new-');
       final legacy = await Directory.systemTemp.createTemp(
@@ -1262,6 +1392,38 @@ void main() {
       expect(cookies['bili_jct'], 'token');
       expect(File('${root.path}/bili-session.json').existsSync(), isTrue);
     });
+
+    test(
+      'migrates plaintext cookies into secure storage and removes files',
+      () async {
+        final root = await Directory.systemTemp.createTemp('bili-session-new-');
+        final legacy = await Directory.systemTemp.createTemp(
+          'bili-session-legacy-',
+        );
+        final secureStorage = _FakeSessionSecureStorage();
+        addTearDown(() => root.delete(recursive: true));
+        addTearDown(() => legacy.delete(recursive: true));
+
+        final legacyFile = File('${legacy.path}/bili-session.json');
+        await legacyFile.create(recursive: true);
+        await legacyFile.writeAsString(
+          '{"savedAtMs":123,"cookies":{"SESSDATA":"abc","bili_jct":"token"}}',
+        );
+
+        final store = BiliSessionStore(
+          baseDirectory: root,
+          legacyDirectory: legacy,
+          secureStorage: secureStorage,
+        );
+        final cookies = await store.loadCookies();
+
+        expect(cookies['SESSDATA'], 'abc');
+        expect(cookies['bili_jct'], 'token');
+        expect(secureStorage.values, hasLength(1));
+        expect(File('${root.path}/bili-session.json').existsSync(), isFalse);
+        expect(legacyFile.existsSync(), isFalse);
+      },
+    );
   });
 
   group('BiliFeedVideo parser', () {
@@ -1483,6 +1645,245 @@ final class _FakeEngagementHttpClient implements HttpClient {
     }
 
     return _FakeEngagementHttpClientResponse(
+      jsonEncode(<String, Object?>{
+        'code': -404,
+        'message': 'unexpected fake route: ${url.path}',
+      }),
+      statusCode: HttpStatus.notFound,
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _FakeSessionSecureStorage implements BiliSessionSecureStorage {
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  Future<String?> read({required String key}) async => values[key];
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete({required String key}) async {
+    values.remove(key);
+  }
+}
+
+final class _NeverCompletingHttpClient implements HttpClient {
+  String? _userAgent;
+
+  @override
+  String? get userAgent => _userAgent;
+
+  @override
+  set userAgent(String? value) {
+    _userAgent = value;
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    return _NeverCompletingHttpClientRequest();
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _NeverCompletingHttpClientRequest implements HttpClientRequest {
+  final _FakeRegionHttpHeaders _headers = _FakeRegionHttpHeaders();
+
+  @override
+  HttpHeaders get headers => _headers;
+
+  @override
+  Future<HttpClientResponse> close() {
+    return Completer<HttpClientResponse>().future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _CookieHttpClient implements HttpClient {
+  List<Cookie> cookies = const <Cookie>[];
+  String? _userAgent;
+
+  @override
+  String? get userAgent => _userAgent;
+
+  @override
+  set userAgent(String? value) {
+    _userAgent = value;
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    return _CookieHttpClientRequest(_CookieHttpClientResponse(cookies));
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _CookieHttpClientRequest implements HttpClientRequest {
+  _CookieHttpClientRequest(this._response);
+
+  final _CookieHttpClientResponse _response;
+  final _FakeRegionHttpHeaders _headers = _FakeRegionHttpHeaders();
+
+  @override
+  HttpHeaders get headers => _headers;
+
+  @override
+  Future<HttpClientResponse> close() async => _response;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _CookieHttpClientResponse extends Stream<List<int>>
+    implements HttpClientResponse {
+  const _CookieHttpClientResponse(this.cookies);
+
+  @override
+  final List<Cookie> cookies;
+
+  @override
+  int get statusCode => HttpStatus.ok;
+
+  @override
+  HttpHeaders get headers => _FakeRegionHttpHeaders();
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    return Stream<List<int>>.fromIterable(<List<int>>[
+      utf8.encode('{}'),
+    ]).listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _TypeDriftHttpClient implements HttpClient {
+  String? _userAgent;
+
+  @override
+  String? get userAgent => _userAgent;
+
+  @override
+  set userAgent(String? value) {
+    _userAgent = value;
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    return _FakeRegionHttpClientRequest(_responseFor(url));
+  }
+
+  _FakeRegionHttpClientResponse _responseFor(Uri url) {
+    if (url.path == '/x/web-interface/nav') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'isLogin': false,
+            'wbi_img': <String, Object?>{
+              'img_url':
+                  'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',
+              'sub_url':
+                  'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png',
+            },
+          },
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/view') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'aid': '100',
+            'bvid': 'BV1xx411c7mD',
+            'title': 12345,
+            'pic': 777,
+            'desc': 888,
+            'owner': <String, Object?>{'mid': '42', 'name': 99, 'face': 100},
+            'stat': <String, Object?>{
+              'view': '1000',
+              'danmaku': '20',
+              'reply': '3',
+              'like': '4',
+              'coin': '5',
+              'favorite': '6',
+              'share': '7',
+            },
+            'pages': <Object?>[
+              <String, Object?>{
+                'cid': '200',
+                'page': '1',
+                'part': 1,
+                'duration': '125',
+              },
+            ],
+          },
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/wbi/search/type') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'result': <Object?>[
+              <String, Object?>{
+                'aid': '300',
+                'bvid': 'BV2xx411c7mD',
+                'title': 67890,
+                'author': 42,
+                'pic': 9,
+                'duration': 125,
+                'play': '1000',
+                'video_review': '3',
+                'description': 10,
+                'pubdate': '1719057600',
+              },
+            ],
+          },
+        }),
+      );
+    }
+
+    return _FakeRegionHttpClientResponse(
       jsonEncode(<String, Object?>{
         'code': -404,
         'message': 'unexpected fake route: ${url.path}',

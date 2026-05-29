@@ -115,7 +115,7 @@ final class BiliWbiSigner {
         .where((index) => index < combined.length)
         .map((index) => combined[index])
         .join();
-    return mixed.substring(0, 32);
+    return mixed.length <= 32 ? mixed : mixed.substring(0, 32);
   }
 
   String _sanitizeValue(String value) {

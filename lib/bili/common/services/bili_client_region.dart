@@ -60,55 +60,46 @@ extension BiliClientRegion on BiliClient {
   }
 
   List<BiliRegionVideo> _parsePgcRegionVideos(Map<String, Object?> data) {
-    final list = data['list'];
-    if (list is! List) {
-      return const <BiliRegionVideo>[];
-    }
-
-    return list
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    return readObjectList(data['list'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(_parsePgcRegionVideo)
         .whereType<BiliRegionVideo>()
         .toList(growable: false);
   }
 
   List<BiliRegionVideo> _parseRankingRegionVideos(Map<String, Object?> data) {
-    final list = data['list'];
-    if (list is! List) {
-      return const <BiliRegionVideo>[];
-    }
-
-    return list
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    return readObjectList(data['list'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .map(_parseRankingRegionVideo)
         .whereType<BiliRegionVideo>()
         .toList(growable: false);
   }
 
   BiliRegionVideo? _parsePgcRegionVideo(Map<String, Object?> value) {
-    final title = value['title'] as String? ?? '';
-    final seasonId = (value['season_id'] as num?)?.toInt();
+    final title = readString(value['title']) ?? '';
+    final seasonId = readInt(value['season_id']);
     if (title.isEmpty || seasonId == null) {
       return null;
     }
 
-    final newEp = value['new_ep'] as Map<String, Object?>?;
+    final newEp = readObjectMap(value['new_ep']);
     final scoreRaw = value['score'];
-    final statValue = value['stat'] as Map<String, Object?>?;
+    final statValue = readObjectMap(value['stat']);
     final order = readString(value['order']);
+    final followCount = readDouble(statValue['follow']);
 
     return BiliRegionVideo(
       id: seasonId.toString(),
       title: title,
       coverUrl:
-          value['cover'] as String? ??
-          value['horizontal_cover_16_9'] as String? ??
+          readString(value['cover']) ??
+          readString(value['horizontal_cover_16_9']) ??
           '',
-      url: value['link'] as String? ?? value['url'] as String? ?? '',
+      url: readString(value['link']) ?? readString(value['url']) ?? '',
       seasonId: seasonId,
-      epId: readInt((value['first_ep'] as Map?)?['ep_id']),
+      epId: readInt(readObjectMap(value['first_ep'])['ep_id']),
       subtitle:
           readString(value['subTitle']) ??
           readString(value['subtitle']) ??
@@ -119,11 +110,11 @@ extension BiliClientRegion on BiliClient {
         _ => null,
       },
       indexLabel:
-          readString(value['index_show']) ?? readString(newEp?['index_show']),
-      followCountLabel: statValue?['follow'] is num
-          ? biliFormatCount((statValue?['follow'] as num).toDouble())
-          : order,
-      description: value['evaluate'] as String?,
+          readString(value['index_show']) ?? readString(newEp['index_show']),
+      followCountLabel: followCount == null
+          ? order
+          : biliFormatCount(followCount),
+      description: readString(value['evaluate']),
     );
   }
 
@@ -135,9 +126,9 @@ extension BiliClientRegion on BiliClient {
       referer: 'https://www.bilibili.com/',
     );
 
-    final episodes = (data['episodes'] as List? ?? const <Object?>[])
-        .whereType<Map>()
-        .map((value) => Map<String, Object?>.from(value))
+    final episodes = readObjectList(data['episodes'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
         .toList(growable: false);
     if (episodes.isEmpty) {
       throw const BiliApiException('番剧没有可缓存的剧集。');
@@ -186,9 +177,7 @@ extension BiliClientRegion on BiliClient {
         readString(first['show_title']) ??
         readString(first['title']) ??
         '第 1 话';
-    final stat = Map<String, Object?>.from(
-      data['stat'] as Map? ?? const <String, Object?>{},
-    );
+    final stat = readObjectMap(data['stat']);
 
     return BiliVideoDetail(
       aid: aid,
@@ -214,40 +203,47 @@ extension BiliClientRegion on BiliClient {
   }
 
   BiliRegionVideo? _parseRankingRegionVideo(Map<String, Object?> value) {
-    final bvid = value['bvid'] as String? ?? '';
-    final aid = (value['aid'] as num?)?.toInt() ?? 0;
+    final bvid = readString(value['bvid']) ?? '';
+    final aid = readInt(value['aid']) ?? 0;
     if (bvid.isEmpty && aid == 0) {
       return null;
     }
 
-    final statValue = value['stat'] as Map<String, Object?>?;
+    final statValue = readObjectMap(value['stat']);
+    final owner = readObjectMap(value['owner']);
+    final viewCount =
+        readDouble(statValue['view']) ?? readDouble(value['play']);
 
     return BiliRegionVideo(
       id: bvid.isNotEmpty ? bvid : aid.toString(),
-      title: value['title'] as String? ?? '',
-      coverUrl: value['pic'] as String? ?? '',
+      title: readString(value['title']) ?? '',
+      coverUrl: readString(value['pic']) ?? '',
       url:
-          value['short_link_v2'] as String? ??
-          value['short_link'] as String? ??
+          readString(value['short_link_v2']) ??
+          readString(value['short_link']) ??
           'https://www.bilibili.com/video/$bvid',
       aid: aid,
       bvid: bvid,
-      cid: (value['cid'] as num?)?.toInt(),
-      subtitle: value['owner'] is Map
-          ? (value['owner'] as Map)['name'] as String? ?? ''
-          : value['author'] as String? ?? '',
-      scoreLabel: (value['pts'] as num?)?.toInt().toString(),
-      indexLabel: value['duration'] is String
-          ? value['duration'] as String?
-          : value['duration'] is num
-          ? '${(value['duration'] as num) ~/ 60}:${((value['duration'] as num) % 60).toString().padLeft(2, '0')}'
-          : null,
-      followCountLabel: statValue?['view'] is num
-          ? biliFormatCount((statValue?['view'] as num).toDouble())
-          : value['play'] is num
-          ? biliFormatCount((value['play'] as num).toDouble())
-          : null,
-      description: value['desc'] as String? ?? value['description'] as String?,
+      cid: readInt(value['cid']),
+      subtitle: readString(owner['name']) ?? readString(value['author']) ?? '',
+      scoreLabel: readInt(value['pts'])?.toString(),
+      indexLabel: _readRegionDurationLabel(value['duration']),
+      followCountLabel: viewCount == null ? null : biliFormatCount(viewCount),
+      description:
+          readString(value['desc']) ?? readString(value['description']),
     );
+  }
+
+  String? _readRegionDurationLabel(Object? value) {
+    final raw = readString(value);
+    if (raw != null && raw.contains(':')) {
+      return raw;
+    }
+
+    final seconds = readInt(value);
+    if (seconds == null) {
+      return raw;
+    }
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 }

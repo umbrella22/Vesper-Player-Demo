@@ -7,15 +7,25 @@ import 'package:crypto/crypto.dart';
 import 'bili_api_core.dart';
 import 'bili_wbi.dart';
 
+const Duration _defaultBiliConnectionTimeout = Duration(seconds: 15);
+const Duration _defaultBiliRequestTimeout = Duration(seconds: 30);
+
 class BiliTransport {
-  BiliTransport({HttpClient? httpClient, BiliWbiSigner? signer})
-    : _httpClient = httpClient ?? HttpClient(),
-      _signer = signer ?? const BiliWbiSigner() {
+  BiliTransport({
+    HttpClient? httpClient,
+    BiliWbiSigner? signer,
+    Duration connectionTimeout = _defaultBiliConnectionTimeout,
+    Duration requestTimeout = _defaultBiliRequestTimeout,
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _signer = signer ?? const BiliWbiSigner(),
+       _requestTimeout = requestTimeout {
     _httpClient.userAgent = biliUserAgent;
+    _configureClientTimeouts(connectionTimeout, requestTimeout);
   }
 
   final HttpClient _httpClient;
   final BiliWbiSigner _signer;
+  final Duration _requestTimeout;
   final Map<String, String> _cookies = <String, String>{};
 
   String? _imgKey;
@@ -136,9 +146,7 @@ class BiliTransport {
       referer: referer,
       ensureReady: ensureReady,
     );
-    return responseData is Map
-        ? Map<String, Object?>.from(responseData)
-        : const <String, Object?>{};
+    return readObjectMap(responseData);
   }
 
   Future<Object?> postApiData({
@@ -170,9 +178,7 @@ class BiliTransport {
     Set<int> allowedCodes = const <int>{0},
   }) {
     final data = decodeApiData(body, allowedCodes: allowedCodes);
-    return data is Map
-        ? Map<String, Object?>.from(data)
-        : const <String, Object?>{};
+    return readObjectMap(data);
   }
 
   Object? decodeApiData(String body, {Set<int> allowedCodes = const <int>{0}}) {
@@ -182,16 +188,14 @@ class BiliTransport {
     }
 
     final map = Map<String, Object?>.from(decoded);
-    final code = (map['code'] as num?)?.toInt() ?? -1;
+    final code = readInt(map['code']) ?? -1;
     if (!allowedCodes.contains(code)) {
       final message =
           readString(map['message']) ??
           readString(map['msg']) ??
           'Unknown Bilibili error.';
       if (code == biliRiskControlCode) {
-        final data = Map<String, Object?>.from(
-          map['data'] as Map? ?? const <String, Object?>{},
-        );
+        final data = readObjectMap(map['data']);
         final needsCaptcha = readString(data['v_voucher']) != null;
         throw BiliApiException(
           needsCaptcha
@@ -215,6 +219,27 @@ class BiliTransport {
     String method = 'GET',
     String? requestBody,
     String acceptHeader = 'application/json, */*',
+  }) async {
+    return _sendRequest(
+      uri,
+      referer: referer,
+      method: method,
+      requestBody: requestBody,
+      acceptHeader: acceptHeader,
+    ).timeout(
+      _requestTimeout,
+      onTimeout: () => throw BiliApiException(
+        'Bilibili request timed out after ${_requestTimeout.inSeconds}s.',
+      ),
+    );
+  }
+
+  Future<BiliHttpResponse> _sendRequest(
+    Uri uri, {
+    required String referer,
+    required String method,
+    required String? requestBody,
+    required String acceptHeader,
   }) async {
     final request = method == 'POST'
         ? await _httpClient.postUrl(uri)
@@ -245,9 +270,7 @@ class BiliTransport {
     }
 
     final response = await request.close();
-    for (final cookie in response.cookies) {
-      _cookies[cookie.name] = cookie.value;
-    }
+    _storeResponseCookies(uri, response.cookies);
 
     final body = await utf8.decodeStream(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -258,6 +281,81 @@ class BiliTransport {
     }
 
     return BiliHttpResponse(statusCode: response.statusCode, body: body);
+  }
+
+  void _configureClientTimeouts(
+    Duration connectionTimeout,
+    Duration idleTimeout,
+  ) {
+    try {
+      _httpClient.connectionTimeout = connectionTimeout;
+      _httpClient.idleTimeout = idleTimeout;
+    } catch (_) {
+      // Test doubles may only implement the HttpClient members they exercise.
+    }
+  }
+
+  void _storeResponseCookies(Uri uri, List<Cookie> cookies) {
+    for (final cookie in cookies) {
+      if (!_shouldStoreCookie(uri, cookie)) {
+        continue;
+      }
+      if (_isExpiredCookie(cookie)) {
+        _cookies.remove(cookie.name);
+      } else {
+        _cookies[cookie.name] = cookie.value;
+      }
+    }
+  }
+
+  bool _shouldStoreCookie(Uri uri, Cookie cookie) {
+    if (cookie.name.isEmpty || !_isTrustedBiliCookieHost(uri.host)) {
+      return false;
+    }
+    if (cookie.secure && uri.scheme != 'https') {
+      return false;
+    }
+
+    final domain = cookie.domain;
+    if (domain != null &&
+        domain.isNotEmpty &&
+        !_cookieDomainMatches(uri.host, domain)) {
+      return false;
+    }
+
+    final path = cookie.path;
+    if (path != null &&
+        path.isNotEmpty &&
+        !_cookiePathMatches(uri.path, path)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isTrustedBiliCookieHost(String host) {
+    return host == 'bilibili.com' || host.endsWith('.bilibili.com');
+  }
+
+  bool _cookieDomainMatches(String host, String domain) {
+    final normalized = domain.startsWith('.') ? domain.substring(1) : domain;
+    return host == normalized || host.endsWith('.$normalized');
+  }
+
+  bool _cookiePathMatches(String requestPath, String cookiePath) {
+    if (requestPath == cookiePath) {
+      return true;
+    }
+    final normalized = cookiePath.endsWith('/') ? cookiePath : '$cookiePath/';
+    return requestPath.startsWith(normalized);
+  }
+
+  bool _isExpiredCookie(Cookie cookie) {
+    final maxAge = cookie.maxAge;
+    if (maxAge != null && maxAge <= 0) {
+      return true;
+    }
+    final expires = cookie.expires;
+    return expires != null && !expires.isAfter(DateTime.now().toUtc());
   }
 
   String requireCsrfToken() {
@@ -319,11 +417,9 @@ class BiliTransport {
       allowedCodes: const <int>{0, -101},
     );
 
-    final wbiImg = Map<String, Object?>.from(
-      data['wbi_img'] as Map? ?? const <String, Object?>{},
-    );
-    final imgUrl = wbiImg['img_url'] as String? ?? '';
-    final subUrl = wbiImg['sub_url'] as String? ?? '';
+    final wbiImg = readObjectMap(data['wbi_img']);
+    final imgUrl = readString(wbiImg['img_url']) ?? '';
+    final subUrl = readString(wbiImg['sub_url']) ?? '';
 
     _imgKey = extractKey(imgUrl);
     _subKey = extractKey(subUrl);
@@ -386,9 +482,7 @@ class BiliTransport {
         return false;
       }
       final map = Map<String, Object?>.from(decoded);
-      final data = Map<String, Object?>.from(
-        map['data'] as Map? ?? const <String, Object?>{},
-      );
+      final data = readObjectMap(map['data']);
       return readString(data['v_voucher']) != null;
     } catch (_) {
       return false;
