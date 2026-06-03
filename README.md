@@ -146,9 +146,9 @@ bash scripts/build_ios_no_codesign.sh
 开发过程中参考了以下开源项目和作者公开资料，用于理解公开视频 API 行为、
 登录流程、搜索流程、播放工作流和客户端交互设计：
 
-- Nemo2011 的公开视频 API 相关项目
-- nICEnnnnnnnLee 的视频下载工具项目
-- zhw2590582/ArtPlayer
-- yichengchen 的 tvOS 客户端 demo
+- [Nemo2011 的公开视频 API 相关项目](https://github.com/Nemo2011/bilibili-api)
+- [nICEnnnnnnnLee 的视频下载工具项目](https://github.com/nICEnnnnnnnLee/BilibiliDown)
+- [zhw2590582/ArtPlayer](https://github.com/zhw2590582/ArtPlayer)
+- [yichengchen 的 tvOS 客户端 demo](https://github.com/yichengchen/ATV-Bilibili-demo)
 
-本项目没有复制这些项目的源码；相关项目的许可证和版权归原作者所有。
+**本项目没有复制这些项目的源码；相关项目的许可证和版权归原作者所有。**
