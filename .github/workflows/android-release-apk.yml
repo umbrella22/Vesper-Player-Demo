@@ -124,6 +124,44 @@ jobs:
           cp "$apk_path" "artifacts/$apk_name"
           (cd artifacts && sha256sum "$apk_name" > "$apk_name.sha256")
 
+      - name: Generate release notes
+        run: |
+          mkdir -p release-assets
+          tag_name="$GITHUB_REF_NAME"
+          previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
+          apk_file="$(find artifacts -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          checksum_file="$apk_file.sha256"
+
+          if [[ -n "$previous_tag" ]]; then
+            change_range="$previous_tag..$GITHUB_SHA"
+            change_intro="Changes since \`$previous_tag\`:"
+          else
+            change_range="$GITHUB_SHA"
+            change_intro="No previous tag was found, so this lists the commits reachable from this tag:"
+          fi
+
+          changes="$(git log --pretty=format:'- %s (%h)' "$change_range")"
+          if [[ -z "$changes" ]]; then
+            changes="- No commit changes were found for this tag."
+          fi
+
+          {
+            echo "# $tag_name"
+            echo
+            echo "## Changes"
+            echo
+            echo "$change_intro"
+            echo
+            printf '%s\n' "$changes"
+            echo
+            echo "## Android APK"
+            echo
+            echo "- File: \`$(basename "$apk_file")\`"
+            if [[ -f "$checksum_file" ]]; then
+              echo "- SHA-256: \`$(cut -d ' ' -f 1 "$checksum_file")\`"
+            fi
+          } > release-assets/RELEASE_NOTES.md
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -135,6 +173,8 @@ jobs:
       - name: Attach APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-assets/RELEASE_NOTES.md
           files: artifacts/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
