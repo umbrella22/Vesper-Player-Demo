@@ -99,6 +99,13 @@ jobs:
             yasm
           cargo install cargo-ndk --locked
 
+      - name: Ensure native prebuilts directories
+        run: |
+          mkdir -p \
+            third_party/vesper-player-sdk/third_party/ffmpeg/android \
+            third_party/vesper-player-sdk/third_party/openssl/android \
+            third_party/vesper-player-sdk/third_party/libxml2/android
+
       - name: Prepare Flutter workspace
         run: |
           flutter --version
