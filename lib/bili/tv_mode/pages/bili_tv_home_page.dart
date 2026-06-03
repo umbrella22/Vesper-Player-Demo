@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
@@ -13,6 +13,7 @@ import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_text.dart';
+import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
@@ -23,33 +24,6 @@ import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/main.dart';
 
 enum _TvNavItem { recommend, regions, search, history, mine, settings }
-
-const _tvHomeLandscapeOrientations = <DeviceOrientation>[
-  DeviceOrientation.landscapeLeft,
-  DeviceOrientation.landscapeRight,
-];
-
-const _appDefaultOrientations = <DeviceOrientation>[];
-
-const _tvSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.light,
-  statusBarBrightness: Brightness.dark,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.light,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
-
-const _appSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.dark,
-  statusBarBrightness: Brightness.light,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.dark,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
 
 const _tvGridMaxCrossAxisExtent = 184.0;
 const _tvGridMainAxisSpacing = 14.0;
@@ -130,6 +104,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   bool _regionLoadingMore = false;
   bool _hasMoreRegion = true;
   String? _regionErrorMessage;
+  bool _restorePresentationOnDispose = true;
 
   @override
   void initState() {
@@ -156,24 +131,32 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     _searchController.dispose();
     _contentScrollController.dispose();
     _viewModel.dispose();
-    unawaited(_restoreAppPresentation());
+    if (_restorePresentationOnDispose) {
+      unawaited(_restoreAppPresentation());
+    }
     super.dispose();
   }
 
   Future<void> _enterTvHomePresentation() async {
     await _applySystemPresentation(
-      orientations: _tvHomeLandscapeOrientations,
+      orientations: biliLandscapeOrientations,
       systemUiMode: SystemUiMode.immersiveSticky,
-      overlayStyle: _tvSystemUiStyle,
+      overlayStyle: biliTvSystemUiStyle,
     );
   }
 
   Future<void> _restoreAppPresentation() async {
     await _applySystemPresentation(
-      orientations: _appDefaultOrientations,
+      orientations: biliAppDefaultOrientations,
       systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: _appSystemUiStyle,
+      overlayStyle: biliAppSystemUiStyle,
     );
+  }
+
+  Future<void> _applyPresentationFor(BiliUiMode mode) {
+    return mode == BiliUiMode.tv
+        ? _enterTvHomePresentation()
+        : _restoreAppPresentation();
   }
 
   Future<void> _applySystemPresentation({
@@ -182,26 +165,15 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     required SystemUiOverlayStyle overlayStyle,
   }) async {
     final generation = ++_presentationGeneration;
-    await _setPreferredOrientations(orientations);
+    await setBiliPreferredOrientations(orientations);
     if (generation != _presentationGeneration) {
       return;
     }
-    await SystemChrome.setEnabledSystemUIMode(systemUiMode);
+    await setBiliSystemUiMode(systemUiMode);
     if (generation != _presentationGeneration) {
       return;
     }
-    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
-  }
-
-  Future<void> _setPreferredOrientations(
-    List<DeviceOrientation> orientations,
-  ) async {
-    if (kIsWeb ||
-        (defaultTargetPlatform != TargetPlatform.android &&
-            defaultTargetPlatform != TargetPlatform.iOS)) {
-      return;
-    }
-    await SystemChrome.setPreferredOrientations(orientations);
+    setBiliSystemUiOverlayStyle(overlayStyle);
   }
 
   Future<void> _bootstrap() async {
@@ -1467,10 +1439,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 baseCornerRadius: 14,
                 showGlow: false,
                 onTap: () async {
-                  await refreshUiMode();
+                  final nextMode = await refreshUiMode();
+                  await _applyPresentationFor(nextMode);
                   if (!mounted) {
                     return;
                   }
+                  _restorePresentationOnDispose = false;
                   Navigator.of(context).pushAndRemoveUntil(
                     PageRouteBuilder<void>(
                       pageBuilder: (_, a, b) => const HomePage(),

@@ -8,6 +8,7 @@ import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
+import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_device_controls.dart';
@@ -25,37 +26,6 @@ part 'bili_playback_settings.dart';
 part 'bili_playback_dlna.dart';
 part 'bili_playback_tuning.dart';
 part 'bili_playback_widgets.dart';
-
-const _appSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.dark,
-  statusBarBrightness: Brightness.light,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.dark,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
-
-const _playbackSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.light,
-  statusBarBrightness: Brightness.dark,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.light,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
-
-const _playbackPortraitOrientations = <DeviceOrientation>[
-  DeviceOrientation.portraitUp,
-];
-
-const _playbackLandscapeOrientations = <DeviceOrientation>[
-  DeviceOrientation.landscapeLeft,
-  DeviceOrientation.landscapeRight,
-];
-
-const _appDefaultOrientations = <DeviceOrientation>[];
 
 enum BiliPlaybackPresentationMode { phone, tv }
 
@@ -275,32 +245,32 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   Future<void> _enterPlaybackPresentation() async {
     if (_isTvMode) {
       await _applySystemPresentation(
-        orientations: _playbackLandscapeOrientations,
+        orientations: biliLandscapeOrientations,
         systemUiMode: SystemUiMode.immersiveSticky,
-        overlayStyle: _playbackSystemUiStyle,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
       );
       return;
     }
     await _applySystemPresentation(
-      orientations: _playbackPortraitOrientations,
+      orientations: biliPortraitOrientations,
       systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: _playbackSystemUiStyle,
+      overlayStyle: biliDarkSurfaceSystemUiStyle,
     );
   }
 
   Future<void> _enterFullscreenPresentation() async {
     await _applySystemPresentation(
-      orientations: _playbackLandscapeOrientations,
+      orientations: biliLandscapeOrientations,
       systemUiMode: SystemUiMode.immersiveSticky,
-      overlayStyle: _playbackSystemUiStyle,
+      overlayStyle: biliDarkSurfaceSystemUiStyle,
     );
   }
 
   Future<void> _exitFullscreenPresentation() async {
     await _applySystemPresentation(
-      orientations: _playbackPortraitOrientations,
+      orientations: biliPortraitOrientations,
       systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: _playbackSystemUiStyle,
+      overlayStyle: biliDarkSurfaceSystemUiStyle,
     );
   }
 
@@ -318,16 +288,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   Future<void> _restoreAppPresentation() async {
     if (_isTvMode) {
       await _applySystemPresentation(
-        orientations: _playbackLandscapeOrientations,
+        orientations: biliLandscapeOrientations,
         systemUiMode: SystemUiMode.immersiveSticky,
-        overlayStyle: _playbackSystemUiStyle,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
       );
       return;
     }
     await _applySystemPresentation(
-      orientations: _appDefaultOrientations,
+      orientations: biliAppDefaultOrientations,
       systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: _appSystemUiStyle,
+      overlayStyle: biliAppSystemUiStyle,
     );
   }
 
@@ -337,26 +307,15 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     required SystemUiOverlayStyle overlayStyle,
   }) async {
     final generation = ++_presentationGeneration;
-    await _setPreferredOrientations(orientations);
+    await setBiliPreferredOrientations(orientations);
     if (generation != _presentationGeneration) {
       return;
     }
-    await SystemChrome.setEnabledSystemUIMode(systemUiMode);
+    await setBiliSystemUiMode(systemUiMode);
     if (generation != _presentationGeneration) {
       return;
     }
-    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
-  }
-
-  Future<void> _setPreferredOrientations(
-    List<DeviceOrientation> orientations,
-  ) async {
-    if (kIsWeb ||
-        (defaultTargetPlatform != TargetPlatform.android &&
-            defaultTargetPlatform != TargetPlatform.iOS)) {
-      return;
-    }
-    await SystemChrome.setPreferredOrientations(orientations);
+    setBiliSystemUiOverlayStyle(overlayStyle);
   }
 
   Future<void> _switchPage(BiliVideoPageEntry page) {
@@ -471,7 +430,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: _playbackSystemUiStyle,
+      value: biliDarkSurfaceSystemUiStyle,
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F4F8),
         body: ListenableBuilder(

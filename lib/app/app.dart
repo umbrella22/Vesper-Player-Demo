@@ -1,4 +1,5 @@
 import 'package:bilibili_player/app/home_page.dart';
+import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -18,15 +19,7 @@ class BilibiliPlayerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Bilibili Player',
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-          systemNavigationBarColor: Colors.transparent,
-          systemNavigationBarIconBrightness: Brightness.dark,
-          systemNavigationBarContrastEnforced: false,
-          systemStatusBarContrastEnforced: false,
-        ),
+        value: biliAppSystemUiStyle,
         child: child ?? const SizedBox.shrink(),
       ),
       theme: ThemeData(
@@ -39,11 +32,7 @@ class BilibiliPlayerApp extends StatelessWidget {
           backgroundColor: Colors.transparent,
           elevation: 0,
           surfaceTintColor: Colors.transparent,
-          systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            statusBarBrightness: Brightness.light,
-          ),
+          systemOverlayStyle: biliAppSystemUiStyle,
         ),
         cardTheme: const CardThemeData(
           elevation: 0,

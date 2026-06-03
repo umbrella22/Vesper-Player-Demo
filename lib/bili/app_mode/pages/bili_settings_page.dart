@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_logout_service.dart';
@@ -13,33 +13,6 @@ import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart'
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/app/home_page.dart';
 import 'package:bilibili_player/main.dart';
-
-const _settingsTvLandscapeOrientations = <DeviceOrientation>[
-  DeviceOrientation.landscapeLeft,
-  DeviceOrientation.landscapeRight,
-];
-
-const _settingsAppDefaultOrientations = <DeviceOrientation>[];
-
-const _settingsTvSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.light,
-  statusBarBrightness: Brightness.dark,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.light,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
-
-const _settingsAppSystemUiStyle = SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.dark,
-  statusBarBrightness: Brightness.light,
-  systemNavigationBarColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.dark,
-  systemNavigationBarContrastEnforced: false,
-  systemStatusBarContrastEnforced: false,
-);
 
 class BiliSettingsPage extends StatefulWidget {
   const BiliSettingsPage({
@@ -223,30 +196,17 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   Future<void> _applyPresentationFor(BiliUiMode mode) async {
     final orientations = mode == BiliUiMode.tv
-        ? _settingsTvLandscapeOrientations
-        : _settingsAppDefaultOrientations;
-    await _setPreferredOrientations(orientations);
-    await SystemChrome.setEnabledSystemUIMode(
+        ? biliLandscapeOrientations
+        : biliAppDefaultOrientations;
+    await setBiliPreferredOrientations(orientations);
+    await setBiliSystemUiMode(
       mode == BiliUiMode.tv
           ? SystemUiMode.immersiveSticky
           : SystemUiMode.edgeToEdge,
     );
-    SystemChrome.setSystemUIOverlayStyle(
-      mode == BiliUiMode.tv
-          ? _settingsTvSystemUiStyle
-          : _settingsAppSystemUiStyle,
+    setBiliSystemUiOverlayStyle(
+      mode == BiliUiMode.tv ? biliTvSystemUiStyle : biliAppSystemUiStyle,
     );
-  }
-
-  Future<void> _setPreferredOrientations(
-    List<DeviceOrientation> orientations,
-  ) async {
-    if (kIsWeb ||
-        (defaultTargetPlatform != TargetPlatform.android &&
-            defaultTargetPlatform != TargetPlatform.iOS)) {
-      return;
-    }
-    await SystemChrome.setPreferredOrientations(orientations);
   }
 
   @override
