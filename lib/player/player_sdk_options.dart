@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 const _mib = 1024 * 1024;
@@ -40,6 +41,51 @@ VesperBenchmarkConfiguration biliPlayerBenchmarkConfiguration() {
     enabled: true,
     maxBufferedEvents: 4096,
     includeRawEvents: true,
+  );
+}
+
+final class BiliPlayerPluginResolver {
+  const BiliPlayerPluginResolver({
+    MethodChannel channel = const MethodChannel(
+      'dev.ikaros.bilibili_player/player_plugins',
+    ),
+  }) : _channel = channel;
+
+  final MethodChannel _channel;
+
+  Future<List<String>> bundledSourceNormalizerPluginLibraryPaths() async {
+    try {
+      final result = await _channel.invokeListMethod<String>(
+        'bundledSourceNormalizerPluginLibraryPaths',
+      );
+      return (result ?? const <String>[])
+          .where((value) => value.trim().isNotEmpty)
+          .toList(growable: false);
+    } on MissingPluginException {
+      return const <String>[];
+    } on PlatformException {
+      return const <String>[];
+    }
+  }
+}
+
+Future<VesperSourceNormalizerConfiguration>
+biliPlayerSourceNormalizerConfiguration({
+  BiliPlayerPluginResolver pluginResolver = const BiliPlayerPluginResolver(),
+}) async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    return const VesperSourceNormalizerConfiguration();
+  }
+
+  final pluginLibraryPaths = await pluginResolver
+      .bundledSourceNormalizerPluginLibraryPaths();
+  if (pluginLibraryPaths.isEmpty) {
+    return const VesperSourceNormalizerConfiguration();
+  }
+
+  return VesperSourceNormalizerConfiguration(
+    mode: VesperSourceNormalizerMode.preferNormalized,
+    pluginLibraryPaths: pluginLibraryPaths,
   );
 }
 

@@ -163,12 +163,15 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       _resolvedPlayback = resolved;
       _notify();
 
+      final sourceNormalizerConfiguration =
+          await biliPlayerSourceNormalizerConfiguration();
       nextController = await VesperPlayerController.create(
         initialSource: resolved.toSource(),
         resiliencePolicy: biliPlayerResiliencePolicy,
         trackPreferencePolicy: biliPlayerTrackPreferencePolicy,
         preloadBudgetPolicy: biliPlayerPreloadBudgetPolicy,
         benchmarkConfiguration: biliPlayerBenchmarkConfiguration(),
+        sourceNormalizerConfiguration: sourceNormalizerConfiguration,
       );
       await nextController.initialize();
       await _configureSystemPlayback(nextController, resolved);

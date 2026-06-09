@@ -66,6 +66,17 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
+            "dev.ikaros.bilibili_player/player_plugins",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "bundledSourceNormalizerPluginLibraryPaths" ->
+                    result.success(bundledSourceNormalizerPluginLibraryPaths())
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
             "dev.ikaros.bilibili_player/storage_space",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -151,6 +162,14 @@ class MainActivity : FlutterFragmentActivity() {
     private fun bundledDownloadPluginLibraryPaths(): List<String> {
         val libraryNames = listOf("vesper_remux_ffmpeg", "player_remux_ffmpeg")
         return libraryNames
+            .asSequence()
+            .mapNotNull(::resolveNativeLibraryPath)
+            .take(1)
+            .toList()
+    }
+
+    private fun bundledSourceNormalizerPluginLibraryPaths(): List<String> {
+        return listOf("player_source_normalizer_ffmpeg")
             .asSequence()
             .mapNotNull(::resolveNativeLibraryPath)
             .take(1)

@@ -591,6 +591,9 @@ final class _FakePlaybackClient extends BiliClient {
 final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   final selectedSources = <VesperPlayerSource>[];
   final seekRatios = <double>[];
+  VesperSourceNormalizerConfiguration? lastSourceNormalizerConfiguration;
+  VesperFrameProcessorConfiguration? lastFrameProcessorConfiguration;
+  VesperNativeFramePipelineConfiguration? lastNativeFramePipelineConfiguration;
   int playCalls = 0;
   int pauseCalls = 0;
 
@@ -612,7 +615,12 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
         const VesperSourceNormalizerConfiguration(),
     VesperFrameProcessorConfiguration frameProcessorConfiguration =
         const VesperFrameProcessorConfiguration(),
+    VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
+        const VesperNativeFramePipelineConfiguration(),
   }) async {
+    lastSourceNormalizerConfiguration = sourceNormalizerConfiguration;
+    lastFrameProcessorConfiguration = frameProcessorConfiguration;
+    lastNativeFramePipelineConfiguration = nativeFramePipelineConfiguration;
     return const VesperPlatformCreateResult(
       playerId: 'playback-test-player',
       snapshot: _playbackSnapshot,
@@ -931,12 +939,32 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   BiliVideoPageEntry? initialPage,
   BiliPlaybackPresentationMode presentationMode =
       BiliPlaybackPresentationMode.phone,
+  List<String> sourceNormalizerPluginPaths = const <String>[],
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
   final platform = _FakePlaybackVesperPlatform();
   VesperPlayerPlatform.instance = platform;
   addTearDown(() {
     VesperPlayerPlatform.instance = previousPlatform;
+  });
+  const playerPluginsChannel = MethodChannel(
+    'dev.ikaros.bilibili_player/player_plugins',
+  );
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    playerPluginsChannel,
+    (call) async {
+      switch (call.method) {
+        case 'bundledSourceNormalizerPluginLibraryPaths':
+          return sourceNormalizerPluginPaths;
+      }
+      return null;
+    },
+  );
+  addTearDown(() {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      playerPluginsChannel,
+      null,
+    );
   });
 
   final playbackDetail = detail ?? _playbackDetail();
@@ -1591,6 +1619,37 @@ void main() {
       expect(find.text('Manifest'), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'android playback enables source normalizer without frame processor',
+    (WidgetTester tester) async {
+      const pluginPath =
+          '/data/app/lib/arm64/libplayer_source_normalizer_ffmpeg.so';
+
+      final harness = await _pumpPlaybackPage(
+        tester,
+        sourceNormalizerPluginPaths: const <String>[pluginPath],
+      );
+
+      expect(
+        harness.platform.lastSourceNormalizerConfiguration?.mode,
+        VesperSourceNormalizerMode.preferNormalized,
+      );
+      expect(
+        harness.platform.lastSourceNormalizerConfiguration?.pluginLibraryPaths,
+        <String>[pluginPath],
+      );
+      expect(
+        harness.platform.lastFrameProcessorConfiguration?.mode,
+        VesperFrameProcessorMode.disabled,
+      );
+      expect(
+        harness.platform.lastFrameProcessorConfiguration?.pluginLibraryPaths,
+        isEmpty,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
 
   testWidgets(
