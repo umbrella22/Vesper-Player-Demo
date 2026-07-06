@@ -1,3 +1,5 @@
+import java.io.File
+
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -29,10 +31,22 @@ val vesperSdkBuildRootDirFile =
         .map { path -> file(path) }
         .orElse(vesperSdkRootDir.asFile)
         .get()
-val playerFfmpegRuntimePrebuiltsDir = layout.buildDirectory.dir("generated/playerFfmpeg/runtime/prebuilts")
-val playerFfmpegRuntimePrebuiltsDirFile = playerFfmpegRuntimePrebuiltsDir.get().asFile
-val playerFfmpegRuntimeDepsDir = layout.buildDirectory.dir("generated/playerFfmpeg/runtime/deps")
-val playerFfmpegRuntimeDepsDirFile = playerFfmpegRuntimeDepsDir.get().asFile
+val playerFfmpegNativeWorkRootDirFile =
+    providers.gradleProperty("vesper.player.ffmpeg.nativeWorkDir")
+        .map { path -> file(path) }
+        .orElse(
+            providers.provider {
+                val projectHash = Integer.toHexString(
+                    rootProject.layout.projectDirectory.asFile.absolutePath.hashCode(),
+                )
+                File(System.getProperty("java.io.tmpdir"), "bilibili-player/playerFfmpeg/$projectHash")
+            },
+        )
+        .get()
+val playerFfmpegRuntimePrebuiltsDirFile =
+    playerFfmpegNativeWorkRootDirFile.resolve("runtime/prebuilts")
+val playerFfmpegRuntimeDepsDirFile =
+    playerFfmpegNativeWorkRootDirFile.resolve("runtime/deps")
 val playerFfmpegRuntimeOpenSslDirFile = playerFfmpegRuntimeDepsDirFile.resolve("openssl")
 val playerFfmpegRuntimeLibxml2DirFile = playerFfmpegRuntimeDepsDirFile.resolve("libxml2")
 val playerFfmpegRuntimeAssetsRootDir = layout.buildDirectory.dir("generated/playerFfmpeg/runtime/assets")
