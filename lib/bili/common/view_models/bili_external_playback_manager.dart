@@ -345,6 +345,8 @@ class BiliExternalPlaybackManager {
           event.message ?? 'DLNA 播放出错。',
           routeId: event.routeId,
         );
+      case VesperExternalPlaybackSessionEventKind.unknown:
+        _notify();
     }
   }
 

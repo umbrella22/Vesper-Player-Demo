@@ -1794,8 +1794,13 @@ void main() {
           switch (call.method) {
             case 'create':
               return 1;
-            case 'dispose':
             case 'resize':
+              final arguments = call.arguments as Map<Object?, Object?>;
+              return <String, Object?>{
+                'width': arguments['width'],
+                'height': arguments['height'],
+              };
+            case 'dispose':
             case 'offset':
             case 'touch':
             case 'setDirection':

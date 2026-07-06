@@ -57,6 +57,8 @@ Future<void> setBiliSystemUiMode(SystemUiMode systemUiMode) async {
       SystemUiMode.manual,
       overlays: biliVisibleSystemOverlays,
     );
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await SystemChrome.restoreSystemUIOverlays();
     return;
   }
 
