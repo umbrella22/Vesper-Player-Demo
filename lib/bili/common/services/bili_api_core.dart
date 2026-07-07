@@ -218,8 +218,8 @@ List<String> readDashMediaUrlCandidates(Map<String, Object?> value) {
 
 List<String> sortBiliMediaUrlCandidates(List<String> urls) {
   final seen = <String>{};
-  final direct = <String>[];
   final pcdn = <String>[];
+  final entries = <({int index, String url})>[];
 
   for (final url in urls) {
     if (url.isEmpty || !seen.add(url)) {
@@ -227,13 +227,22 @@ List<String> sortBiliMediaUrlCandidates(List<String> urls) {
     }
     if (isPcdnMediaUrl(url)) {
       pcdn.add(url);
-    } else {
-      direct.add(url);
     }
+    entries.add((index: entries.length, url: url));
   }
 
-  final sorted = <String>[...direct, ...pcdn];
-  if (direct.isEmpty && pcdn.isNotEmpty) {
+  entries.sort((left, right) {
+    final tierCompare = biliMediaUrlTier(
+      left.url,
+    ).compareTo(biliMediaUrlTier(right.url));
+    if (tierCompare != 0) {
+      return tierCompare;
+    }
+    return left.index.compareTo(right.index);
+  });
+
+  final sorted = entries.map((entry) => entry.url).toList(growable: true);
+  if (pcdn.length == entries.length && pcdn.isNotEmpty) {
     final rewritten = replaceMediaHost(pcdn.first, biliBackupMediaHost);
     if (rewritten != null && seen.add(rewritten)) {
       sorted.insert(0, rewritten);
@@ -252,7 +261,33 @@ String? selectPreferredDashMediaUrl(List<String> urls) {
 
 bool isPcdnMediaUrl(String url) {
   final uri = Uri.tryParse(url);
-  return uri != null && uri.hasPort;
+  if (uri == null) {
+    return false;
+  }
+  if (uri.hasPort) {
+    return true;
+  }
+  final host = uri.host.toLowerCase();
+  return host.endsWith('szbdyd.com') || host.endsWith('mcdn.bilivideo.cn');
+}
+
+int biliMediaUrlTier(String url) {
+  if (isPcdnMediaUrl(url)) {
+    return 100;
+  }
+
+  final uri = Uri.tryParse(url);
+  final host = uri?.host.toLowerCase() ?? '';
+  if (host.startsWith('upos-') && host.endsWith('.bilivideo.com')) {
+    return host.contains('akam') ? 30 : 0;
+  }
+  if (host.endsWith('.bilivideo.com')) {
+    return 10;
+  }
+  if (host.endsWith('.akamaized.net')) {
+    return 40;
+  }
+  return 20;
 }
 
 String? replaceMediaHost(String url, String host) {

@@ -124,6 +124,74 @@ final class BiliFavoriteFolder {
   final bool containsCurrentVideo;
 }
 
+final class BiliCommentPicture {
+  const BiliCommentPicture({required this.url, this.width, this.height});
+
+  final String url;
+  final int? width;
+  final int? height;
+}
+
+final class BiliCommentTimeLink {
+  const BiliCommentTimeLink({
+    required this.label,
+    required this.seconds,
+    this.start,
+    this.end,
+  });
+
+  final String label;
+  final int seconds;
+  final int? start;
+  final int? end;
+}
+
+final class BiliVideoComment {
+  const BiliVideoComment({
+    required this.id,
+    required this.authorName,
+    required this.authorAvatarUrl,
+    required this.createdAtLabel,
+    required this.message,
+    required this.likeCountLabel,
+    required this.pictures,
+    required this.replies,
+    required this.timeLinks,
+    this.authorLevelLabel,
+    this.replyCount = 0,
+    this.liked = false,
+  });
+
+  final int id;
+  final String authorName;
+  final String authorAvatarUrl;
+  final String? authorLevelLabel;
+  final String createdAtLabel;
+  final String message;
+  final String likeCountLabel;
+  final int replyCount;
+  final bool liked;
+  final List<BiliCommentPicture> pictures;
+  final List<BiliVideoComment> replies;
+  final List<BiliCommentTimeLink> timeLinks;
+}
+
+final class BiliVideoCommentPage {
+  const BiliVideoCommentPage({
+    required this.comments,
+    required this.page,
+    required this.pageSize,
+    required this.hasMore,
+    this.totalCount,
+  });
+
+  final List<BiliVideoComment> comments;
+  final int page;
+  final int pageSize;
+  final int? totalCount;
+  final bool hasMore;
+}
+
 final class BiliVideoEngagement {
   const BiliVideoEngagement({
     required this.isAuthenticated,

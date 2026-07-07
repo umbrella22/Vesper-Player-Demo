@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,8 @@ enum BiliPlaybackPresentationMode { phone, tv }
 
 enum TvPlaybackPanelType { none, quality, speed, pages }
 
+enum _PlaybackInfoTab { intro, comments }
+
 class BiliPlaybackPage extends StatefulWidget {
   const BiliPlaybackPage({
     super.key,
@@ -55,11 +58,26 @@ class BiliPlaybackPage extends StatefulWidget {
   State<BiliPlaybackPage> createState() => _BiliPlaybackPageState();
 }
 
-class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
+class _BiliPlaybackPageState extends State<BiliPlaybackPage>
+    with SingleTickerProviderStateMixin {
   late final BiliPlaybackViewModel _viewModel;
+  late final TabController _infoTabController;
   bool _settingsSurfaceOpen = false;
   bool _castingSurfaceOpen = false;
   bool _dlnaPickerOpen = false;
+  bool _introExpanded = false;
+  _PlaybackInfoTab _selectedInfoTab = _PlaybackInfoTab.intro;
+  final ScrollController _commentsScrollController = ScrollController();
+  final ScrollController _relatedScrollController = ScrollController();
+  final TextEditingController _commentComposerController =
+      TextEditingController();
+  final FocusNode _commentComposerFocusNode = FocusNode(
+    debugLabel: 'comment_composer',
+  );
+  double _mobileStageCollapseOffset = 0;
+  double? _scheduledMobileStageCollapseOffset;
+  bool _mobileStageCollapseFrameScheduled = false;
+  String? _openingRelatedBvid;
   int _presentationGeneration = 0;
   final _BiliStageDeviceControls _stageDeviceControls =
       const _BiliStageDeviceControls();
@@ -79,6 +97,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   @override
   void initState() {
     super.initState();
+    _infoTabController = TabController(length: 2, vsync: this)
+      ..addListener(_handleInfoTabChanged);
+    _commentsScrollController.addListener(_handleCommentsScrollPosition);
     _viewModel = BiliPlaybackViewModel(
       detail: widget.detail,
       initialPage: widget.initialPage,
@@ -102,6 +123,13 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleTvHardwareKeyEvent);
+    _infoTabController.removeListener(_handleInfoTabChanged);
+    _infoTabController.dispose();
+    _commentsScrollController.removeListener(_handleCommentsScrollPosition);
+    _commentsScrollController.dispose();
+    _relatedScrollController.dispose();
+    _commentComposerController.dispose();
+    _commentComposerFocusNode.dispose();
     _tvPlaybackFocusNode.dispose();
     for (final node in _tvPanelButtonFocusNodes.values) {
       node.dispose();
@@ -151,7 +179,29 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
 
   bool get _engagementLoading => _viewModel.engagementLoading;
 
+  List<BiliVideoComment> get _comments => _viewModel.comments;
+
+  bool get _commentsLoading => _viewModel.commentsLoading;
+
+  bool get _commentsLoadingMore => _viewModel.commentsLoadingMore;
+
+  bool get _commentsHasMore => _viewModel.commentsHasMore;
+
+  bool get _commentSubmitting => _viewModel.commentSubmitting;
+
+  String? get _commentsError => _viewModel.commentsError;
+
+  List<BiliFeedVideo> get _relatedVideos => _viewModel.relatedVideos;
+
+  bool get _relatedVideosLoading => _viewModel.relatedVideosLoading;
+
+  String? get _relatedVideosError => _viewModel.relatedVideosError;
+
+  String get _coinCountLabel => _viewModel.coinCountLabel;
+
   String get _shareCountLabel => _viewModel.shareCountLabel;
+
+  int get _sentCoinCount => _viewModel.sentCoinCount;
 
   BiliEngagementAction? get _pendingEngagementAction =>
       _viewModel.pendingEngagementAction;
@@ -169,8 +219,6 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       _viewModel.offlineController;
 
   String get _ownerSubtitle => _viewModel.ownerSubtitle;
-
-  String get _videoMetaLine => _viewModel.videoMetaLine;
 
   void _setCastingSurfaceOpen(bool value) {
     if (_castingSurfaceOpen == value) {
@@ -198,6 +246,120 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     });
   }
 
+  void _toggleIntroExpanded() {
+    setState(() {
+      _introExpanded = !_introExpanded;
+    });
+  }
+
+  void _handleInfoTabChanged() {
+    _syncSelectedInfoTab(_tabForInfoIndex(_infoTabController.index));
+  }
+
+  void _syncSelectedInfoTab(_PlaybackInfoTab tab) {
+    if (_selectedInfoTab == tab) {
+      return;
+    }
+    final scrollController = _scrollControllerForInfoTab(tab);
+    setState(() {
+      _selectedInfoTab = tab;
+      _mobileStageCollapseOffset = scrollController.hasClients
+          ? scrollController.offset
+          : 0;
+    });
+  }
+
+  _PlaybackInfoTab _tabForInfoIndex(int index) {
+    return index == 1 ? _PlaybackInfoTab.comments : _PlaybackInfoTab.intro;
+  }
+
+  bool _handleMobileContentScroll(ScrollNotification notification) {
+    if (_isTvMode ||
+        notification.depth != 0 ||
+        notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    final nextOffset = notification.metrics.pixels.clamp(0.0, 1000.0);
+    if ((nextOffset - _mobileStageCollapseOffset).abs() < 1) {
+      return false;
+    }
+    _scheduledMobileStageCollapseOffset = nextOffset;
+    if (_mobileStageCollapseFrameScheduled) {
+      return false;
+    }
+    _mobileStageCollapseFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mobileStageCollapseFrameScheduled = false;
+      final scheduledOffset = _scheduledMobileStageCollapseOffset;
+      _scheduledMobileStageCollapseOffset = null;
+      if (!mounted ||
+          scheduledOffset == null ||
+          (scheduledOffset - _mobileStageCollapseOffset).abs() < 1) {
+        return;
+      }
+      setState(() {
+        _mobileStageCollapseOffset = scheduledOffset;
+      });
+    });
+    return false;
+  }
+
+  ScrollController _scrollControllerForInfoTab(_PlaybackInfoTab tab) {
+    return tab == _PlaybackInfoTab.comments
+        ? _commentsScrollController
+        : _relatedScrollController;
+  }
+
+  ScrollController get _activeInfoScrollController =>
+      _scrollControllerForInfoTab(_selectedInfoTab);
+
+  void _handleCommentsScrollPosition() {
+    if (_selectedInfoTab != _PlaybackInfoTab.comments ||
+        !_commentsScrollController.hasClients) {
+      return;
+    }
+    final position = _commentsScrollController.position;
+    if (position.maxScrollExtent - position.pixels <= 360) {
+      unawaited(_loadMoreComments());
+    }
+  }
+
+  void _handleMobileStagePointerMove(PointerMoveEvent event) {
+    if (_isTvMode || _viewModel.isFullscreen) {
+      return;
+    }
+    final delta = event.delta;
+    if (delta.dy.abs() < 1 || delta.dy.abs() < delta.dx.abs()) {
+      return;
+    }
+    _updateMobileStageCollapseOffset(_mobileStageCollapseOffset - delta.dy);
+  }
+
+  void _updateMobileStageCollapseOffset(double rawOffset) {
+    final nextOffset = rawOffset.clamp(0.0, 1000.0).toDouble();
+    if ((nextOffset - _mobileStageCollapseOffset).abs() < 1) {
+      return;
+    }
+    final scrollController = _activeInfoScrollController;
+    if (scrollController.hasClients) {
+      final position = scrollController.position;
+      final nextScrollOffset = nextOffset.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((nextScrollOffset - position.pixels).abs() >= 1) {
+        scrollController.jumpTo(nextScrollOffset);
+      }
+    }
+    if (!mounted) {
+      _mobileStageCollapseOffset = nextOffset;
+      return;
+    }
+    setState(() {
+      _mobileStageCollapseOffset = nextOffset;
+    });
+  }
+
   void _handleViewModelMessage() {
     final message = _viewModel.consumePendingMessage();
     if (message != null && mounted) {
@@ -216,8 +378,24 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     return _viewModel.reloadCurrentPage();
   }
 
+  Future<void> _reloadRelatedVideos() {
+    return _viewModel.loadRelatedVideos();
+  }
+
+  Future<void> _reloadComments() {
+    return _viewModel.loadComments();
+  }
+
+  Future<void> _loadMoreComments() {
+    return _viewModel.loadMoreComments();
+  }
+
   Future<void> _toggleLike() {
     return _showViewModelMessage(_viewModel.toggleLike());
+  }
+
+  Future<void> _addCoin() {
+    return _showViewModelMessage(_viewModel.addCoin());
   }
 
   Future<void> _toggleFavorite() {
@@ -230,6 +408,150 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
 
   Future<void> _shareVideo() {
     return _showViewModelMessage(_viewModel.shareVideo());
+  }
+
+  Future<void> _submitComment(String rawMessage) async {
+    final message = rawMessage.trim();
+    if (message.isEmpty) {
+      _showMessage('评论内容不能为空');
+      return;
+    }
+    final result = await _viewModel.submitComment(message);
+    if (!mounted || result == null) {
+      return;
+    }
+    if (result == '已发送评论') {
+      _commentComposerController.clear();
+      _commentComposerFocusNode.unfocus();
+      if (_commentsScrollController.hasClients) {
+        unawaited(
+          _commentsScrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+          ),
+        );
+      }
+    }
+    _showMessage(result);
+  }
+
+  Future<void> _seekToCommentTime(int seconds) async {
+    final controller = _viewModel.controller;
+    if (controller == null) {
+      _showMessage('播放器尚未准备好。');
+      return;
+    }
+    final durationMs =
+        controller.snapshot.timeline.durationMs ??
+        (_selectedPage.durationSeconds > 0
+            ? _selectedPage.durationSeconds * 1000
+            : 0);
+    if (durationMs <= 0) {
+      _showMessage('当前视频暂不支持按评论时间跳转。');
+      return;
+    }
+    final ratio = (seconds * 1000 / durationMs).clamp(0.0, 1.0).toDouble();
+    await controller.seekToRatio(ratio);
+    if (mounted) {
+      _showMessage('已跳转到 ${biliFormatDurationSeconds(seconds)}');
+    }
+  }
+
+  Future<void> _openRelatedVideo(BiliFeedVideo video) async {
+    if (_openingRelatedBvid != null) {
+      return;
+    }
+    setState(() {
+      _openingRelatedBvid = video.bvid;
+    });
+    try {
+      final detail = await widget.client.fetchVideoDetail(video.bvid);
+      if (!mounted) {
+        return;
+      }
+      final nextPage = detail.pages.isEmpty ? null : detail.pages.first;
+      if (nextPage == null) {
+        _showMessage('这个视频没有可播放分 P。');
+        return;
+      }
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => BiliPlaybackPage(
+            detail: detail,
+            initialPage: nextPage,
+            client: widget.client,
+            historyStore: widget.historyStore,
+            offlineController: widget.offlineController,
+            presentationMode: widget.presentationMode,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        _showMessage('打开相关视频失败：$error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _openingRelatedBvid = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _showPageSelectionSheet() async {
+    final pages = widget.detail.pages;
+    if (pages.length <= 1 || !mounted) {
+      return;
+    }
+    final isPgc =
+        widget.detail.ownerMid <= 0 && widget.detail.ownerName == '番剧';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _PlaybackBottomSheetScaffold(
+          title: isPgc
+              ? '剧集 · 共 ${pages.length} 话/集'
+              : '合集 · 共 ${pages.length} 个分 P',
+          child: _EpisodePreviewList(
+            pages: pages,
+            selectedPage: _selectedPage,
+            coverUrl: widget.detail.coverUrl,
+            onTap: (page) async {
+              Navigator.of(context).pop();
+              await _switchPage(page);
+            },
+            isPgc: isPgc,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showCommentReplies(BiliVideoComment comment) async {
+    if (!mounted) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _PlaybackBottomSheetScaffold(
+          title: '评论详情',
+          child: _CommentReplyDetail(
+            comment: comment,
+            onSeekToTime: (seconds) {
+              Navigator.of(context).pop();
+              unawaited(_seekToCommentTime(seconds));
+            },
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _toggleFullscreen() async {
@@ -536,21 +858,125 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
           canPop: true,
           child: ColoredBox(
             color: const Color(0xFFF4F4F8),
-            child: Column(
-              children: [
-                _buildStageFrame(
-                  stage,
-                  padding: stageCornerPadding.add(
-                    const EdgeInsets.fromLTRB(10, 6, 10, 12),
-                  ),
-                  safeBottom: false,
-                ),
-                Expanded(child: bottomSurface),
-              ],
+            child: Builder(
+              builder: (context) {
+                final stagePadding = stageCornerPadding.add(
+                  const EdgeInsets.fromLTRB(10, 6, 10, 12),
+                );
+                final expandedStageHeight = _mobileStageExpandedHeight(
+                  context,
+                  constraints,
+                  stagePadding,
+                );
+                final collapsedStageHeight =
+                    MediaQuery.paddingOf(context).top + 64;
+                final collapseDistance =
+                    expandedStageHeight - collapsedStageHeight;
+                final collapseProgress = collapseDistance <= 0
+                    ? 0.0
+                    : (_mobileStageCollapseOffset / collapseDistance)
+                          .clamp(0.0, 1.0)
+                          .toDouble();
+                final stageHeight = ui.lerpDouble(
+                  expandedStageHeight,
+                  collapsedStageHeight,
+                  collapseProgress,
+                )!;
+                return Column(
+                  children: [
+                    SizedBox(
+                      height: stageHeight,
+                      child: _buildCollapsibleStageFrame(
+                        stage,
+                        controller: controller,
+                        snapshot: snapshot,
+                        padding: stagePadding,
+                        progress: collapseProgress,
+                      ),
+                    ),
+                    Expanded(child: bottomSurface),
+                  ],
+                );
+              },
             ),
           ),
         );
       },
+    );
+  }
+
+  double _mobileStageExpandedHeight(
+    BuildContext context,
+    BoxConstraints constraints,
+    EdgeInsetsGeometry padding,
+  ) {
+    final resolvedPadding = padding.resolve(Directionality.of(context));
+    final availableWidth =
+        constraints.maxWidth - resolvedPadding.left - resolvedPadding.right;
+    final videoHeight =
+        availableWidth.clamp(0.0, constraints.maxWidth) * 9 / 16;
+    return MediaQuery.paddingOf(context).top +
+        resolvedPadding.top +
+        videoHeight +
+        resolvedPadding.bottom;
+  }
+
+  Widget _buildCollapsibleStageFrame(
+    Widget stage, {
+    required VesperPlayerController controller,
+    required VesperPlayerSnapshot snapshot,
+    required EdgeInsetsGeometry padding,
+    required double progress,
+  }) {
+    final stageOpacity = (1 - progress * 1.35).clamp(0.0, 1.0).toDouble();
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerMove: _handleMobileStagePointerMove,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (progress < 0.55)
+            IgnorePointer(
+              ignoring: progress > 0.42,
+              child: Opacity(
+                opacity: stageOpacity,
+                child: _buildStageFrame(
+                  stage,
+                  padding: padding,
+                  safeBottom: false,
+                ),
+              ),
+            ),
+          IgnorePointer(
+            ignoring: progress < 0.08,
+            child: Opacity(
+              opacity: progress,
+              child: _CollapsedPlaybackBar(
+                title: _playbackStateLabel(snapshot),
+                isPlaying:
+                    snapshot.playbackState == VesperPlaybackState.playing,
+                onBack: () => Navigator.of(context).maybePop(),
+                onHome: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
+                onPlayPause: () {
+                  if (snapshot.playbackState == VesperPlaybackState.playing) {
+                    unawaited(controller.pause());
+                  } else {
+                    unawaited(controller.play());
+                  }
+                },
+                onMore: () => unawaited(
+                  _openStageSheet(
+                    controller,
+                    vesper_ui.VesperPlayerStageSheet.menu,
+                    true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1250,15 +1676,15 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
         final horizontalPadding = constraints.maxWidth >= 540 ? 34.0 : 16.0;
         return DecoratedBox(
           decoration: const BoxDecoration(
-            color: Color(0xFFF4F4F8),
+            color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
-              18,
+              0,
               horizontalPadding,
-              28,
+              0,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1272,17 +1698,15 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
+                _PlaybackContextTabs(
+                  controller: _infoTabController,
+                  replyCountLabel: widget.detail.replyCountLabel,
+                  danmakuCountLabel: widget.detail.danmakuCountLabel,
+                ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    key: const PageStorageKey<String>('playback-intro'),
-                    physics: const BouncingScrollPhysics(),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: _buildIntroPanel(context, snapshot),
-                      ),
-                    ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _buildIntroPanel(context, snapshot),
                   ),
                 ),
               ],

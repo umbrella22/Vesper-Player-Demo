@@ -13,7 +13,7 @@ import '../services/bili_history_store.dart';
 import '../services/bili_text.dart';
 import 'bili_external_playback_manager.dart';
 
-enum BiliEngagementAction { like, favorite, share, follow }
+enum BiliEngagementAction { like, coin, favorite, share, follow }
 
 enum BiliCodecStrategy {
   defaultStrategy('默认'),
@@ -37,6 +37,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }) : offlineController =
            offlineController ?? BiliOfflineDownloadController.instance,
        _selectedPage = initialPage,
+       _coinCountLabel = detail.coinCountLabel,
        _shareCountLabel = detail.shareCountLabel,
        _initialResolvedPlayback = initialResolvedPlayback {
     _dlnaManager = BiliExternalPlaybackManager(detail: detail)
@@ -48,6 +49,8 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     }
     _controllerFuture = _createController();
     unawaited(loadEngagementState());
+    unawaited(loadComments());
+    unawaited(loadRelatedVideos());
   }
 
   final BiliVideoDetail detail;
@@ -57,15 +60,28 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   final BiliResolvedPlayback? _initialResolvedPlayback;
   final VesperExternalPlaybackController _externalPlaybackForCast =
       VesperExternalPlaybackController();
+  static const int _commentsPageSize = 20;
 
   late Future<VesperPlayerController> _controllerFuture;
   VesperPlayerController? _controller;
   BiliVideoPageEntry _selectedPage;
+  String _coinCountLabel;
   String _shareCountLabel;
   BiliResolvedPlayback? _resolvedPlayback;
   BiliVideoEngagement? _engagement;
+  List<BiliVideoComment> _comments = const <BiliVideoComment>[];
+  List<BiliFeedVideo> _relatedVideos = const <BiliFeedVideo>[];
   bool _engagementLoading = false;
+  bool _commentsLoading = false;
+  bool _commentsLoadingMore = false;
+  bool _commentsHasMore = false;
+  bool _commentSubmitting = false;
+  bool _relatedVideosLoading = false;
   BiliEngagementAction? _pendingEngagementAction;
+  String? _commentsError;
+  String? _relatedVideosError;
+  int _sentCoinCount = 0;
+  int _commentsPage = 0;
   int? _selectedBiliQualityId;
   BiliCodecStrategy _selectedCodecStrategy = BiliCodecStrategy.defaultStrategy;
   VesperSystemPlaybackPermissionStatus _systemPlaybackPermissionStatus =
@@ -85,15 +101,37 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
 
   BiliVideoPageEntry get selectedPage => _selectedPage;
 
+  String get coinCountLabel => _coinCountLabel;
+
   String get shareCountLabel => _shareCountLabel;
 
   BiliResolvedPlayback? get resolvedPlayback => _resolvedPlayback;
 
   BiliVideoEngagement? get engagement => _engagement;
 
+  List<BiliVideoComment> get comments => _comments;
+
+  List<BiliFeedVideo> get relatedVideos => _relatedVideos;
+
   bool get engagementLoading => _engagementLoading;
 
+  bool get commentsLoading => _commentsLoading;
+
+  bool get commentsLoadingMore => _commentsLoadingMore;
+
+  bool get commentsHasMore => _commentsHasMore;
+
+  bool get commentSubmitting => _commentSubmitting;
+
+  bool get relatedVideosLoading => _relatedVideosLoading;
+
   BiliEngagementAction? get pendingEngagementAction => _pendingEngagementAction;
+
+  String? get commentsError => _commentsError;
+
+  String? get relatedVideosError => _relatedVideosError;
+
+  int get sentCoinCount => _sentCoinCount;
 
   int? get selectedBiliQualityId => _selectedBiliQualityId;
 
@@ -217,12 +255,143 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     _notify();
     try {
       _engagement = await client.fetchVideoEngagement(detail);
+      if (_engagement?.isAuthenticated ?? false) {
+        _sentCoinCount = await client.fetchVideoCoinCount(detail);
+      }
     } catch (_) {
       // Engagement is optional for guests and can fail independently of playback.
     } finally {
       _engagementLoading = false;
       _notify();
     }
+  }
+
+  Future<void> loadComments() async {
+    if (_commentsLoading || _commentsLoadingMore) {
+      return;
+    }
+    _commentsLoading = true;
+    _commentsError = null;
+    _commentsPage = 0;
+    _commentsHasMore = false;
+    _notify();
+    try {
+      final page = await client.fetchVideoCommentPage(
+        detail,
+        page: 1,
+        pageSize: _commentsPageSize,
+      );
+      _comments = page.comments;
+      _commentsPage = page.page;
+      _commentsHasMore = page.hasMore;
+    } catch (error) {
+      _commentsError = '评论加载失败：$error';
+    } finally {
+      _commentsLoading = false;
+      _notify();
+    }
+  }
+
+  Future<void> loadMoreComments() async {
+    if (_commentsLoading || _commentsLoadingMore || !_commentsHasMore) {
+      return;
+    }
+    _commentsLoadingMore = true;
+    _commentsError = null;
+    _notify();
+    try {
+      final nextPage = _commentsPage <= 0 ? 1 : _commentsPage + 1;
+      final page = await client.fetchVideoCommentPage(
+        detail,
+        page: nextPage,
+        pageSize: _commentsPageSize,
+      );
+      final seenIds = _comments.map((comment) => comment.id).toSet();
+      final additions = page.comments
+          .where((comment) => seenIds.add(comment.id))
+          .toList(growable: false);
+      if (additions.isEmpty) {
+        _commentsHasMore = false;
+      } else {
+        _comments = <BiliVideoComment>[..._comments, ...additions];
+        _commentsPage = page.page;
+        _commentsHasMore = page.hasMore;
+      }
+    } catch (error) {
+      _commentsError = '加载更多评论失败：$error';
+    } finally {
+      _commentsLoadingMore = false;
+      _notify();
+    }
+  }
+
+  Future<String?> submitComment(String message) async {
+    final normalizedMessage = message.trim();
+    if (normalizedMessage.isEmpty) {
+      return '评论内容不能为空';
+    }
+    if (_commentSubmitting) {
+      return null;
+    }
+
+    _commentSubmitting = true;
+    _notify();
+    try {
+      final comment = await client.addVideoComment(
+        detail: detail,
+        message: normalizedMessage,
+      );
+      if (comment == null) {
+        await loadComments();
+      } else {
+        _comments = <BiliVideoComment>[comment, ..._comments];
+      }
+      return '已发送评论';
+    } catch (error) {
+      return '评论发送失败：$error';
+    } finally {
+      _commentSubmitting = false;
+      _notify();
+    }
+  }
+
+  Future<void> loadRelatedVideos() async {
+    if (_relatedVideosLoading) {
+      return;
+    }
+    _relatedVideosLoading = true;
+    _relatedVideosError = null;
+    _notify();
+    try {
+      var videos = await client.fetchRelatedVideos(detail);
+      if (videos.isEmpty) {
+        videos = await _fetchFallbackRecommendedVideos();
+      }
+      _relatedVideos = videos
+          .where((item) => item.bvid != detail.bvid)
+          .take(12)
+          .toList(growable: false);
+    } catch (error) {
+      try {
+        _relatedVideos = await _fetchFallbackRecommendedVideos();
+        if (_relatedVideos.isEmpty) {
+          _relatedVideosError = '相关视频加载失败：$error';
+        }
+      } catch (_) {
+        _relatedVideosError = '相关视频加载失败：$error';
+      }
+    } finally {
+      _relatedVideosLoading = false;
+      _notify();
+    }
+  }
+
+  Future<List<BiliFeedVideo>> _fetchFallbackRecommendedVideos() async {
+    final videos = await client.fetchRecommendedFeed();
+    return videos
+        .where((item) => item.bvid != detail.bvid)
+        .take(12)
+        .toList(growable: false);
   }
 
   Future<String?> toggleLike() {
@@ -235,6 +404,19 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         current: current,
       );
       return _engagement!.isLiked ? '已点赞' : '已取消点赞';
+    });
+  }
+
+  Future<String?> addCoin() {
+    return _runEngagementAction(BiliEngagementAction.coin, () async {
+      final current = _engagement ?? await client.fetchVideoEngagement(detail);
+      final coinCount = await client.addVideoCoin(detail: detail);
+      _sentCoinCount = coinCount;
+      _engagement = current.copyWith(isAuthenticated: true, isLiked: true);
+      if (_coinCountLabel == '--') {
+        _coinCountLabel = detail.coinCountLabel;
+      }
+      return coinCount > 1 ? '已投 $coinCount 个币' : '已投币';
     });
   }
 

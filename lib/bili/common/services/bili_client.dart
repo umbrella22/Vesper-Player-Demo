@@ -304,6 +304,120 @@ class BiliClient {
         .toList(growable: false);
   }
 
+  Future<List<BiliFeedVideo>> fetchRelatedVideos(
+    BiliVideoDetail detail, {
+    int limit = 12,
+  }) async {
+    if (detail.aid <= 0) {
+      return const <BiliFeedVideo>[];
+    }
+
+    await _transport.ensureReady();
+    final response = await _transport.sendRequest(
+      Uri.https('api.bilibili.com', '/x/web-interface/archive/related', {
+        'aid': '${detail.aid}',
+        'bvid': detail.bvid,
+      }),
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+    final decoded = _transport.decodeApiData(response.body);
+    final rawItems = switch (decoded) {
+      List<Object?> items => items,
+      Map<Object?, Object?> map => readObjectList(readObjectMap(map)['items']),
+      _ => const <Object?>[],
+    };
+
+    return rawItems
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
+        .map(parseBiliFeedVideo)
+        .whereType<BiliFeedVideo>()
+        .where((item) => item.bvid != detail.bvid)
+        .take(limit)
+        .toList(growable: false);
+  }
+
+  Future<List<BiliVideoComment>> fetchVideoComments(
+    BiliVideoDetail detail, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final result = await fetchVideoCommentPage(
+      detail,
+      page: page,
+      pageSize: pageSize,
+    );
+    return result.comments;
+  }
+
+  Future<BiliVideoCommentPage> fetchVideoCommentPage(
+    BiliVideoDetail detail, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    if (detail.aid <= 0) {
+      return BiliVideoCommentPage(
+        comments: const <BiliVideoComment>[],
+        page: page < 1 ? 1 : page,
+        pageSize: pageSize.clamp(1, 49).toInt(),
+        hasMore: false,
+      );
+    }
+
+    final normalizedPage = page < 1 ? 1 : page;
+    final normalizedPageSize = pageSize.clamp(1, 49).toInt();
+    await _transport.ensureReady();
+    final data = await _transport.getData(
+      host: 'api.bilibili.com',
+      path: '/x/v2/reply',
+      params: <String, Object?>{
+        'type': 1,
+        'oid': detail.aid,
+        'sort': 1,
+        'nohot': 0,
+        'pn': normalizedPage,
+        'ps': normalizedPageSize,
+      },
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+
+    final seenIds = <int>{};
+    final comments = <BiliVideoComment>[];
+    void appendComments(Object? value) {
+      for (final raw in readObjectList(value)) {
+        final comment = _parseVideoComment(readObjectMap(raw));
+        if (comment != null && seenIds.add(comment.id)) {
+          comments.add(comment);
+        }
+      }
+    }
+
+    if (normalizedPage <= 1) {
+      appendComments(data['hots']);
+    }
+    appendComments(data['replies']);
+    final pageComments = comments
+        .take(normalizedPageSize)
+        .toList(growable: false);
+    final pageInfo = readObjectMap(data['page']);
+    final responsePage = readInt(pageInfo['num']) ?? normalizedPage;
+    final responsePageSize = readInt(pageInfo['size']) ?? normalizedPageSize;
+    final totalCount =
+        readInt(pageInfo['count']) ??
+        readInt(pageInfo['acount']) ??
+        readInt(pageInfo['total']);
+    final hasMore = totalCount == null
+        ? pageComments.length >= normalizedPageSize
+        : responsePage * responsePageSize < totalCount;
+    return BiliVideoCommentPage(
+      comments: pageComments,
+      page: responsePage,
+      pageSize: responsePageSize,
+      totalCount: totalCount,
+      hasMore: pageComments.isNotEmpty && hasMore,
+    );
+  }
+
   Future<String> fetchDanmakuXml({
     required String bvid,
     required int cid,
@@ -372,6 +486,71 @@ class BiliClient {
       detail: detail,
       fallback: base.copyWith(isAuthenticated: true, isLiked: liked),
     );
+  }
+
+  Future<int> fetchVideoCoinCount(BiliVideoDetail detail) async {
+    final data = await _transport.getData(
+      host: 'api.bilibili.com',
+      path: '/x/web-interface/archive/coins',
+      params: <String, Object?>{'aid': detail.aid, 'bvid': detail.bvid},
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+    return readInt(data['multiply']) ??
+        readInt(data['coins']) ??
+        readInt(data['count']) ??
+        0;
+  }
+
+  Future<int> addVideoCoin({
+    required BiliVideoDetail detail,
+    int multiply = 1,
+    bool selectLike = true,
+  }) async {
+    final normalizedMultiply = multiply.clamp(1, 2).toInt();
+    await _transport.postData(
+      host: 'api.bilibili.com',
+      path: '/x/web-interface/coin/add',
+      data: <String, Object?>{
+        'aid': detail.aid,
+        'bvid': detail.bvid,
+        'multiply': normalizedMultiply,
+        'select_like': selectLike ? 1 : 0,
+      },
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+    try {
+      return await fetchVideoCoinCount(detail);
+    } catch (_) {
+      return normalizedMultiply;
+    }
+  }
+
+  Future<BiliVideoComment?> addVideoComment({
+    required BiliVideoDetail detail,
+    required String message,
+  }) async {
+    final normalizedMessage = message.trim();
+    if (normalizedMessage.isEmpty) {
+      throw const BiliApiException('评论内容不能为空。');
+    }
+
+    final data = await _transport.postApiData(
+      host: 'api.bilibili.com',
+      path: '/x/v2/reply/add',
+      data: <String, Object?>{
+        'type': 1,
+        'oid': detail.aid,
+        'message': normalizedMessage,
+        'plat': 1,
+      },
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+    final map = readObjectMap(data);
+    final reply = readObjectMap(map['reply']);
+    if (reply.isNotEmpty) {
+      return _parseVideoComment(reply);
+    }
+    return _parseVideoComment(map);
   }
 
   Future<BiliVideoEngagement> setVideoFavorite({
@@ -477,6 +656,71 @@ class BiliClient {
     return readInt(data);
   }
 
+  BiliVideoComment? _parseVideoComment(Map<String, Object?> value) {
+    final id = readInt(value['rpid']) ?? readInt(value['id']) ?? 0;
+    if (id <= 0) {
+      return null;
+    }
+
+    final member = readObjectMap(value['member']);
+    final levelInfo = readObjectMap(member['level_info']);
+    final content = readObjectMap(value['content']);
+    final message = _readBiliCommentMessage(content['message']);
+    final replies = readObjectList(value['replies'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
+        .map(_parseVideoComment)
+        .whereType<BiliVideoComment>()
+        .toList(growable: false);
+    final level = readInt(levelInfo['current_level']);
+    final pictures = readObjectList(content['pictures'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
+        .map(_parseCommentPicture)
+        .whereType<BiliCommentPicture>()
+        .toList(growable: false);
+
+    return BiliVideoComment(
+      id: id,
+      authorName:
+          readString(member['uname']) ??
+          readString(member['name']) ??
+          readString(member['mid']) ??
+          '用户',
+      authorAvatarUrl: biliNormalizeImageUrl(
+        readString(member['avatar']) ?? readString(member['face']) ?? '',
+      ),
+      authorLevelLabel: level == null || level <= 0 ? null : 'LV$level',
+      createdAtLabel: _readCommentCreatedAtLabel(value['ctime']),
+      message: message,
+      likeCountLabel: biliFormatCount(readDouble(value['like'])),
+      replyCount:
+          readInt(value['rcount']) ?? readInt(value['count']) ?? replies.length,
+      liked: (readInt(value['action']) ?? 0) > 0,
+      pictures: pictures,
+      replies: replies,
+      timeLinks: _parseCommentTimeLinks(
+        message,
+        jumpUrl: readObjectMap(content['jump_url']),
+      ),
+    );
+  }
+
+  BiliCommentPicture? _parseCommentPicture(Map<String, Object?> value) {
+    final url =
+        readString(value['img_src']) ??
+        readString(value['src']) ??
+        readString(value['url']);
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+    return BiliCommentPicture(
+      url: biliNormalizeImageUrl(url),
+      width: readInt(value['img_width']) ?? readInt(value['width']),
+      height: readInt(value['img_height']) ?? readInt(value['height']),
+    );
+  }
+
   Future<List<BiliFavoriteFolder>> _fetchFavoriteFolders(
     BiliVideoDetail detail,
   ) async {
@@ -569,6 +813,127 @@ class BiliClient {
     }
     return null;
   }
+}
+
+String _readBiliCommentMessage(Object? value) {
+  final raw = readString(value) ?? '';
+  return biliDecodeHtmlEntities(
+    raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+  ).trim();
+}
+
+String _readCommentCreatedAtLabel(Object? value) {
+  final unixSeconds = readInt(value);
+  if (unixSeconds == null || unixSeconds <= 0) {
+    return '';
+  }
+
+  final publishedAt = DateTime.fromMillisecondsSinceEpoch(
+    unixSeconds * 1000,
+  ).toLocal();
+  final now = DateTime.now();
+  final difference = now.difference(publishedAt);
+  if (!difference.isNegative) {
+    if (difference.inMinutes < 1) {
+      return '刚刚';
+    }
+    if (difference.inHours < 1) {
+      return '${difference.inMinutes}分钟前';
+    }
+    if (difference.inDays < 1) {
+      return '${difference.inHours}小时前';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays}天前';
+    }
+  }
+  return publishedAt.toString().split(' ').first;
+}
+
+List<BiliCommentTimeLink> _parseCommentTimeLinks(
+  String message, {
+  Map<String, Object?> jumpUrl = const <String, Object?>{},
+}) {
+  final links = <BiliCommentTimeLink>[];
+  final seen = <String>{};
+  void addLink(BiliCommentTimeLink link) {
+    final key = '${link.label}:${link.seconds}:${link.start}:${link.end}';
+    if (seen.add(key)) {
+      links.add(link);
+    }
+  }
+
+  for (final match in _commentTimePattern.allMatches(message)) {
+    final label = match.group(0)!;
+    final seconds = _parseCommentTimeSeconds(label);
+    if (seconds != null) {
+      addLink(
+        BiliCommentTimeLink(
+          label: label,
+          seconds: seconds,
+          start: match.start,
+          end: match.end,
+        ),
+      );
+    }
+  }
+
+  for (final entry in jumpUrl.entries) {
+    final item = readObjectMap(entry.value);
+    final title = readString(item['title']) ?? readString(entry.key);
+    if (title == null) {
+      continue;
+    }
+    for (final match in _commentTimePattern.allMatches(title)) {
+      final label = match.group(0)!;
+      final seconds = _parseCommentTimeSeconds(label);
+      if (seconds == null) {
+        continue;
+      }
+      final inline = links.any(
+        (link) => link.label == label && link.seconds == seconds,
+      );
+      if (!inline) {
+        addLink(BiliCommentTimeLink(label: label, seconds: seconds));
+      }
+    }
+  }
+
+  links.sort((left, right) {
+    final leftStart = left.start ?? 1 << 30;
+    final rightStart = right.start ?? 1 << 30;
+    return leftStart.compareTo(rightStart);
+  });
+  return links;
+}
+
+final RegExp _commentTimePattern = RegExp(
+  r'(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?)(?!\d)',
+);
+
+int? _parseCommentTimeSeconds(String label) {
+  final parts = label.split(':').map(int.tryParse).toList(growable: false);
+  if (parts.any((part) => part == null)) {
+    return null;
+  }
+  if (parts.length == 2) {
+    final minutes = parts[0]!;
+    final seconds = parts[1]!;
+    if (seconds >= 60) {
+      return null;
+    }
+    return minutes * 60 + seconds;
+  }
+  if (parts.length == 3) {
+    final hours = parts[0]!;
+    final minutes = parts[1]!;
+    final seconds = parts[2]!;
+    if (minutes >= 60 || seconds >= 60) {
+      return null;
+    }
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+  return null;
 }
 
 const biliDashRequestVariants = <BiliDashRequestVariant>[

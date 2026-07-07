@@ -514,9 +514,74 @@ const _playbackSnapshot = VesperPlayerSnapshot(
   effectiveVideoTrackId: 'video-80-7-1000-0',
 );
 
+const _playingPlaybackSnapshot = VesperPlayerSnapshot(
+  title: '播放页测试视频',
+  subtitle: 'P1 · 正片',
+  sourceLabel: 'test',
+  playbackState: VesperPlaybackState.playing,
+  playbackRate: 1,
+  isBuffering: false,
+  isInterrupted: false,
+  hasVideoSurface: true,
+  timeline: VesperTimeline(
+    kind: VesperTimelineKind.vod,
+    isSeekable: true,
+    seekableRange: null,
+    liveEdgeMs: null,
+    positionMs: 0,
+    durationMs: 120000,
+  ),
+  trackCatalog: VesperTrackCatalog(
+    tracks: <VesperMediaTrack>[
+      VesperMediaTrack(
+        id: 'video-80-7-1000-0',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'avc1.640028',
+        bitRate: 1000000,
+        width: 1920,
+        height: 1080,
+      ),
+      VesperMediaTrack(
+        id: 'video-64-7-800-0',
+        kind: VesperMediaTrackKind.video,
+        label: '720P',
+        codec: 'avc1.640028',
+        bitRate: 800000,
+        width: 1280,
+        height: 720,
+      ),
+    ],
+    adaptiveVideo: true,
+  ),
+  effectiveVideoTrackId: 'video-80-7-1000-0',
+);
+
 final class _FakePlaybackClient extends BiliClient {
   _FakePlaybackClient();
 
+  final List<BiliFeedVideo> relatedVideos = const <BiliFeedVideo>[
+    BiliFeedVideo(
+      aid: 9001,
+      bvid: 'BV1related01',
+      title: '相关视频 1',
+      author: '相关UP',
+      coverUrl: '',
+      durationLabel: '04:20',
+      playCountLabel: '8.8万',
+      danmakuCountLabel: '321',
+    ),
+    BiliFeedVideo(
+      aid: 9002,
+      bvid: 'BV1related02',
+      title: '相关视频 2',
+      author: '相关UP',
+      coverUrl: '',
+      durationLabel: '01:12',
+      playCountLabel: '1.2万',
+      danmakuCountLabel: '45',
+    ),
+  ];
   BiliVideoEngagement engagement = const BiliVideoEngagement(
     isAuthenticated: true,
     isLiked: false,
@@ -527,7 +592,46 @@ final class _FakePlaybackClient extends BiliClient {
   );
   Completer<BiliVideoEngagement>? followCompleter;
   var followRequests = 0;
+  var coinRequests = 0;
+  final sentComments = <String>[];
+  final commentPageRequests = <int>[];
   final resolvedPlaybackRequests = <int>[];
+  final extraComments = <BiliVideoComment>[];
+  final List<BiliVideoComment> comments = const <BiliVideoComment>[
+    BiliVideoComment(
+      id: 501,
+      authorName: '神代强丸',
+      authorAvatarUrl: '',
+      authorLevelLabel: 'LV6',
+      createdAtLabel: '3小时前',
+      message: '01:00 不像韩女，因为你俩一看就是没整过的天然美人儿',
+      likeCountLabel: '135',
+      replyCount: 3,
+      pictures: <BiliCommentPicture>[
+        BiliCommentPicture(
+          url: 'https://example.test/comment.jpg',
+          width: 1280,
+          height: 720,
+        ),
+      ],
+      replies: <BiliVideoComment>[
+        BiliVideoComment(
+          id: 502,
+          authorName: '立在哪里无寒冬',
+          authorAvatarUrl: '',
+          createdAtLabel: '2小时前',
+          message: '删了让我发',
+          likeCountLabel: '1',
+          pictures: <BiliCommentPicture>[],
+          replies: <BiliVideoComment>[],
+          timeLinks: <BiliCommentTimeLink>[],
+        ),
+      ],
+      timeLinks: <BiliCommentTimeLink>[
+        BiliCommentTimeLink(label: '01:00', seconds: 60, start: 0, end: 5),
+      ],
+    ),
+  ];
 
   @override
   Future<BiliResolvedPlayback> resolvePlayback({
@@ -540,10 +644,107 @@ final class _FakePlaybackClient extends BiliClient {
   }
 
   @override
+  Future<List<BiliFeedVideo>> fetchRelatedVideos(
+    BiliVideoDetail detail, {
+    int limit = 12,
+  }) async {
+    return relatedVideos.take(limit).toList(growable: false);
+  }
+
+  @override
+  Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
+    return page == 1 ? relatedVideos : const <BiliFeedVideo>[];
+  }
+
+  @override
+  Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
+    final base = _playbackDetail();
+    return BiliVideoDetail(
+      aid: 9100,
+      bvid: bvid,
+      title: '打开的相关视频',
+      ownerMid: base.ownerMid,
+      ownerName: base.ownerName,
+      ownerAvatarUrl: base.ownerAvatarUrl,
+      coverUrl: base.coverUrl,
+      description: base.description,
+      publishedAtLabel: base.publishedAtLabel,
+      playCountLabel: base.playCountLabel,
+      danmakuCountLabel: base.danmakuCountLabel,
+      replyCountLabel: base.replyCountLabel,
+      likeCountLabel: base.likeCountLabel,
+      coinCountLabel: base.coinCountLabel,
+      favoriteCountLabel: base.favoriteCountLabel,
+      shareCountLabel: base.shareCountLabel,
+      pages: base.pages,
+    );
+  }
+
+  @override
   Future<BiliVideoEngagement> fetchVideoEngagement(
     BiliVideoDetail detail,
   ) async {
     return engagement;
+  }
+
+  @override
+  Future<int> fetchVideoCoinCount(BiliVideoDetail detail) async {
+    return coinRequests;
+  }
+
+  @override
+  Future<List<BiliVideoComment>> fetchVideoComments(
+    BiliVideoDetail detail, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final commentPage = await fetchVideoCommentPage(
+      detail,
+      page: page,
+      pageSize: pageSize,
+    );
+    return commentPage.comments;
+  }
+
+  @override
+  Future<BiliVideoCommentPage> fetchVideoCommentPage(
+    BiliVideoDetail detail, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    commentPageRequests.add(page);
+    final pageComments = switch (page) {
+      1 => comments.take(pageSize).toList(growable: false),
+      2 => extraComments.take(pageSize).toList(growable: false),
+      _ => const <BiliVideoComment>[],
+    };
+    final totalCount = comments.length + extraComments.length;
+    return BiliVideoCommentPage(
+      comments: pageComments,
+      page: page,
+      pageSize: pageSize,
+      totalCount: totalCount,
+      hasMore: page == 1 && extraComments.isNotEmpty,
+    );
+  }
+
+  @override
+  Future<BiliVideoComment?> addVideoComment({
+    required BiliVideoDetail detail,
+    required String message,
+  }) async {
+    sentComments.add(message);
+    return BiliVideoComment(
+      id: 700 + sentComments.length,
+      authorName: '当前用户',
+      authorAvatarUrl: '',
+      createdAtLabel: '刚刚',
+      message: message,
+      likeCountLabel: '0',
+      pictures: const <BiliCommentPicture>[],
+      replies: const <BiliVideoComment>[],
+      timeLinks: const <BiliCommentTimeLink>[],
+    );
   }
 
   @override
@@ -554,6 +755,19 @@ final class _FakePlaybackClient extends BiliClient {
   }) async {
     engagement = (current ?? engagement).copyWith(isLiked: liked);
     return engagement;
+  }
+
+  @override
+  Future<int> addVideoCoin({
+    required BiliVideoDetail detail,
+    int multiply = 1,
+    bool selectLike = true,
+  }) async {
+    coinRequests += multiply;
+    if (selectLike) {
+      engagement = engagement.copyWith(isLiked: true);
+    }
+    return coinRequests;
   }
 
   @override
@@ -589,6 +803,9 @@ final class _FakePlaybackClient extends BiliClient {
 }
 
 final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
+  _FakePlaybackVesperPlatform({this.initialSnapshot = _playbackSnapshot});
+
+  final VesperPlayerSnapshot initialSnapshot;
   final selectedSources = <VesperPlayerSource>[];
   final seekRatios = <double>[];
   VesperSourceNormalizerConfiguration? lastSourceNormalizerConfiguration;
@@ -621,9 +838,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
     lastSourceNormalizerConfiguration = sourceNormalizerConfiguration;
     lastFrameProcessorConfiguration = frameProcessorConfiguration;
     lastNativeFramePipelineConfiguration = nativeFramePipelineConfiguration;
-    return const VesperPlatformCreateResult(
+    return VesperPlatformCreateResult(
       playerId: 'playback-test-player',
-      snapshot: _playbackSnapshot,
+      snapshot: initialSnapshot,
     );
   }
 
@@ -940,9 +1157,14 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   BiliPlaybackPresentationMode presentationMode =
       BiliPlaybackPresentationMode.phone,
   List<String> sourceNormalizerPluginPaths = const <String>[],
+  Size surfaceSize = const Size(1200, 900),
+  VesperPlayerSnapshot initialSnapshot = _playbackSnapshot,
+  void Function(_FakePlaybackClient client)? configureClient,
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
-  final platform = _FakePlaybackVesperPlatform();
+  final platform = _FakePlaybackVesperPlatform(
+    initialSnapshot: initialSnapshot,
+  );
   VesperPlayerPlatform.instance = platform;
   addTearDown(() {
     VesperPlayerPlatform.instance = previousPlatform;
@@ -970,6 +1192,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   final playbackDetail = detail ?? _playbackDetail();
   final page = initialPage ?? playbackDetail.pages.first;
   final client = _FakePlaybackClient();
+  configureClient?.call(client);
   final historyRoot = Directory(
     '${Directory.systemTemp.path}/bili-playback-widget-test-${DateTime.now().microsecondsSinceEpoch}',
   );
@@ -982,7 +1205,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  await tester.binding.setSurfaceSize(const Size(1200, 900));
+  await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
@@ -1601,22 +1824,28 @@ void main() {
   });
 
   testWidgets(
-    'playback page places collection directly under intro',
+    'playback page opens page collection from a bottom sheet',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(tester);
 
       expect(find.text('播放页测试视频'), findsWidgets);
       expect(find.text('这是一段播放页说明，下面应直接显示合集列表。'), findsOneWidget);
       expect(find.text('合集 · 共 3 个分 P'), findsOneWidget);
-      expect(find.text('P1'), findsOneWidget);
-      expect(find.text('正片'), findsOneWidget);
+      expect(find.text('P1 · 正片'), findsOneWidget);
+      expect(find.text('P2'), findsNothing);
+      expect(find.text('简介'), findsOneWidget);
+      expect(find.text('相关推荐'), findsOneWidget);
+      expect(find.text('相关视频 1'), findsOneWidget);
+      expect(find.text('播放 SDK'), findsNothing);
+      expect(find.text('Manifest'), findsNothing);
+
+      await tester.tap(find.text('合集 · 共 3 个分 P'));
+      await tester.pumpAndSettle();
+
       expect(find.text('P2'), findsOneWidget);
       expect(find.text('花絮'), findsOneWidget);
       expect(find.text('P3'), findsOneWidget);
       expect(find.text('访谈'), findsOneWidget);
-      expect(find.text('简介'), findsNothing);
-      expect(find.text('播放 SDK'), findsNothing);
-      expect(find.text('Manifest'), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -1660,9 +1889,8 @@ void main() {
       expect(find.text('番剧播放页测试'), findsWidgets);
       expect(find.text('番剧简介下方应直接显示剧集。'), findsOneWidget);
       expect(find.text('剧集 · 共 3 话/集'), findsOneWidget);
-      expect(find.text('第 1 话'), findsOneWidget);
-      expect(find.text('第 2 话'), findsOneWidget);
-      expect(find.text('第 3 话'), findsOneWidget);
+      expect(find.text('第 1 话 · 正片'), findsOneWidget);
+      expect(find.text('第 2 话'), findsNothing);
       expect(find.text('点赞'), findsNothing);
       expect(find.text('硬币'), findsNothing);
       expect(find.text('收藏'), findsNothing);
@@ -1714,6 +1942,218 @@ void main() {
         harness.client.engagement.copyWith(isFollowingOwner: true),
       );
       await tester.pump();
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback coin action posts through the view model',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      await tester.tap(find.text('硬币'));
+      await tester.pump();
+
+      expect(harness.client.coinRequests, 1);
+      expect(harness.client.engagement.isLiked, isTrue);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback comments render nested replies and seek time links',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('热门评论'), findsOneWidget);
+      expect(find.text('神代强丸'), findsOneWidget);
+      expect(find.textContaining('不像韩女', findRichText: true), findsOneWidget);
+      expect(find.textContaining('立在哪里无寒冬'), findsOneWidget);
+      expect(find.text('共3条回复 >'), findsOneWidget);
+
+      await tester.tap(find.text('共3条回复 >'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('评论详情'), findsOneWidget);
+      expect(find.text('相关回复共3条'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pumpAndSettle();
+
+      final messageFinder = find.textContaining(
+        '01:00 不像韩女',
+        findRichText: true,
+      );
+      await tester.tapAt(tester.getTopLeft(messageFinder) + const Offset(8, 8));
+      await tester.pump();
+
+      expect(harness.platform.seekRatios, isNotEmpty);
+      expect(harness.platform.seekRatios.last, moreOrLessEquals(0.5));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'mobile comments keep tabs fixed and fade in collapsed playback bar',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 640));
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+
+      final collapsedOpacityBefore = tester
+          .widget<Opacity>(
+            find
+                .ancestor(of: find.text('继续播放'), matching: find.byType(Opacity))
+                .first,
+          )
+          .opacity;
+
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('playback-comments')),
+        const Offset(0, -420),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final collapsedOpacityAfter = tester
+          .widget<Opacity>(
+            find
+                .ancestor(of: find.text('继续播放'), matching: find.byType(Opacity))
+                .first,
+          )
+          .opacity;
+
+      expect(find.text('简介'), findsOneWidget);
+      expect(find.text('评论 78'), findsOneWidget);
+      expect(collapsedOpacityAfter, greaterThan(collapsedOpacityBefore));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback info tabs switch with horizontal swipes',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 640));
+
+      expect(find.text('合集 · 共 3 个分 P'), findsOneWidget);
+      expect(find.text('热门评论'), findsNothing);
+
+      await tester.drag(find.byType(TabBarView), const Offset(-320, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('热门评论'), findsOneWidget);
+      expect(find.text('神代强丸'), findsOneWidget);
+
+      await tester.drag(find.byType(TabBarView), const Offset(320, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('合集 · 共 3 个分 P'), findsOneWidget);
+      expect(find.text('热门评论'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback comments load more near the bottom',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        configureClient: (client) {
+          client.extraComments.add(
+            const BiliVideoComment(
+              id: 901,
+              authorName: '第二页用户',
+              authorAvatarUrl: '',
+              createdAtLabel: '1分钟前',
+              message: '第二页评论',
+              likeCountLabel: '0',
+              pictures: <BiliCommentPicture>[],
+              replies: <BiliVideoComment>[],
+              timeLinks: <BiliCommentTimeLink>[],
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('playback-comments')),
+        const Offset(0, -620),
+      );
+      await _pumpUntil(
+        tester,
+        () => harness.client.commentPageRequests.contains(2),
+      );
+      await tester.pumpAndSettle();
+
+      expect(harness.client.commentPageRequests, contains(2));
+      expect(find.text('第二页用户'), findsOneWidget);
+      expect(find.text('第二页评论', findRichText: true), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'mobile playback stage collapses while video is playing',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        initialSnapshot: _playingPlaybackSnapshot,
+      );
+
+      final collapsedOpacityBefore = tester
+          .widget<Opacity>(
+            find
+                .ancestor(of: find.text('正在播放'), matching: find.byType(Opacity))
+                .first,
+          )
+          .opacity;
+
+      await tester.drag(
+        find.byType(vesper_ui.VesperPlayerStage),
+        const Offset(0, -180),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final collapsedOpacityAfter = tester
+          .widget<Opacity>(
+            find
+                .ancestor(of: find.text('正在播放'), matching: find.byType(Opacity))
+                .first,
+          )
+          .opacity;
+
+      expect(collapsedOpacityAfter, greaterThan(collapsedOpacityBefore));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback comment composer is fixed and sends from keyboard action',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), '好看，支持一下');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+
+      expect(harness.client.sentComments, <String>['好看，支持一下']);
+      expect(find.text('当前用户'), findsOneWidget);
+      expect(find.text('好看，支持一下', findRichText: true), findsOneWidget);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );

@@ -276,6 +276,98 @@ void main() {
       expect(detail.pages.last.coverUrl, 'https://example.com/ep2.jpg');
     });
 
+    test('fetches related videos from archive endpoint', () async {
+      final httpClient = _FakeRegionHttpClient();
+      final client = BiliClient(httpClient: httpClient);
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      final related = await client.fetchRelatedVideos(
+        const BiliVideoDetail(
+          aid: 100,
+          bvid: 'BV1current001',
+          title: '当前视频',
+          ownerMid: 1,
+          ownerName: 'UP',
+          ownerAvatarUrl: '',
+          coverUrl: '',
+          description: '',
+          publishedAtLabel: null,
+          playCountLabel: '--',
+          danmakuCountLabel: '--',
+          replyCountLabel: '--',
+          likeCountLabel: '--',
+          coinCountLabel: '--',
+          favoriteCountLabel: '--',
+          shareCountLabel: '--',
+          pages: <BiliVideoPageEntry>[],
+        ),
+      );
+
+      expect(related, hasLength(1));
+      expect(related.single.bvid, 'BV1related001');
+      expect(related.single.title, '测试相关视频');
+      expect(related.single.author, '相关UP');
+      expect(related.single.durationLabel, '02:05');
+      final request = httpClient.requestedUris.lastWhere(
+        (uri) => uri.path == '/x/web-interface/archive/related',
+      );
+      expect(request.queryParameters['aid'], '100');
+      expect(request.queryParameters['bvid'], 'BV1current001');
+    });
+
+    test(
+      'fetches video comments with images, replies, and time links',
+      () async {
+        final httpClient = _FakeRegionHttpClient();
+        final client = BiliClient(httpClient: httpClient);
+        addTearDown(() => client.transport.httpClient.close(force: true));
+
+        final comments = await client.fetchVideoComments(
+          const BiliVideoDetail(
+            aid: 100,
+            bvid: 'BV1current001',
+            title: '当前视频',
+            ownerMid: 1,
+            ownerName: 'UP',
+            ownerAvatarUrl: '',
+            coverUrl: '',
+            description: '',
+            publishedAtLabel: null,
+            playCountLabel: '--',
+            danmakuCountLabel: '--',
+            replyCountLabel: '--',
+            likeCountLabel: '--',
+            coinCountLabel: '--',
+            favoriteCountLabel: '--',
+            shareCountLabel: '--',
+            pages: <BiliVideoPageEntry>[],
+          ),
+        );
+
+        expect(comments, hasLength(1));
+        final comment = comments.single;
+        expect(comment.id, 501);
+        expect(comment.authorName, '神代强丸');
+        expect(comment.authorLevelLabel, 'LV6');
+        expect(comment.message, contains('10:35'));
+        expect(comment.likeCountLabel, '135');
+        expect(comment.pictures.single.url, 'https://example.com/comment.jpg');
+        expect(comment.pictures.single.width, 1280);
+        expect(comment.replies.single.authorName, '立在哪里无寒冬');
+        expect(comment.replyCount, 3);
+        expect(comment.timeLinks.single.label, '10:35');
+        expect(comment.timeLinks.single.seconds, 635);
+        expect(comment.timeLinks.single.start, 0);
+        final request = httpClient.requestedUris.lastWhere(
+          (uri) => uri.path == '/x/v2/reply',
+        );
+        expect(request.queryParameters['type'], '1');
+        expect(request.queryParameters['oid'], '100');
+        expect(request.queryParameters['sort'], '1');
+        expect(request.queryParameters['nohot'], '0');
+      },
+    );
+
     test('refreshes browser cookies and retries ranking after risk', () async {
       final httpClient = _FakeRegionHttpClient(riskFirstRanking: true);
       final client = BiliClient(httpClient: httpClient);
@@ -354,13 +446,48 @@ void main() {
       expect(
         sortBiliMediaUrlCandidates(<String>[
           'https://pcdn.example.com:4483/video.m4s',
+          'https://upos-sz-mirror08cvol.mcdn.bilivideo.cn/video.m4s',
           'https://upos.example.com/video.m4s',
           'https://upos.example.com/video.m4s',
         ]),
         <String>[
           'https://upos.example.com/video.m4s',
           'https://pcdn.example.com:4483/video.m4s',
+          'https://upos-sz-mirror08cvol.mcdn.bilivideo.cn/video.m4s',
         ],
+      );
+    });
+
+    test('keeps stronger CDN tiers before known PCDN domains', () {
+      expect(
+        sortBiliMediaUrlCandidates(<String>[
+          'https://example.akamaized.net/video.m4s',
+          'https://upos-sz-mirrorakam.akamaized.net/video.m4s',
+          'https://upos-sz-mirrorcoso1.bilivideo.com/video.m4s',
+          'https://upos-sz-mirror08cvol.mcdn.bilivideo.cn/video.m4s',
+          'https://upos-sz-mirrorali.bilivideo.com/video.m4s',
+          'https://edge.example.net/video.m4s',
+          'https://upos-sz-estgoss.bilivideo.com/video.m4s',
+        ]),
+        <String>[
+          'https://upos-sz-mirrorcoso1.bilivideo.com/video.m4s',
+          'https://upos-sz-mirrorali.bilivideo.com/video.m4s',
+          'https://upos-sz-estgoss.bilivideo.com/video.m4s',
+          'https://edge.example.net/video.m4s',
+          'https://example.akamaized.net/video.m4s',
+          'https://upos-sz-mirrorakam.akamaized.net/video.m4s',
+          'https://upos-sz-mirror08cvol.mcdn.bilivideo.cn/video.m4s',
+        ],
+      );
+      expect(
+        isPcdnMediaUrl(
+          'https://upos-sz-mirror08cvol.mcdn.bilivideo.cn/video.m4s',
+        ),
+        isTrue,
+      );
+      expect(
+        isPcdnMediaUrl('https://upos-sz-mirror08cvol.szbdyd.com/video.m4s'),
+        isTrue,
       );
     });
 
@@ -1154,6 +1281,7 @@ void main() {
         liked: true,
         current: current,
       );
+      final coinCount = await client.addVideoCoin(detail: _engagementDetail);
       await client.setVideoFavorite(
         detail: _engagementDetail,
         favorited: true,
@@ -1164,6 +1292,7 @@ void main() {
         following: true,
         current: current,
       );
+      await client.addVideoComment(detail: _engagementDetail, message: '测试评论');
 
       final likePost = httpClient.posts.singleWhere(
         (post) => post.uri.path == '/x/web-interface/archive/like',
@@ -1172,6 +1301,16 @@ void main() {
       expect(likePost.fields['bvid'], _engagementDetail.bvid);
       expect(likePost.fields['like'], '1');
       expect(likePost.fields['csrf'], 'csrf-token');
+
+      final coinPost = httpClient.posts.singleWhere(
+        (post) => post.uri.path == '/x/web-interface/coin/add',
+      );
+      expect(coinPost.fields['aid'], '${_engagementDetail.aid}');
+      expect(coinPost.fields['bvid'], _engagementDetail.bvid);
+      expect(coinPost.fields['multiply'], '1');
+      expect(coinPost.fields['select_like'], '1');
+      expect(coinPost.fields['csrf'], 'csrf-token');
+      expect(coinCount, 1);
 
       final favoritePost = httpClient.posts.singleWhere(
         (post) => post.uri.path == '/x/v3/fav/resource/deal',
@@ -1187,6 +1326,15 @@ void main() {
       expect(followPost.fields['fid'], '${_engagementDetail.ownerMid}');
       expect(followPost.fields['act'], '1');
       expect(followPost.fields['re_src'], '14');
+
+      final commentPost = httpClient.posts.singleWhere(
+        (post) => post.uri.path == '/x/v2/reply/add',
+      );
+      expect(commentPost.fields['type'], '1');
+      expect(commentPost.fields['oid'], '${_engagementDetail.aid}');
+      expect(commentPost.fields['message'], '测试评论');
+      expect(commentPost.fields['plat'], '1');
+      expect(commentPost.fields['csrf'], 'csrf-token');
     });
   });
 
@@ -1626,6 +1774,16 @@ final class _FakeEngagementHttpClient implements HttpClient {
             'favorite': false,
             'attention': false,
           },
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/archive/coins') {
+      return _FakeEngagementHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{'multiply': 1},
         }),
       );
     }
@@ -2129,6 +2287,88 @@ final class _FakeRegionHttpClient implements HttpClient {
                 'pts': 99,
                 'duration': 125,
                 'stat': <String, Object?>{'view': 12000},
+              },
+            ],
+          },
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/archive/related') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <Object?>[
+            <String, Object?>{
+              'aid': 2,
+              'bvid': 'BV1current001',
+              'title': '当前视频应被过滤',
+              'pic': 'https://example.com/current.jpg',
+              'duration': 60,
+              'owner': <String, Object?>{'name': '当前UP'},
+              'stat': <String, Object?>{'view': 1, 'danmaku': 2},
+            },
+            <String, Object?>{
+              'aid': 3,
+              'bvid': 'BV1related001',
+              'title': '测试相关视频',
+              'pic': 'https://example.com/related.jpg',
+              'duration': 125,
+              'owner': <String, Object?>{'name': '相关UP'},
+              'stat': <String, Object?>{'view': 12000, 'danmaku': 345},
+            },
+          ],
+        }),
+      );
+    }
+
+    if (url.path == '/x/v2/reply') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'hots': <Object?>[
+              <String, Object?>{
+                'rpid': 501,
+                'ctime': 1760000000,
+                'like': 135,
+                'rcount': 3,
+                'member': <String, Object?>{
+                  'uname': '神代强丸',
+                  'avatar': '//example.com/avatar.jpg',
+                  'level_info': <String, Object?>{'current_level': 6},
+                },
+                'content': <String, Object?>{
+                  'message': '10:35 不像韩女，因为你俩一看就是没整过的天然美人儿',
+                  'pictures': <Object?>[
+                    <String, Object?>{
+                      'img_src': '//example.com/comment.jpg',
+                      'img_width': 1280,
+                      'img_height': 720,
+                    },
+                  ],
+                  'jump_url': <String, Object?>{
+                    '10:35': <String, Object?>{'title': '10:35'},
+                  },
+                },
+                'replies': <Object?>[
+                  <String, Object?>{
+                    'rpid': 502,
+                    'ctime': 1760000300,
+                    'like': 1,
+                    'member': <String, Object?>{'uname': '立在哪里无寒冬'},
+                    'content': <String, Object?>{'message': '删了让我发'},
+                  },
+                ],
+              },
+            ],
+            'replies': <Object?>[
+              <String, Object?>{
+                'rpid': 501,
+                'member': <String, Object?>{'uname': '重复热评'},
+                'content': <String, Object?>{'message': 'duplicate'},
               },
             ],
           },
