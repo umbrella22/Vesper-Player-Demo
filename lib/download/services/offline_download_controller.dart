@@ -299,6 +299,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       case VesperDownloadState.completed:
       case VesperDownloadState.failed:
       case VesperDownloadState.removed:
+      case VesperDownloadState.unknown:
       case null:
         break;
     }
@@ -394,6 +395,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       VesperDownloadState.paused ||
       VesperDownloadState.completed ||
       VesperDownloadState.failed ||
+      VesperDownloadState.unknown ||
       VesperDownloadState.removed => false,
     };
   }

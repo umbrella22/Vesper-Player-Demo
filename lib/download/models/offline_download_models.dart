@@ -131,6 +131,7 @@ final class BiliOfflineDownloadEntry {
       VesperDownloadState.completed => '已完成',
       VesperDownloadState.failed => '失败',
       VesperDownloadState.removed => '已移除',
+      VesperDownloadState.unknown => '未知状态',
       null => isCompleted ? '已完成' : '等待恢复',
     };
   }

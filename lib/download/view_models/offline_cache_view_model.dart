@@ -273,6 +273,7 @@ final class OfflineCacheViewModel {
           await controller.resume(taskId);
         case VesperDownloadState.completed:
         case VesperDownloadState.removed:
+        case VesperDownloadState.unknown:
           break;
       }
     } finally {
