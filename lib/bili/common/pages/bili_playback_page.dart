@@ -43,6 +43,7 @@ class BiliPlaybackPage extends StatefulWidget {
     required this.historyStore,
     this.offlineController,
     this.initialResolvedPlayback,
+    this.initialPositionMs = 0,
     this.presentationMode = BiliPlaybackPresentationMode.phone,
   });
 
@@ -52,6 +53,7 @@ class BiliPlaybackPage extends StatefulWidget {
   final BiliHistoryStore historyStore;
   final BiliOfflineDownloadController? offlineController;
   final BiliResolvedPlayback? initialResolvedPlayback;
+  final int initialPositionMs;
   final BiliPlaybackPresentationMode presentationMode;
 
   @override
@@ -107,6 +109,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       historyStore: widget.historyStore,
       offlineController: widget.offlineController,
       initialResolvedPlayback: widget.initialResolvedPlayback,
+      initialPositionMs: widget.initialPositionMs,
     )..addListener(_handleViewModelMessage);
     HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
     unawaited(_enterPlaybackPresentation());
@@ -205,6 +208,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   BiliEngagementAction? get _pendingEngagementAction =>
       _viewModel.pendingEngagementAction;
+
+  bool get _isInWatchLater => _viewModel.isInWatchLater;
+
+  bool get _watchLaterLoading => _viewModel.watchLaterLoading;
 
   int? get _selectedBiliQualityId => _viewModel.selectedBiliQualityId;
 
@@ -404,6 +411,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   Future<void> _toggleFollow() {
     return _showViewModelMessage(_viewModel.toggleFollow());
+  }
+
+  Future<void> _toggleWatchLater() {
+    return _showViewModelMessage(_viewModel.toggleWatchLater());
   }
 
   Future<void> _shareVideo() {
@@ -656,6 +667,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     return _showViewModelMessage(_viewModel.selectCodecStrategy(strategy));
   }
 
+  Future<void> _selectSubtitle(VesperTrackSelection selection) {
+    return _showViewModelMessage(_viewModel.selectSubtitle(selection));
+  }
+
   List<double> _playbackRates(VesperPlayerSnapshot snapshot) {
     return _viewModel.playbackRates(snapshot);
   }
@@ -664,6 +679,14 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     VesperPlayerSnapshot snapshot,
   ) {
     return _viewModel.playbackSelectionTracks(snapshot);
+  }
+
+  List<VesperMediaTrack> _subtitleTracks(VesperPlayerSnapshot snapshot) {
+    return _viewModel.subtitleTracks(snapshot);
+  }
+
+  VesperTrackSelection _subtitleSelection(VesperPlayerSnapshot snapshot) {
+    return _viewModel.subtitleSelection(snapshot);
   }
 
   List<int> _availableBiliQualityIds(List<VesperMediaTrack> tracks) {
@@ -1586,6 +1609,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                       onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
                     ),
                   ],
+                  const SizedBox(width: 14),
+                  _TvBarButton(
+                    label: _isInWatchLater ? '已加入稍后再看' : '稍后再看',
+                    icon: _isInWatchLater
+                        ? Icons.watch_later_rounded
+                        : Icons.watch_later_outlined,
+                    onTap: _watchLaterLoading
+                        ? () {}
+                        : () => unawaited(_toggleWatchLater()),
+                  ),
                 ],
               ),
               SizedBox(

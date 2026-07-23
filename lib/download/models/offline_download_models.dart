@@ -46,6 +46,7 @@ final class BiliOfflineDownloadMetadata {
   BiliOfflineDownloadMetadata copyWith({
     int? taskId,
     String? outputPath,
+    bool clearOutputPath = false,
     int? createdAtMs,
     String? errorMessage,
     bool clearError = false,
@@ -59,7 +60,7 @@ final class BiliOfflineDownloadMetadata {
       pageTitle: pageTitle,
       coverUrl: coverUrl,
       qualityLabel: qualityLabel,
-      outputPath: outputPath ?? this.outputPath,
+      outputPath: clearOutputPath ? null : outputPath ?? this.outputPath,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
@@ -83,10 +84,26 @@ final class BiliOfflineDownloadMetadata {
 }
 
 final class BiliOfflineDownloadEntry {
-  const BiliOfflineDownloadEntry({required this.metadata, this.task});
+  const BiliOfflineDownloadEntry({
+    required this.metadata,
+    this.task,
+    this.metadataMissing = false,
+    this.integrityError,
+  });
 
   final BiliOfflineDownloadMetadata metadata;
   final VesperDownloadTaskSnapshot? task;
+
+  /// True when the SDK task or cache directory has no matching Bili metadata.
+  ///
+  /// Such an entry is intentionally kept visible so that users can remove the
+  /// bytes it owns. It must never be sent to the playback resolver because
+  /// there is no reliable bvid/cid pair to resolve.
+  final bool metadataMissing;
+
+  /// A detected mismatch between persisted metadata, the restored SDK task,
+  /// or the completed cache file on disk.
+  final String? integrityError;
 
   VesperDownloadState? get state => task?.state;
 
@@ -97,9 +114,35 @@ final class BiliOfflineDownloadEntry {
   double? get progressRatio => task?.progress.completionRatio;
 
   String? get errorMessage => task?.error?.message ?? metadata.errorMessage;
-  String? get displayErrorMessage => _friendlyOfflineDownloadError(
-    task?.error?.message ?? metadata.errorMessage,
-  );
+  String? get displayErrorMessage {
+    if (isUnplayable) {
+      return unplayableReason;
+    }
+    return _friendlyOfflineDownloadError(
+      task?.error?.message ?? metadata.errorMessage,
+    );
+  }
+
+  bool get isUnplayable {
+    return metadataMissing ||
+        integrityError != null ||
+        metadata.bvid.trim().isEmpty ||
+        metadata.cid <= 0;
+  }
+
+  String get unplayableReason {
+    final integrityError = this.integrityError;
+    if (integrityError != null) {
+      return integrityError;
+    }
+    if (metadataMissing) {
+      return '缓存视频信息已丢失，无法播放。请清理这条失效缓存。';
+    }
+    if (metadata.bvid.trim().isEmpty || metadata.cid <= 0) {
+      return '缓存视频元数据不完整，无法播放。请清理这条失效缓存。';
+    }
+    return '缓存视频无法播放。';
+  }
 
   bool get isActive {
     if (errorMessage != null && errorMessage!.isNotEmpty) {
@@ -119,6 +162,9 @@ final class BiliOfflineDownloadEntry {
       (metadata.outputPath != null && metadata.outputPath!.isNotEmpty);
 
   String get statusLabel {
+    if (isUnplayable) {
+      return '无法播放';
+    }
     final error = errorMessage;
     if (error != null && error.isNotEmpty) {
       return '失败';

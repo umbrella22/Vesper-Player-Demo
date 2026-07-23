@@ -8,6 +8,7 @@ import 'package:signals/signals_flutter.dart';
 import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
+import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
@@ -16,6 +17,7 @@ import 'package:bilibili_player/bili/common/services/bili_text.dart';
 import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
+import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
@@ -187,16 +189,103 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _loadHistory() async {
-    _history = await (_viewModel.historyStore).loadEntries();
+    final local = await (_viewModel.historyStore).loadEntries();
+    var merged = local;
+    final shouldLoadRemote =
+        _viewModel.client.hasAuthenticatedSession ||
+        _viewModel.profile.value.isLoggedIn;
+    if (shouldLoadRemote) {
+      try {
+        final remote = await _viewModel.client.fetchRemoteHistory(pageSize: 30);
+        final seen = <String>{};
+        final cloud = remote
+            .where(
+              (entry) =>
+                  entry.bvid.trim().isNotEmpty ||
+                  entry.aid > 0 ||
+                  entry.episodeId > 0,
+            )
+            .map(
+              (entry) => BiliPlaybackHistoryEntry(
+                bvid: entry.bvid,
+                aid: entry.aid,
+                cid: entry.cid,
+                episodeId: entry.episodeId,
+                business: entry.business,
+                videoTitle: entry.title,
+                pageTitle: entry.pageTitle,
+                coverUrl: entry.coverUrl,
+                ownerName: entry.ownerName,
+                playedAtMs: entry.viewedAtMs,
+                lastPositionMs: entry.progressMs,
+                durationMs: entry.durationMs > 0 ? entry.durationMs : null,
+              ),
+            )
+            .where((entry) => seen.add(_historyIdentity(entry)))
+            .toList(growable: false);
+        if (cloud.isNotEmpty) {
+          merged = <BiliPlaybackHistoryEntry>[
+            ...cloud,
+            ...local.where((entry) => !seen.contains(_historyIdentity(entry))),
+          ];
+        }
+      } catch (_) {
+        // The local store is the offline fallback when the cursor endpoint
+        // is unavailable or the session has expired.
+      }
+    }
+    _history = merged;
     if (mounted) {
       setState(() {});
     }
   }
 
-  Future<void> _openPlayback(String bvid, {int? cid}) async {
+  String _historyIdentity(BiliPlaybackHistoryEntry entry) {
+    if (entry.episodeId > 0) {
+      return 'episode:${entry.episodeId}';
+    }
+    if (entry.cid > 0) {
+      return 'cid:${entry.cid}';
+    }
+    if (entry.bvid.isNotEmpty) {
+      return 'bvid:${entry.bvid}';
+    }
+    return 'aid:${entry.aid}';
+  }
+
+  Future<void> _openLibrary(BiliLibrarySection section) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliLibraryPage(
+          client: _viewModel.client,
+          initialSection: section,
+          historyStore: _viewModel.historyStore,
+          offlineController: _viewModel.offlineController,
+          onLoginTap: _openQrLogin,
+          presentationMode: BiliPlaybackPresentationMode.tv,
+        ),
+      ),
+    );
+    if (mounted) {
+      await _loadHistory();
+    }
+  }
+
+  Future<void> _openPlayback(
+    String bvid, {
+    int? aid,
+    int? cid,
+    int? episodeId,
+    int initialPositionMs = 0,
+  }) async {
     late final BiliHubPlaybackTarget target;
     try {
-      target = await _viewModel.resolvePlaybackTarget(bvid, cid: cid);
+      target = await _viewModel.resolvePlaybackTarget(
+        bvid,
+        aid: aid,
+        cid: cid,
+        episodeId: episodeId,
+      );
     } catch (error) {
       if (mounted) {
         _showMessage('打开视频失败：$error');
@@ -214,11 +303,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
           offlineController: _viewModel.offlineController,
+          initialPositionMs: initialPositionMs,
           presentationMode: BiliPlaybackPresentationMode.tv,
         ),
       ),
     );
-    await _viewModel.loadHistory();
+    unawaited(_loadHistory());
   }
 
   Future<void> _openRegionVideo(BiliRegionVideo item) async {
@@ -261,7 +351,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         ),
       ),
     );
-    await _viewModel.loadHistory();
+    unawaited(_loadHistory());
   }
 
   void _showMessage(String message) {
@@ -306,6 +396,11 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _loadRegion({BiliRegionSection? section}) async {
+    if (!_viewModel.profile.value.isLoggedIn &&
+        !_viewModel.client.hasAuthenticatedSession) {
+      _showMessage('分区内容需要登录后才能观看。');
+      return;
+    }
     final nextSection = section ?? _selectedRegion;
     setState(() {
       _selectedRegion = nextSection;
@@ -324,7 +419,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
       setState(() {
         _regionItems = items;
         _regionPage = 1;
-        _hasMoreRegion = items.length >= 20;
+        _hasMoreRegion =
+            nextSection.apiType == BiliRegionApiType.pgc && items.length >= 20;
         _regionLoading = false;
       });
     } catch (error) {
@@ -332,9 +428,14 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         return;
       }
       setState(() {
-        _regionErrorMessage = error.toString();
+        _regionErrorMessage = error is BiliApiException && error.code == -101
+            ? '登录状态已失效，请重新登录后查看分区内容。'
+            : error.toString();
         _regionLoading = false;
       });
+      if (error is BiliApiException && error.code == -101) {
+        _showMessage('登录状态已失效，请重新登录。');
+      }
     }
   }
 
@@ -598,20 +699,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 : _focusedNav;
           });
         },
-        onTap: () {
-          setState(() {
-            _selectedNav = item;
-          });
-          if (item == _TvNavItem.history) {
-            unawaited(_loadHistory());
-          }
-          if (item == _TvNavItem.recommend) {
-            unawaited(_viewModel.loadFeed());
-          }
-          if (item == _TvNavItem.regions && _regionItems.isEmpty) {
-            unawaited(_loadRegion());
-          }
-        },
+        onTap: () => unawaited(_handleNavTap(item)),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
@@ -706,6 +794,40 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         ),
       ],
     );
+  }
+
+  Future<void> _handleNavTap(_TvNavItem item) async {
+    final hasSession =
+        _viewModel.profile.value.isLoggedIn ||
+        _viewModel.client.hasAuthenticatedSession;
+    if (item == _TvNavItem.regions && !hasSession) {
+      final shouldLogin = await _confirmRegionLogin();
+      if (!mounted || shouldLogin != true) {
+        return;
+      }
+      await _openQrLogin();
+      if (!mounted ||
+          (!_viewModel.profile.value.isLoggedIn &&
+              !_viewModel.client.hasAuthenticatedSession)) {
+        return;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _selectedNav = item;
+    });
+    if (item == _TvNavItem.history) {
+      unawaited(_loadHistory());
+    }
+    if (item == _TvNavItem.recommend) {
+      unawaited(_viewModel.loadFeed());
+    }
+    if (item == _TvNavItem.regions && _regionItems.isEmpty) {
+      unawaited(_loadRegion());
+    }
   }
 
   Widget _buildRecommendPage() {
@@ -1174,7 +1296,13 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             subtitle: entry.pageTitle,
             ownerName: entry.ownerName,
             progress: progress,
-            onTap: () => _openPlayback(entry.bvid, cid: entry.cid),
+            onTap: () => _openPlayback(
+              entry.bvid,
+              aid: entry.aid,
+              cid: entry.cid > 0 ? entry.cid : null,
+              episodeId: entry.episodeId > 0 ? entry.episodeId : null,
+              initialPositionMs: entry.lastPositionMs,
+            ),
             autofocus: index == 0,
           );
         },
@@ -1186,124 +1314,156 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     return SignalBuilder(
       builder: (context) {
         final profile = _viewModel.profile.value;
-        return Center(
-          child: Container(
-            width: 560,
-            padding: const EdgeInsets.all(36),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                CircleAvatar(
-                  radius: 42,
-                  backgroundColor: const Color(0x33FFFFFF),
-                  backgroundImage: profile.avatarUrl.isNotEmpty
-                      ? NetworkImage(profile.avatarUrl)
-                      : null,
-                  child: profile.avatarUrl.isEmpty
-                      ? const Icon(
-                          Icons.person_rounded,
-                          color: Color(0x99FFFFFF),
-                          size: 38,
-                        )
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  profile.isLoggedIn ? profile.name : '未登录',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Center(
+            child: Container(
+              width: 560,
+              padding: const EdgeInsets.all(36),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 42,
+                    backgroundColor: const Color(0x33FFFFFF),
+                    backgroundImage: profile.avatarUrl.isNotEmpty
+                        ? NetworkImage(profile.avatarUrl)
+                        : null,
+                    child: profile.avatarUrl.isEmpty
+                        ? const Icon(
+                            Icons.person_rounded,
+                            color: Color(0x99FFFFFF),
+                            size: 38,
+                          )
+                        : null,
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  profile.isLoggedIn ? '账号已登录' : '扫描二维码登录后同步推荐与播放解析',
-                  style: const TextStyle(
-                    color: Color(0x77FFFFFF),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 16),
+                  Text(
+                    profile.isLoggedIn ? profile.name : '未登录',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 28),
-                if (!profile.isLoggedIn)
-                  TvFocusable(
-                    autofocus: true,
-                    onTap: () => unawaited(_openQrLogin()),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 36,
-                        vertical: 14,
+                  const SizedBox(height: 6),
+                  Text(
+                    profile.isLoggedIn ? '账号已登录' : '扫描二维码登录后同步推荐与播放解析',
+                    style: const TextStyle(
+                      color: Color(0x77FFFFFF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  _buildMineLibraryActions(),
+                  const SizedBox(height: 18),
+                  if (!profile.isLoggedIn)
+                    TvFocusable(
+                      autofocus: true,
+                      onTap: () => unawaited(_openQrLogin()),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 36,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFB7299),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Text(
+                          '扫码登录',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFB7299),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Text(
-                        '扫码登录',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                    )
+                  else ...[
+                    TvFocusable(
+                      autofocus: true,
+                      onTap: () async {
+                        await _viewModel.logout();
+                        await _loadHistory();
+                        setState(() {});
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 36,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Text(
+                          '退出登录',
+                          style: TextStyle(
+                            color: Color(0xFFDDDDDD),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
-                  )
-                else ...[
-                  TvFocusable(
-                    autofocus: true,
-                    onTap: () async {
-                      await _viewModel.logout();
-                      setState(() {});
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 36,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Text(
-                        '退出登录',
-                        style: TextStyle(
-                          color: Color(0xFFDDDDDD),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+                    TvFocusable(
+                      onTap: () => unawaited(_viewModel.refreshMine()),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 36,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Text(
+                          '刷新账号状态',
+                          style: TextStyle(
+                            color: Color(0xBBFFFFFF),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TvFocusable(
-                    onTap: () => unawaited(_viewModel.refreshMine()),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 36,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Text(
-                        '刷新账号状态',
-                        style: TextStyle(
-                          color: Color(0xBBFFFFFF),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMineLibraryActions() {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _TvLibraryAction(
+          icon: Icons.history_rounded,
+          label: '历史播放',
+          onTap: () => unawaited(_openLibrary(BiliLibrarySection.history)),
+        ),
+        _TvLibraryAction(
+          icon: Icons.people_alt_outlined,
+          label: '关注列表',
+          onTap: () => unawaited(_openLibrary(BiliLibrarySection.following)),
+        ),
+        _TvLibraryAction(
+          icon: Icons.watch_later_outlined,
+          label: '稍后再看',
+          onTap: () => unawaited(_openLibrary(BiliLibrarySection.watchLater)),
+        ),
+      ],
     );
   }
 
@@ -1522,7 +1682,39 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
       return;
     }
     await _viewModel.applyLoggedInProfile(profile);
+    await _loadHistory();
     setState(() {});
+  }
+
+  Future<bool?> _confirmRegionLogin() {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF202027),
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: const TextStyle(
+          color: Color(0xCCFFFFFF),
+          fontSize: 15,
+          height: 1.45,
+        ),
+        title: const Text('需要登录'),
+        content: const Text('分区内容需要登录后才能观看，请先登录 Bilibili 账号。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('登录'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2030,6 +2222,58 @@ class _TvHistoryCard extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _TvLibraryAction extends StatelessWidget {
+  const _TvLibraryAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      scale: 1.045,
+      focusElevation: 8,
+      focusCornerRadius: 12,
+      baseCornerRadius: 12,
+      showGlow: false,
+      focusArea: TvFocusArea.content,
+      debugLabel: 'mine_library_$label',
+      onTap: onTap,
+      child: SizedBox(
+        width: 164,
+        height: 54,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0x22FFFFFF)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: const Color(0xCCFFFFFF), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xDDFFFFFF),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

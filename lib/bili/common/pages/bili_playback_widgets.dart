@@ -915,34 +915,37 @@ class _CommentReplyPreview extends StatelessWidget {
     final total = comment.replyCount > replies.length
         ? comment.replyCount
         : comment.replies.length;
-    return Material(
-      color: const Color(0xFFF5F6FA),
-      borderRadius: BorderRadius.circular(7),
-      child: InkWell(
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: const Color(0xFFF5F6FA),
         borderRadius: BorderRadius.circular(7),
-        onTap: onOpenReplies,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final reply in replies) ...[
-                _NestedReplyLine(reply: reply, onSeekToTime: onSeekToTime),
-                if (reply != replies.last) const SizedBox(height: 8),
-              ],
-              if (total > replies.length) ...[
-                const SizedBox(height: 9),
-                Text(
-                  '共$total条回复 >',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF178DB8),
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                    fontFeatures: const [ui.FontFeature.tabularFigures()],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(7),
+          onTap: onOpenReplies,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final reply in replies) ...[
+                  _NestedReplyLine(reply: reply, onSeekToTime: onSeekToTime),
+                  if (reply != replies.last) const SizedBox(height: 8),
+                ],
+                if (total > replies.length) ...[
+                  const SizedBox(height: 9),
+                  Text(
+                    '共$total条回复 >',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF178DB8),
+                      fontWeight: FontWeight.w900,
+                      height: 1.2,
+                      fontFeatures: const [ui.FontFeature.tabularFigures()],
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -1167,36 +1170,39 @@ class _CommentReplyDetail extends StatelessWidget {
           showRepliesPreview: false,
         ),
         const SizedBox(height: 18),
-        DecoratedBox(
-          decoration: const BoxDecoration(color: Color(0xFFF5F6FA)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '相关回复共${comment.replyCount > 0 ? comment.replyCount : replies.length}条',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF8C929F),
-                      fontWeight: FontWeight.w900,
-                      fontFeatures: const [ui.FontFeature.tabularFigures()],
+        SizedBox(
+          width: double.infinity,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Color(0xFFF5F6FA)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '相关回复共${comment.replyCount > 0 ? comment.replyCount : replies.length}条',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF8C929F),
+                        fontWeight: FontWeight.w900,
+                        fontFeatures: const [ui.FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
-                ),
-                const Icon(
-                  Icons.sort_rounded,
-                  size: 20,
-                  color: Color(0xFF8C929F),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  '按时间',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF8C929F),
-                    fontWeight: FontWeight.w800,
+                  const Icon(
+                    Icons.sort_rounded,
+                    size: 20,
+                    color: Color(0xFF8C929F),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 5),
+                  Text(
+                    '按时间',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF8C929F),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1704,6 +1710,54 @@ class _ActionStatRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _WatchLaterButton extends StatelessWidget {
+  const _WatchLaterButton({
+    required this.selected,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected
+        ? const Color(0xFFFB7299)
+        : const Color(0xFF343A46);
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: busy ? null : onTap,
+        icon: busy
+            ? SizedBox(
+                width: 17,
+                height: 17,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
+              )
+            : Icon(
+                selected
+                    ? Icons.watch_later_rounded
+                    : Icons.watch_later_outlined,
+              ),
+        label: Text(selected ? '移出稍后再看' : '加入稍后再看'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: foreground,
+          minimumSize: const Size.fromHeight(42),
+          side: BorderSide(
+            color: selected ? const Color(0x66FB7299) : const Color(0x22343A46),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
     );
   }
 }

@@ -7,13 +7,13 @@ import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_text.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_hub_page.dart';
+import 'bili_library_page.dart';
 import 'bili_settings_page.dart';
 
 part 'bili_hub_common.dart';
@@ -259,6 +259,21 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Future<void> _openRegionHub() async {
+    final hasSession =
+        _viewModel.profile.value.isLoggedIn ||
+        _viewModel.client.hasAuthenticatedSession;
+    if (!hasSession) {
+      final shouldLogin = await _confirmRegionLogin();
+      if (!mounted || shouldLogin != true) {
+        return;
+      }
+      await _openQrLogin();
+      if (!mounted ||
+          (!_viewModel.profile.value.isLoggedIn &&
+              !_viewModel.client.hasAuthenticatedSession)) {
+        return;
+      }
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => BiliRegionHubPage(
@@ -266,6 +281,26 @@ class _BiliHubPageState extends State<BiliHubPage> {
           historyStore: _viewModel.historyStore,
           offlineController: _viewModel.offlineController,
         ),
+      ),
+    );
+  }
+
+  Future<bool?> _confirmRegionLogin() {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('需要登录'),
+        content: const Text('分区内容需要登录后才能观看，请先登录 Bilibili 账号。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('登录'),
+          ),
+        ],
       ),
     );
   }
@@ -316,63 +351,18 @@ class _BiliHubPageState extends State<BiliHubPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openHistorySheet() async {
-    final history = _viewModel.history.value;
-    if (history.isEmpty) {
-      _showMessage('还没有播放历史。');
-      return;
-    }
-
-    final entry = await showModalBottomSheet<BiliPlaybackHistoryEntry>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (context) => SafeArea(
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          shrinkWrap: true,
-          itemCount: history.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final entry = history[index];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 64,
-                  height: 42,
-                  child: entry.coverUrl.isEmpty
-                      ? const ColoredBox(color: Color(0xFFE9ECF2))
-                      : Image.network(
-                          entry.coverUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const ColoredBox(color: Color(0xFFE9ECF2)),
-                        ),
-                ),
-              ),
-              title: Text(
-                entry.videoTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                '${entry.pageTitle} · ${_formatPosition(entry.lastPositionMs, entry.durationMs)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onTap: () => Navigator.of(context).pop(entry),
-            );
-          },
+  Future<void> _openLibrary(BiliLibrarySection section) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliLibraryPage(
+          client: _viewModel.client,
+          initialSection: section,
+          historyStore: _viewModel.historyStore,
+          offlineController: _viewModel.offlineController,
+          onLoginTap: _openQrLogin,
         ),
       ),
     );
-
-    if (!mounted || entry == null) {
-      return;
-    }
-    await _openPlayback(entry.bvid, cid: entry.cid);
   }
 
   @override
@@ -393,9 +383,13 @@ class _BiliHubPageState extends State<BiliHubPage> {
               onLogoutTap: _viewModel.logout,
               onSpaceTap: () => _showMessage('空间页暂未接入。'),
               onCacheTap: () => unawaited(_openOfflineCachePage()),
-              onHistoryTap: _openHistorySheet,
-              onFavoritesTap: () => _showMessage('收藏夹暂未接入。'),
-              onWatchLaterTap: () => _showMessage('稍后再看暂未接入。'),
+              onHistoryTap: () async {
+                await _openLibrary(BiliLibrarySection.history);
+              },
+              onFollowingTap: () =>
+                  unawaited(_openLibrary(BiliLibrarySection.following)),
+              onWatchLaterTap: () =>
+                  unawaited(_openLibrary(BiliLibrarySection.watchLater)),
               onSettingsTap: () => unawaited(_openSettings()),
               onRefresh: _viewModel.refreshMine,
             ),

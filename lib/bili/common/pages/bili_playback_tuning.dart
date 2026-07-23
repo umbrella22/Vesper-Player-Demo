@@ -45,6 +45,16 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         _buildPlaybackRateSelector(snapshot),
         const SizedBox(height: 18),
         Text(
+          '字幕',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: const Color(0xFF162033),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildSubtitleSelector(context, snapshot),
+        const SizedBox(height: 18),
+        Text(
           '离线缓存',
           style: theme.textTheme.titleMedium?.copyWith(
             color: const Color(0xFF162033),
@@ -164,5 +174,77 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
           })
           .toList(growable: false),
     );
+  }
+
+  Widget _buildSubtitleSelector(
+    BuildContext context,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    final theme = Theme.of(context);
+    final tracks = _subtitleTracks(snapshot);
+    if (tracks.isEmpty) {
+      final advertised =
+          _resolvedPlayback?.subtitleTracks ?? const <BiliSubtitleTrack>[];
+      final subtitleError =
+          snapshot.subtitleState.catalogError?.message ??
+          _resolvedPlayback?.subtitleError;
+      final isLoading =
+          snapshot.subtitleState.catalogState ==
+          VesperSubtitleCatalogState.loading;
+      return Text(
+        subtitleError ??
+            (advertised.isEmpty && !isLoading
+                ? '当前视频没有可用字幕。'
+                : '字幕正在准备，请稍后重试。'),
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: const Color(0xFF8B9098),
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+
+    final selection = _subtitleSelection(snapshot);
+    final selectedTrackId = selection.mode == VesperTrackSelectionMode.track
+        ? selection.trackId
+        : null;
+    final enabled = snapshot.capabilities.supportsSubtitleTrackSelection;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _TuningOptionButton(
+          label: '关闭',
+          selected: selection.mode == VesperTrackSelectionMode.disabled,
+          enabled: enabled,
+          onTap: () =>
+              unawaited(_selectSubtitle(const VesperTrackSelection.disabled())),
+        ),
+        _TuningOptionButton(
+          label: '自动',
+          selected: selection.mode == VesperTrackSelectionMode.auto,
+          enabled: enabled,
+          onTap: () =>
+              unawaited(_selectSubtitle(const VesperTrackSelection.auto())),
+        ),
+        for (final track in tracks)
+          _TuningOptionButton(
+            label: _subtitleTrackLabel(track),
+            selected: track.id == selectedTrackId,
+            enabled: enabled,
+            onTap: () => unawaited(
+              _selectSubtitle(VesperTrackSelection.track(track.id)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _subtitleTrackLabel(VesperMediaTrack track) {
+    final label = track.label?.trim();
+    if (label != null && label.isNotEmpty) {
+      return label;
+    }
+    final language = track.language?.trim();
+    return language == null || language.isEmpty ? '字幕' : language;
   }
 }

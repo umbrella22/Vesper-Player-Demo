@@ -13,6 +13,7 @@ import 'bili_transport.dart';
 import 'bili_wbi.dart';
 
 part 'bili_client_download.dart';
+part 'bili_client_library.dart';
 part 'bili_client_playback.dart';
 part 'bili_client_region.dart';
 part 'bili_client_search.dart';
@@ -31,6 +32,11 @@ class BiliClient {
 
   final BiliTransport _transport;
   final BiliDashManifestBuilder _manifestBuilder;
+  // Subtitle materialization is shared by all DASH request variants for the
+  // same page. Keep the in-flight/completed Future so concurrent resolution
+  // cannot issue duplicate player-v2 and subtitle-body requests.
+  final Map<String, Future<List<BiliSubtitleTrack>>> _subtitleRequests =
+      <String, Future<List<BiliSubtitleTrack>>>{};
   int? _currentUserMid;
 
   BiliTransport get transport => _transport;
@@ -40,11 +46,13 @@ class BiliClient {
   void restoreCookies(Map<String, String> cookies) {
     _transport.restoreCookies(cookies);
     _currentUserMid = readInt(cookies['DedeUserID']);
+    _subtitleRequests.clear();
   }
 
   void clearSession() {
     _transport.clearSession();
     _currentUserMid = null;
+    _subtitleRequests.clear();
   }
 
   bool get hasAuthenticatedSession => _transport.hasAuthenticatedSession;
@@ -101,6 +109,10 @@ class BiliClient {
     return BiliClientRegion(this).fetchPgcSeasonFirstEpisodeDetail(seasonId);
   }
 
+  Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) {
+    return BiliClientRegion(this).fetchPgcEpisodeDetail(episodeId);
+  }
+
   Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
     final data = await _transport.getData(
       host: 'api.bilibili.com',
@@ -108,6 +120,28 @@ class BiliClient {
       params: <String, Object?>{'bvid': bvid},
     );
 
+    return _parseVideoDetail(data, fallbackBvid: bvid);
+  }
+
+  /// Resolves a history/watch-later row that only carries an avid/oid.
+  /// Older Bilibili clients did not always include a BV id in those payloads.
+  Future<BiliVideoDetail> fetchVideoDetailByAid(int aid) async {
+    if (aid <= 0) {
+      throw const BiliApiException('缺少有效的视频 AV 号。');
+    }
+    final data = await _transport.getData(
+      host: 'api.bilibili.com',
+      path: '/x/web-interface/view',
+      params: <String, Object?>{'aid': aid},
+    );
+
+    return _parseVideoDetail(data, fallbackBvid: 'av$aid');
+  }
+
+  BiliVideoDetail _parseVideoDetail(
+    Map<String, Object?> data, {
+    required String fallbackBvid,
+  }) {
     final pages = readObjectList(data['pages'])
         .whereType<Map<Object?, Object?>>()
         .map(readObjectMap)
@@ -118,7 +152,7 @@ class BiliClient {
             title: biliStripHtmlTags(readString(value['part']) ?? 'P'),
             durationSeconds: readInt(value['duration']) ?? 0,
             aid: readInt(data['aid']),
-            bvid: readString(data['bvid']) ?? bvid,
+            bvid: readString(data['bvid']) ?? fallbackBvid,
             coverUrl: biliNormalizeImageUrl(readString(data['pic']) ?? ''),
           ),
         )
@@ -129,8 +163,8 @@ class BiliClient {
 
     return BiliVideoDetail(
       aid: readInt(data['aid']) ?? 0,
-      bvid: readString(data['bvid']) ?? bvid,
-      title: biliStripHtmlTags(readString(data['title']) ?? bvid),
+      bvid: readString(data['bvid']) ?? fallbackBvid,
+      title: biliStripHtmlTags(readString(data['title']) ?? fallbackBvid),
       ownerMid: readInt(owner['mid']) ?? 0,
       ownerName: readString(owner['name']) ?? 'UP',
       ownerAvatarUrl: biliNormalizeImageUrl(readString(owner['face']) ?? ''),

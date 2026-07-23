@@ -76,9 +76,11 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     final errorMessage = _viewModel.errorMessage.value;
     final storageUsage = _viewModel.storageUsage.value;
     final storageErrorMessage = _viewModel.storageErrorMessage.value;
+    final invalidEntries = _viewModel.invalidEntries.value;
     if (errorMessage == null &&
         storageUsage == null &&
-        storageErrorMessage == null) {
+        storageErrorMessage == null &&
+        invalidEntries.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -86,6 +88,13 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
       child: Column(
         children: [
+          if (invalidEntries.isNotEmpty) ...[
+            OfflineInvalidCacheSummary(
+              count: invalidEntries.length,
+              onCleanup: _confirmCleanupInvalidEntries,
+            ),
+            const SizedBox(height: 10),
+          ],
           if (errorMessage != null) ...[
             OfflineInlineError(
               message: errorMessage,
@@ -152,6 +161,10 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
   }
 
   Future<void> _openEntry(BiliOfflineDownloadEntry entry) async {
+    if (entry.isUnplayable) {
+      await _confirmDeleteInvalidEntry(entry);
+      return;
+    }
     try {
       final result = await _viewModel.openEntry(entry);
       if (!mounted || result == null) {
@@ -173,6 +186,10 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
           ),
         ),
       );
+    } on BiliInvalidOfflineCacheException catch (error) {
+      if (mounted) {
+        await _confirmDeleteInvalidEntry(entry, reason: error.message);
+      }
     } catch (error) {
       if (mounted) {
         _showMessage('打开视频失败：$error');
@@ -199,7 +216,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
   }
 
   Future<void> _showEntryActions(BiliOfflineDownloadEntry entry) async {
-    final canExport = entry.isCompleted;
+    final canExport = entry.isCompleted && !entry.isUnplayable;
     final action = await showModalBottomSheet<_OfflineEntryAction>(
       context: context,
       showDragHandle: true,
@@ -246,6 +263,67 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
         await _deleteEntry(entry);
       case _OfflineEntryAction.export:
         await _exportEntry(entry);
+    }
+  }
+
+  Future<void> _confirmDeleteInvalidEntry(
+    BiliOfflineDownloadEntry entry, {
+    String? reason,
+  }) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('缓存无法播放'),
+          content: Text('${reason ?? entry.unplayableReason}\n\n是否清理这条失效缓存？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('保留'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('清理'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldDelete == true && mounted) {
+      await _deleteEntry(entry);
+    }
+  }
+
+  Future<void> _confirmCleanupInvalidEntries() async {
+    final count = _viewModel.invalidEntries.value.length;
+    if (count == 0) {
+      return;
+    }
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('清理失效缓存？'),
+          content: Text('发现 $count 条缓存的视频信息已丢失，这些缓存无法播放。清理后不可恢复。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('清理失效缓存'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldDelete != true || !mounted) {
+      return;
+    }
+    final result = await _viewModel.cleanupInvalidEntries();
+    if (mounted) {
+      _showMessage(result.message);
     }
   }
 

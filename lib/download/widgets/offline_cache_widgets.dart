@@ -196,6 +196,65 @@ class OfflineStorageStat extends StatelessWidget {
   }
 }
 
+class OfflineInvalidCacheSummary extends StatelessWidget {
+  const OfflineInvalidCacheSummary({
+    super.key,
+    required this.count,
+    required this.onCleanup,
+  });
+
+  final int count;
+  final VoidCallback onCleanup;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFD2DB)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 11, 8, 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.warning_amber_rounded,
+                size: 20,
+                color: Color(0xFFE84A67),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '发现 $count 条失效缓存：视频信息已丢失，无法播放。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF9B2F4D),
+                  fontWeight: FontWeight.w800,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            TextButton(
+              key: const ValueKey<String>('offline-clean-invalid-cache'),
+              onPressed: onCleanup,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFE84A67),
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('清理'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class OfflineEntryGroup extends StatelessWidget {
   const OfflineEntryGroup({
     super.key,
@@ -284,7 +343,7 @@ class OfflineCacheTile extends StatelessWidget {
     final metadata = entry.metadata;
     final progress = entry.isCompleted
         ? 1.0
-        : entry.progressRatio?.clamp(0.0, 1.0);
+        : entry.progressRatio?.clamp(0.0, 1.0) ?? 0.0;
     final totalBytes = entry.totalBytes;
     final byteText = totalBytes == null || totalBytes <= 0
         ? biliFormatDownloadBytes(entry.receivedBytes)
@@ -358,12 +417,13 @@ class OfflineCacheTile extends StatelessWidget {
                               ),
                         ),
                       ),
-                      if (entry.task case final task?)
-                        OfflineTaskAction(
-                          task: task,
-                          pending: taskActionPending,
-                          onTap: onToggleTask,
-                        ),
+                      if (!entry.isUnplayable)
+                        if (entry.task case final task?)
+                          OfflineTaskAction(
+                            task: task,
+                            pending: taskActionPending,
+                            onTap: onToggleTask,
+                          ),
                       OfflineEntryMoreButton(
                         enabled: !isBusy,
                         onTap: onMoreTap,

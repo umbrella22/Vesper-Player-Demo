@@ -119,10 +119,26 @@ extension BiliClientRegion on BiliClient {
   }
 
   Future<BiliVideoDetail> fetchPgcSeasonFirstEpisodeDetail(int seasonId) async {
+    if (seasonId <= 0) {
+      throw const BiliApiException('缺少有效的番剧 season ID。');
+    }
+    return _fetchPgcSeasonDetail(<String, Object?>{'season_id': seasonId});
+  }
+
+  Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) async {
+    if (episodeId <= 0) {
+      throw const BiliApiException('缺少有效的番剧 episode ID。');
+    }
+    return _fetchPgcSeasonDetail(<String, Object?>{'ep_id': episodeId});
+  }
+
+  Future<BiliVideoDetail> _fetchPgcSeasonDetail(
+    Map<String, Object?> params,
+  ) async {
     final data = await _transport.getData(
       host: 'api.bilibili.com',
       path: '/pgc/view/web/season',
-      params: <String, Object?>{'season_id': seasonId},
+      params: params,
       referer: 'https://www.bilibili.com/',
     );
 
@@ -147,6 +163,10 @@ extension BiliClientRegion on BiliClient {
               readString(value['show_title']) ??
               readString(value['title']) ??
               '第 ${index + 1} 话';
+          final rawEpisodeId =
+              readInt(value['id']) ??
+              readInt(value['ep_id']) ??
+              readInt(value['epid']);
           return BiliVideoPageEntry(
             cid: cid,
             pageNumber: index + 1,
@@ -155,6 +175,9 @@ extension BiliClientRegion on BiliClient {
             aid: readInt(value['aid']),
             bvid: readString(value['bvid']),
             coverUrl: biliNormalizeImageUrl(readString(value['cover']) ?? ''),
+            episodeId: rawEpisodeId != null && rawEpisodeId > 0
+                ? rawEpisodeId
+                : null,
           );
         })
         .whereType<BiliVideoPageEntry>()

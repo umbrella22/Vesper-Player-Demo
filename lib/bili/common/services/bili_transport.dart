@@ -84,6 +84,31 @@ class BiliTransport {
     bool ensureReady = true,
     Set<int> allowedCodes = const <int>{0},
   }) async {
+    return readObjectMap(
+      await getApiData(
+        host: host,
+        path: path,
+        params: params,
+        useWbi: useWbi,
+        referer: referer,
+        ensureReady: ensureReady,
+        allowedCodes: allowedCodes,
+      ),
+    );
+  }
+
+  /// Returns the decoded Bilibili `data`/`result` value without forcing it
+  /// into a map. A few legacy endpoints (including `/x/v2/history`) return a
+  /// top-level array, which callers must be able to parse without losing rows.
+  Future<Object?> getApiData({
+    required String host,
+    required String path,
+    Map<String, Object?> params = const <String, Object?>{},
+    bool useWbi = false,
+    String referer = 'https://www.bilibili.com/',
+    bool ensureReady = true,
+    Set<int> allowedCodes = const <int>{0},
+  }) async {
     if (ensureReady) {
       await this.ensureReady();
     }
@@ -95,7 +120,7 @@ class BiliTransport {
         referer: referer,
       );
       try {
-        return decodeDataResponse(response.body, allowedCodes: allowedCodes);
+        return decodeApiData(response.body, allowedCodes: allowedCodes);
       } on BiliApiException catch (error) {
         if (error.code != biliRiskControlCode ||
             allowedCodes.contains(biliRiskControlCode) ||
@@ -219,6 +244,7 @@ class BiliTransport {
     String method = 'GET',
     String? requestBody,
     String acceptHeader = 'application/json, */*',
+    bool includeCookies = true,
   }) async {
     return _sendRequest(
       uri,
@@ -226,6 +252,7 @@ class BiliTransport {
       method: method,
       requestBody: requestBody,
       acceptHeader: acceptHeader,
+      includeCookies: includeCookies,
     ).timeout(
       _requestTimeout,
       onTimeout: () => throw BiliApiException(
@@ -240,6 +267,7 @@ class BiliTransport {
     required String method,
     required String? requestBody,
     required String acceptHeader,
+    required bool includeCookies,
   }) async {
     final request = method == 'POST'
         ? await _httpClient.postUrl(uri)
@@ -262,7 +290,10 @@ class BiliTransport {
       request.add(payload);
     }
 
-    if (_cookies.isNotEmpty) {
+    // A subtitle/media URL can be hosted on a CDN outside Bilibili's
+    // authenticated API domains. Callers must opt out when crossing that
+    // boundary so session cookies never leak to an arbitrary HTTPS host.
+    if (includeCookies && _cookies.isNotEmpty) {
       request.headers.set(
         HttpHeaders.cookieHeader,
         buildCookieHeader(_cookies),

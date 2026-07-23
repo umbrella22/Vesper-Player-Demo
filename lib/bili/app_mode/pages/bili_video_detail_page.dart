@@ -47,7 +47,13 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
 
   BiliPlaybackHistoryEntry? _matchHistory(BiliVideoPageEntry page) {
     for (final entry in _history) {
-      if (entry.bvid == widget.bvid && entry.cid == page.cid) {
+      final episodeId = page.episodeId;
+      if (episodeId != null && episodeId > 0 && entry.episodeId == episodeId) {
+        return entry;
+      }
+      if ((episodeId == null || episodeId <= 0) &&
+          entry.bvid == widget.bvid &&
+          entry.cid == page.cid) {
         return entry;
       }
     }

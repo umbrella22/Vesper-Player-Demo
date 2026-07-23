@@ -5,8 +5,10 @@ import 'package:bilibili_player/app/app.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
+import 'package:bilibili_player/bili/app_mode/pages/bili_region_hub_page.dart';
 import 'package:bilibili_player/bili/app_mode/pages/bili_region_video_page.dart';
 import 'package:bilibili_player/bili/app_mode/pages/bili_settings_page.dart';
+import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
@@ -55,6 +57,21 @@ final class _FakeOfflineController extends BiliOfflineDownloadController {
   @override
   Future<BiliOfflineStorageUsage> resolveStorageUsage() async {
     return storageUsage;
+  }
+
+  @override
+  Future<String?> resolvePlayableCachePath(
+    BiliOfflineDownloadEntry entry,
+  ) async {
+    for (final path in <String?>[
+      entry.metadata.outputPath,
+      entry.task?.assetIndex.completedPath,
+    ]) {
+      if (path != null && path.isNotEmpty && await File(path).exists()) {
+        return path;
+      }
+    }
+    return null;
   }
 
   @override
@@ -225,6 +242,9 @@ final class _FakeRegionClient extends BiliClient {
   Object? firstPageError;
 
   @override
+  bool get hasAuthenticatedSession => true;
+
+  @override
   Future<List<BiliRegionVideo>> fetchRegionVideos(
     BiliRegionSection section, {
     int page = 1,
@@ -235,6 +255,22 @@ final class _FakeRegionClient extends BiliClient {
       throw firstPageError;
     }
     return pageItems[page] ?? const <BiliRegionVideo>[];
+  }
+}
+
+final class _UnauthenticatedRegionClient extends BiliClient {
+  bool fetchCalled = false;
+
+  @override
+  bool get hasAuthenticatedSession => false;
+
+  @override
+  Future<List<BiliRegionVideo>> fetchRegionVideos(
+    BiliRegionSection section, {
+    int page = 1,
+  }) async {
+    fetchCalled = true;
+    return const <BiliRegionVideo>[];
   }
 }
 
@@ -471,7 +507,7 @@ BiliResolvedPlayback _resolvedPlaybackFor(
   );
 }
 
-const _playbackSnapshot = VesperPlayerSnapshot(
+final _playbackSnapshot = VesperPlayerSnapshot(
   title: '播放页测试视频',
   subtitle: 'P1 · 正片',
   sourceLabel: 'test',
@@ -514,7 +550,7 @@ const _playbackSnapshot = VesperPlayerSnapshot(
   effectiveVideoTrackId: 'video-80-7-1000-0',
 );
 
-const _playingPlaybackSnapshot = VesperPlayerSnapshot(
+final _playingPlaybackSnapshot = VesperPlayerSnapshot(
   title: '播放页测试视频',
   subtitle: 'P1 · 正片',
   sourceLabel: 'test',
@@ -803,11 +839,14 @@ final class _FakePlaybackClient extends BiliClient {
 }
 
 final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
-  _FakePlaybackVesperPlatform({this.initialSnapshot = _playbackSnapshot});
+  _FakePlaybackVesperPlatform({VesperPlayerSnapshot? initialSnapshot})
+    : initialSnapshot = initialSnapshot ?? _playbackSnapshot;
 
   final VesperPlayerSnapshot initialSnapshot;
   final selectedSources = <VesperPlayerSource>[];
   final seekRatios = <double>[];
+  final seekDeltas = <int>[];
+  final subtitleSelections = <VesperTrackSelection>[];
   VesperSourceNormalizerConfiguration? lastSourceNormalizerConfiguration;
   VesperFrameProcessorConfiguration? lastFrameProcessorConfiguration;
   VesperNativeFramePipelineConfiguration? lastNativeFramePipelineConfiguration;
@@ -880,7 +919,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   Future<void> stop(String playerId) async {}
 
   @override
-  Future<void> seekBy(String playerId, int deltaMs) async {}
+  Future<void> seekBy(String playerId, int deltaMs) async {
+    seekDeltas.add(deltaMs);
+  }
 
   @override
   Future<void> seekToRatio(String playerId, double ratio) async {
@@ -909,7 +950,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   Future<void> setSubtitleTrackSelection(
     String playerId,
     VesperTrackSelection selection,
-  ) async {}
+  ) async {
+    subtitleSelections.add(selection);
+  }
 
   @override
   Future<void> setAbrPolicy(String playerId, VesperAbrPolicy policy) async {}
@@ -971,6 +1014,7 @@ final class _FakeTvHomeClient extends BiliClient {
   final List<BiliFeedVideo> feedItems;
   final List<BiliRegionSection> requestedSections = <BiliRegionSection>[];
   Completer<List<BiliSearchResult>>? searchCompleter;
+  bool loggedIn = false;
 
   @override
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
@@ -979,7 +1023,12 @@ final class _FakeTvHomeClient extends BiliClient {
 
   @override
   Future<BiliUserProfile> fetchCurrentUserProfile() async {
-    return const BiliUserProfile(isLoggedIn: false, name: '未登录', avatarUrl: '');
+    return BiliUserProfile(
+      isLoggedIn: loggedIn,
+      name: loggedIn ? '测试用户' : '未登录',
+      avatarUrl: '',
+      mid: loggedIn ? 42 : null,
+    );
   }
 
   @override
@@ -1158,12 +1207,13 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
       BiliPlaybackPresentationMode.phone,
   List<String> sourceNormalizerPluginPaths = const <String>[],
   Size surfaceSize = const Size(1200, 900),
-  VesperPlayerSnapshot initialSnapshot = _playbackSnapshot,
+  VesperPlayerSnapshot? initialSnapshot,
+  int initialPositionMs = 0,
   void Function(_FakePlaybackClient client)? configureClient,
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
   final platform = _FakePlaybackVesperPlatform(
-    initialSnapshot: initialSnapshot,
+    initialSnapshot: initialSnapshot ?? _playbackSnapshot,
   );
   VesperPlayerPlatform.instance = platform;
   addTearDown(() {
@@ -1216,6 +1266,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
         client: client,
         historyStore: BiliHistoryStore(baseDirectory: historyRoot),
         initialResolvedPlayback: _resolvedPlaybackFor(playbackDetail, page),
+        initialPositionMs: initialPositionMs,
         presentationMode: presentationMode,
       ),
     ),
@@ -1233,6 +1284,7 @@ Future<_TvHomeHarness> _pumpTvHomePage(
   double viewInsetsBottom = 0,
   List<BiliFeedVideo>? initialFeedItems,
   bool skipBootstrap = false,
+  bool loggedIn = false,
 }) async {
   final root = Directory(
     '${Directory.systemTemp.path}/bili-tv-home-widget-test-${DateTime.now().microsecondsSinceEpoch}',
@@ -1251,6 +1303,7 @@ Future<_TvHomeHarness> _pumpTvHomePage(
     offlineController: _FakeOfflineController(<BiliOfflineDownloadEntry>[]),
     appSettings: settings,
   );
+  harness.client.loggedIn = loggedIn;
 
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1729,8 +1782,9 @@ void main() {
     final harness = await _pumpTvHomePage(
       tester,
       initialFeedItems: _tvFeedItems(),
-      skipBootstrap: true,
+      loggedIn: true,
     );
+    await _pumpUntil(tester, () => find.text('测试用户').evaluate().isNotEmpty);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
@@ -1754,6 +1808,27 @@ void main() {
 
     expect(harness.client.requestedSections.last.id, 'guochuang');
     expect(find.text('国创内容 0'), findsOneWidget);
+  });
+
+  testWidgets('tv home regions prompt for login before loading', (
+    WidgetTester tester,
+  ) async {
+    final harness = await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(find.text('需要登录'), findsOneWidget);
+    expect(harness.client.requestedSections, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('需要登录'), findsNothing);
   });
 
   testWidgets(
@@ -1846,6 +1921,17 @@ void main() {
       expect(find.text('花絮'), findsOneWidget);
       expect(find.text('P3'), findsOneWidget);
       expect(find.text('访谈'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback resumes an unfinished history position before autoplay',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester, initialPositionMs: 45000);
+
+      expect(harness.platform.seekDeltas, <int>[45000]);
+      expect(harness.platform.playCalls, 1);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -1961,6 +2047,20 @@ void main() {
   );
 
   testWidgets(
+    'playback watch later prompts for login before mutating',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester);
+
+      expect(find.text('加入稍后再看'), findsOneWidget);
+      await tester.tap(find.text('加入稍后再看'));
+      await tester.pump();
+
+      expect(find.text('请先登录 Bilibili 后使用稍后再看。'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback comments render nested replies and seek time links',
     (WidgetTester tester) async {
       final harness = await _pumpPlaybackPage(tester);
@@ -1973,6 +2073,28 @@ void main() {
       expect(find.textContaining('不像韩女', findRichText: true), findsOneWidget);
       expect(find.textContaining('立在哪里无寒冬'), findsOneWidget);
       expect(find.text('共3条回复 >'), findsOneWidget);
+
+      final replyPreview = find.ancestor(
+        of: find.text('共3条回复 >'),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Material && widget.color == const Color(0xFFF5F6FA),
+        ),
+      );
+      final commentRow = find.ancestor(
+        of: find.text('共3条回复 >'),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Row &&
+              widget.crossAxisAlignment == CrossAxisAlignment.start,
+        ),
+      );
+      expect(replyPreview, findsOneWidget);
+      expect(commentRow, findsOneWidget);
+      expect(
+        tester.getSize(replyPreview).width,
+        closeTo(tester.getSize(commentRow).width - 50, 0.1),
+      );
 
       await tester.tap(find.text('共3条回复 >'));
       await tester.pumpAndSettle();
@@ -2171,6 +2293,50 @@ void main() {
       expect(find.text('离线缓存'), findsOneWidget);
       expect(find.text('系统播放'), findsNothing);
       expect(find.text('锁屏控制'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback settings select an SDK external subtitle track',
+    (WidgetTester tester) async {
+      final subtitleSnapshot = _playbackSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsTrackCatalog: true,
+          supportsTrackSelection: true,
+          supportsSubtitleTrackSelection: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[
+            VesperMediaTrack(
+              id: 'subtitle:bili:3',
+              kind: VesperMediaTrackKind.subtitle,
+              label: '中文（中国大陆）',
+              language: 'zh-CN',
+              isDefault: true,
+            ),
+          ],
+        ),
+      );
+      final harness = await _pumpPlaybackPage(
+        tester,
+        initialSnapshot: subtitleSnapshot,
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('中文（中国大陆）'));
+      await tester.pump();
+
+      expect(harness.platform.subtitleSelections, hasLength(1));
+      expect(
+        harness.platform.subtitleSelections.single.mode,
+        VesperTrackSelectionMode.track,
+      );
+      expect(
+        harness.platform.subtitleSelections.single.trackId,
+        'subtitle:bili:3',
+      );
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -3236,13 +3402,20 @@ void main() {
     WidgetTester tester,
   ) async {
     final client = _FakeRegionClient()..firstPageError = '首屏失败';
+    const pagedSection = BiliRegionSection(
+      id: 'bangumi',
+      name: '番剧',
+      icon: 'P',
+      apiType: BiliRegionApiType.pgc,
+      seasonType: 1,
+    );
 
     await tester.binding.setSurfaceSize(const Size(420, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         home: BiliRegionVideoPage(
-          section: _testRegionSection,
+          section: pagedSection,
           client: client,
           historyStore: const BiliHistoryStore(),
           offlineController: _FakeOfflineController(
@@ -3271,6 +3444,66 @@ void main() {
 
     expect(client.requestedPages, contains(2));
     expect(find.text('分区视频 2-2'), findsOneWidget);
+  });
+
+  testWidgets('region video page blocks unauthenticated direct access', (
+    WidgetTester tester,
+  ) async {
+    final client = _UnauthenticatedRegionClient();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiliRegionVideoPage(
+          section: _testRegionSection,
+          client: client,
+          historyStore: const BiliHistoryStore(),
+        ),
+      ),
+    );
+    await _flushRealAsync(tester);
+    await tester.pump();
+
+    expect(find.text('需要登录后查看分区内容'), findsOneWidget);
+    expect(find.text('重新检查登录状态'), findsOneWidget);
+    expect(client.fetchCalled, isFalse);
+  });
+
+  testWidgets('region video page turns an expired session into login state', (
+    WidgetTester tester,
+  ) async {
+    final client = _FakeRegionClient()
+      ..firstPageError = const BiliApiException('账号未登录', code: -101);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiliRegionVideoPage(
+          section: _testRegionSection,
+          client: client,
+          historyStore: const BiliHistoryStore(),
+        ),
+      ),
+    );
+    await _flushRealAsync(tester);
+    await tester.pump();
+
+    expect(find.text('需要登录后查看分区内容'), findsOneWidget);
+    expect(find.textContaining('账号未登录'), findsNothing);
+    expect(client.requestedPages, <int>[1]);
+  });
+
+  testWidgets('region hub hides category grid for unauthenticated access', (
+    WidgetTester tester,
+  ) async {
+    final client = _UnauthenticatedRegionClient();
+
+    await tester.pumpWidget(
+      MaterialApp(home: BiliRegionHubPage(client: client)),
+    );
+    await tester.pump();
+
+    expect(find.text('需要登录后查看分区内容'), findsOneWidget);
+    expect(find.text(_testRegionSection.name), findsNothing);
+    expect(client.fetchCalled, isFalse);
   });
 
   testWidgets('cache download panel enqueues selected page', (

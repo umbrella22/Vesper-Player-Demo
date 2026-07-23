@@ -11,7 +11,7 @@ class _MineTab extends StatelessWidget {
     required this.onSpaceTap,
     required this.onCacheTap,
     required this.onHistoryTap,
-    required this.onFavoritesTap,
+    required this.onFollowingTap,
     required this.onWatchLaterTap,
     required this.onSettingsTap,
     required this.onRefresh,
@@ -26,7 +26,7 @@ class _MineTab extends StatelessWidget {
   final VoidCallback onSpaceTap;
   final VoidCallback onCacheTap;
   final Future<void> Function() onHistoryTap;
-  final VoidCallback onFavoritesTap;
+  final VoidCallback onFollowingTap;
   final VoidCallback onWatchLaterTap;
   final VoidCallback onSettingsTap;
   final Future<void> Function() onRefresh;
@@ -82,9 +82,9 @@ class _MineTab extends StatelessWidget {
                       ),
                       Expanded(
                         child: _MineShortcut(
-                          icon: Icons.star_border_rounded,
-                          label: '我的收藏',
-                          onTap: onFavoritesTap,
+                          icon: Icons.people_alt_outlined,
+                          label: '关注列表',
+                          onTap: onFollowingTap,
                         ),
                       ),
                       Expanded(

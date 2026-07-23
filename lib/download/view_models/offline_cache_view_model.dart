@@ -26,6 +26,15 @@ final class OfflineCacheOpenResult {
   final String? message;
 }
 
+final class BiliInvalidOfflineCacheException implements Exception {
+  const BiliInvalidOfflineCacheException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 final class OfflineCacheDeleteResult {
   const OfflineCacheDeleteResult({
     required this.deleted,
@@ -34,6 +43,29 @@ final class OfflineCacheDeleteResult {
 
   final bool deleted;
   final String message;
+}
+
+final class OfflineCacheCleanupResult {
+  const OfflineCacheCleanupResult({
+    required this.deletedCount,
+    required this.failedCount,
+  });
+
+  final int deletedCount;
+  final int failedCount;
+
+  String get message {
+    if (deletedCount == 0 && failedCount == 0) {
+      return '没有需要清理的失效缓存';
+    }
+    if (failedCount == 0) {
+      return '已清理 $deletedCount 条失效缓存';
+    }
+    if (deletedCount == 0) {
+      return '$failedCount 条失效缓存清理失败';
+    }
+    return '已清理 $deletedCount 条失效缓存，$failedCount 条清理失败';
+  }
 }
 
 final class OfflineCacheExportResult {
@@ -79,6 +111,11 @@ final class OfflineCacheViewModel {
           .where((entry) => !entry.isActive)
           .toList(growable: false),
     );
+    invalidEntries = computed(
+      () => _entries.value
+          .where((entry) => entry.isUnplayable)
+          .toList(growable: false),
+    );
   }
 
   final BiliOfflineDownloadController controller;
@@ -103,6 +140,7 @@ final class OfflineCacheViewModel {
   late final ReadonlySignal<List<BiliOfflineDownloadEntry>> entries;
   late final FlutterComputed<List<BiliOfflineDownloadEntry>> activeEntries;
   late final FlutterComputed<List<BiliOfflineDownloadEntry>> completedEntries;
+  late final FlutterComputed<List<BiliOfflineDownloadEntry>> invalidEntries;
   late final ReadonlySignal<String?> errorMessage;
   late final ReadonlySignal<String?> storageErrorMessage;
   late final ReadonlySignal<BiliOfflineStorageUsage?> storageUsage;
@@ -123,6 +161,7 @@ final class OfflineCacheViewModel {
     _errorMessage.value = null;
     try {
       await controller.initialize();
+      await controller.refreshCacheInventory();
       _syncEntries();
       await loadStorageUsage();
     } catch (error) {
@@ -147,6 +186,9 @@ final class OfflineCacheViewModel {
   Future<OfflineCacheOpenResult?> openEntry(
     BiliOfflineDownloadEntry entry,
   ) async {
+    if (entry.isUnplayable) {
+      throw BiliInvalidOfflineCacheException(entry.unplayableReason);
+    }
     final assetId = entry.metadata.assetId;
     if (_openingAssetIds.value.contains(assetId)) {
       return null;
@@ -158,15 +200,23 @@ final class OfflineCacheViewModel {
       if (detail.pages.isEmpty) {
         throw const BiliOfflineDownloadException('这个视频没有可播放分 P。');
       }
-      final page = detail.pages.firstWhere(
-        (page) => page.cid == metadata.cid,
-        orElse: () => detail.pages.first,
-      );
+      BiliVideoPageEntry? page;
+      for (final candidate in detail.pages) {
+        if (candidate.cid == metadata.cid) {
+          page = candidate;
+          break;
+        }
+      }
+      if (page == null) {
+        throw const BiliInvalidOfflineCacheException(
+          '缓存视频元数据与当前分 P 不匹配，无法确认缓存内容，无法播放。',
+        );
+      }
 
       BiliResolvedPlayback? initialResolvedPlayback;
       String? message;
       if (entry.isCompleted) {
-        final cachePath = await _resolvePlayableCachePath(entry);
+        final cachePath = await controller.resolvePlayableCachePath(entry);
         if (cachePath != null) {
           initialResolvedPlayback = _resolvedOfflinePlayback(
             detail: detail,
@@ -175,7 +225,7 @@ final class OfflineCacheViewModel {
             outputPath: cachePath,
           );
         } else {
-          message = '缓存文件不存在，将在线播放。';
+          throw const BiliInvalidOfflineCacheException('缓存文件已丢失或不完整，无法播放。');
         }
       } else {
         unawaited(_continueCaching(entry: entry, detail: detail, page: page));
@@ -214,12 +264,36 @@ final class OfflineCacheViewModel {
     }
   }
 
+  Future<OfflineCacheCleanupResult> cleanupInvalidEntries() async {
+    final invalid = invalidEntries.value.toList(growable: false);
+    var deletedCount = 0;
+    var failedCount = 0;
+    for (final entry in invalid) {
+      final result = await deleteEntry(entry);
+      if (result.deleted) {
+        deletedCount += 1;
+      } else {
+        failedCount += 1;
+      }
+    }
+    return OfflineCacheCleanupResult(
+      deletedCount: deletedCount,
+      failedCount: failedCount,
+    );
+  }
+
   Future<OfflineCacheExportResult> exportEntry(
     BiliOfflineDownloadEntry entry,
   ) async {
     final assetId = entry.metadata.assetId;
     if (_exportingAssetIds.value.contains(assetId)) {
       return const OfflineCacheExportResult(exported: false, message: '');
+    }
+    if (entry.isUnplayable) {
+      return OfflineCacheExportResult(
+        exported: false,
+        message: entry.unplayableReason,
+      );
     }
     if (!entry.isCompleted) {
       return const OfflineCacheExportResult(
@@ -230,7 +304,7 @@ final class OfflineCacheViewModel {
 
     _exportingAssetIds.value = <String>{..._exportingAssetIds.value, assetId};
     try {
-      final cachePath = await _resolvePlayableCachePath(entry);
+      final cachePath = await controller.resolvePlayableCachePath(entry);
       if (cachePath == null || !cachePath.toLowerCase().endsWith('.mp4')) {
         return const OfflineCacheExportResult(
           exported: false,
@@ -303,44 +377,6 @@ final class OfflineCacheViewModel {
       qualityId: qualityId,
       codecPreference: _codecPreferenceFromAssetId(entry.metadata.assetId),
     );
-  }
-
-  Future<String?> _resolvePlayableCachePath(
-    BiliOfflineDownloadEntry entry,
-  ) async {
-    final candidates = <String>{
-      ?entry.metadata.outputPath,
-      ?entry.task?.assetIndex.completedPath,
-    };
-    for (final path in candidates) {
-      if (path.isEmpty) {
-        continue;
-      }
-      final file = File(path);
-      if (await file.exists()) {
-        return file.path;
-      }
-      final directory = Directory(path);
-      if (await directory.exists()) {
-        final mp4 = await _findFirstMp4(directory);
-        if (mp4 != null) {
-          return mp4.path;
-        }
-      }
-    }
-    return null;
-  }
-
-  Future<File?> _findFirstMp4(Directory directory) async {
-    await for (final entity in directory.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is File && entity.path.toLowerCase().endsWith('.mp4')) {
-        return entity;
-      }
-    }
-    return null;
   }
 
   BiliResolvedPlayback _resolvedOfflinePlayback({
@@ -416,6 +452,7 @@ final class OfflineCacheViewModel {
     controller.removeListener(_handleControllerChanged);
     activeEntries.dispose();
     completedEntries.dispose();
+    invalidEntries.dispose();
     _entries.dispose();
     _errorMessage.dispose();
     _storageErrorMessage.dispose();

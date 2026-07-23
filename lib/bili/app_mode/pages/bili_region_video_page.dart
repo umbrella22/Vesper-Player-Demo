@@ -43,6 +43,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   final _hasMore = signal(true);
   final _page = signal(1);
   final _errorMessage = signal<String?>(null);
+  final _loginRequired = signal(false);
 
   @override
   void initState() {
@@ -66,6 +67,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     _hasMore.dispose();
     _page.dispose();
     _errorMessage.dispose();
+    _loginRequired.dispose();
     super.dispose();
   }
 
@@ -83,24 +85,43 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Future<void> _loadPage() async {
+    if (!_client.hasAuthenticatedSession) {
+      _loginRequired.value = true;
+      _loading.value = false;
+      _loadingMore.value = false;
+      _errorMessage.value = null;
+      return;
+    }
+    _loginRequired.value = false;
     _loading.value = true;
     _errorMessage.value = null;
     try {
       final items = await _client.fetchRegionVideos(widget.section, page: 1);
       if (!mounted) return;
       _items.value = items.toList(growable: false);
-      _hasMore.value = items.length >= 20;
+      _hasMore.value =
+          widget.section.apiType == BiliRegionApiType.pgc && items.length >= 20;
       _page.value = 1;
       _loading.value = false;
     } catch (error) {
       if (!mounted) return;
-      _errorMessage.value = error.toString();
+      if (error is BiliApiException && error.code == -101) {
+        _loginRequired.value = true;
+        _errorMessage.value = null;
+      } else {
+        _errorMessage.value = error.toString();
+      }
       _loading.value = false;
     }
   }
 
   Future<void> _loadMore() async {
     if (_loading.value || _loadingMore.value || !_hasMore.value) {
+      return;
+    }
+    if (!_client.hasAuthenticatedSession) {
+      _loginRequired.value = true;
+      _errorMessage.value = null;
       return;
     }
     _loadingMore.value = true;
@@ -111,12 +132,23 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
         page: nextPage,
       );
       if (!mounted) return;
-      _items.value = <BiliRegionVideo>[..._items.value, ...items];
-      _hasMore.value = items.length >= 20;
+      final existingIds = _items.value.map((item) => item.id).toSet();
+      final nextItems = items
+          .where((item) => existingIds.add(item.id))
+          .toList(growable: false);
+      _items.value = <BiliRegionVideo>[..._items.value, ...nextItems];
+      _hasMore.value =
+          widget.section.apiType == BiliRegionApiType.pgc &&
+          items.length >= 20 &&
+          nextItems.isNotEmpty;
       _page.value = nextPage;
       _loadingMore.value = false;
     } catch (error) {
       if (!mounted) return;
+      if (error is BiliApiException && error.code == -101) {
+        _loginRequired.value = true;
+        _errorMessage.value = null;
+      }
       _loadingMore.value = false;
     }
   }
@@ -148,6 +180,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Widget _buildBody(BuildContext context, ThemeData theme) {
+    if (_loginRequired.value) {
+      return _buildLoginRequired(theme);
+    }
     final items = _items.value;
     if (_loading.value) {
       return const Center(child: CircularProgressIndicator());
@@ -159,6 +194,47 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       return _buildEmpty(theme);
     }
     return _buildGrid(theme, items);
+  }
+
+  Widget _buildLoginRequired(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.lock_outline_rounded,
+              size: 42,
+              color: Color(0xFFFB7299),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '需要登录后查看分区内容',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: const Color(0xFF20232B),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请返回首页完成 Bilibili 登录，再重新进入分类。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF8B9098),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _loadPage,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('重新检查登录状态'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildError(ThemeData theme) {

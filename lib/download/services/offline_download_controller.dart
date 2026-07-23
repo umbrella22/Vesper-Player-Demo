@@ -10,6 +10,7 @@ import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_storage_directory.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
+import 'offline_cache_inventory.dart';
 import 'download_plugin_resolver.dart';
 import 'offline_device_storage.dart';
 import 'offline_download_store.dart';
@@ -43,6 +44,10 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   final BiliDownloadPluginResolver _pluginResolver;
   final Map<String, BiliOfflineDownloadMetadata> _metadataByAssetId =
       <String, BiliOfflineDownloadMetadata>{};
+  // Cache directories and SDK tasks can outlive the app-owned metadata file.
+  // Keep an inventory of those directories so they can be shown and removed.
+  final Map<String, String> _orphanAssetDirectories = <String, String>{};
+  final Map<String, String> _metadataIntegrityErrors = <String, String>{};
 
   VesperDownloadManager? _manager;
   VesperDownloadSnapshot _snapshot = const VesperDownloadSnapshot.initial();
@@ -52,25 +57,21 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   final Map<int, String> _lastTaskLogFingerprints = <int, String>{};
   Future<void>? _initializing;
   Future<void> _metadataWriteChain = Future<void>.value();
+  int _integrityRefreshGeneration = 0;
   bool _initialized = false;
+  bool _disposed = false;
 
   bool get isInitialized => _initialized;
 
   bool get hasRemuxPlugin => _pluginLibraryPaths.isNotEmpty;
 
   List<BiliOfflineDownloadEntry> get entries {
-    final tasks = _snapshot.tasks;
-    final result = _metadataByAssetId.values
-        .map((metadata) {
-          final task = _taskForMetadata(metadata, tasks);
-          return BiliOfflineDownloadEntry(metadata: metadata, task: task);
-        })
-        .toList(growable: false);
-    result.sort(
-      (left, right) =>
-          right.metadata.createdAtMs.compareTo(left.metadata.createdAtMs),
+    return BiliOfflineCacheInventory.build(
+      metadata: _metadataByAssetId.values,
+      snapshot: _snapshot,
+      orphanAssetDirectories: _orphanAssetDirectories,
+      metadataIntegrityErrors: _metadataIntegrityErrors,
     );
-    return result;
   }
 
   List<BiliOfflineDownloadEntry> get activeEntries =>
@@ -177,6 +178,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     _metadataByAssetId[metadata.assetId] = metadata;
+    _metadataIntegrityErrors.remove(metadata.assetId);
     await _persistMetadata();
     notifyListeners();
 
@@ -248,6 +250,32 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     }
   }
 
+  /// Resolves a completed cache file only when it remains inside this
+  /// controller's cache root. Persisted SDK/app paths are untrusted input: a
+  /// damaged metadata record must not turn playback or export into arbitrary
+  /// file access.
+  Future<String?> resolvePlayableCachePath(
+    BiliOfflineDownloadEntry entry,
+  ) async {
+    await initialize();
+    final cacheRoot = _cacheRoot;
+    if (cacheRoot == null) {
+      return null;
+    }
+    return resolveBiliOfflineCachePathWithinRoot(
+      cacheRoot: cacheRoot,
+      candidates: <String>{
+        ?entry.metadata.outputPath,
+        ?entry.task?.assetIndex.completedPath,
+        if (_isSafeAssetId(entry.metadata.assetId))
+          '${cacheRoot.path}/assets/${entry.metadata.assetId}',
+        if (entry.task?.assetId case final String taskAssetId
+            when _isSafeAssetId(taskAssetId))
+          '${cacheRoot.path}/assets/$taskAssetId',
+      },
+    );
+  }
+
   Future<void> pause(int taskId) async {
     await initialize();
     await _manager?.pauseTask(taskId);
@@ -307,8 +335,33 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
   Future<void> remove(int taskId) async {
     await initialize();
+    final matchingEntries = entries
+        .where(
+          (entry) =>
+              entry.task?.taskId == taskId || entry.metadata.taskId == taskId,
+        )
+        .toList(growable: false);
+    final matchingAssetIds = matchingEntries
+        .map((entry) => entry.metadata.assetId)
+        .toSet();
     await _manager?.removeTask(taskId);
-    _metadataByAssetId.removeWhere((_, metadata) => metadata.taskId == taskId);
+    for (final entry in matchingEntries) {
+      await _deleteAssetDirectoryForMetadata(
+        entry.metadata,
+        assetId: entry.task?.assetId,
+      );
+      _orphanAssetDirectories.remove(entry.metadata.assetId);
+      if (entry.task?.assetId case final assetId?) {
+        _orphanAssetDirectories.remove(assetId);
+      }
+    }
+    _metadataByAssetId.removeWhere(
+      (assetId, metadata) =>
+          matchingAssetIds.contains(assetId) || metadata.taskId == taskId,
+    );
+    _metadataIntegrityErrors.removeWhere(
+      (assetId, _) => matchingAssetIds.contains(assetId),
+    );
     await _persistMetadata();
     notifyListeners();
   }
@@ -318,11 +371,31 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     final taskId = entry.task?.taskId ?? entry.metadata.taskId;
     if (taskId != null) {
       await _manager?.removeTask(taskId);
-    } else {
-      await _deleteAssetDirectoryForMetadata(entry.metadata);
     }
+    // The SDK normally removes task output, but an orphan task may have no
+    // metadata path for the SDK to clean. Delete both the canonical asset
+    // directory and any recorded output path regardless of task state.
+    await _deleteAssetDirectoryForMetadata(
+      entry.metadata,
+      assetId: entry.task?.assetId,
+    );
     _metadataByAssetId.remove(entry.metadata.assetId);
+    _metadataIntegrityErrors.remove(entry.metadata.assetId);
+    _orphanAssetDirectories.remove(entry.metadata.assetId);
+    if (entry.task?.assetId case final taskAssetId?) {
+      _orphanAssetDirectories.remove(taskAssetId);
+    }
     await _persistMetadata();
+    notifyListeners();
+  }
+
+  /// Re-scans the on-disk cache inventory after an external deletion or a
+  /// metadata migration. This is intentionally separate from SDK refresh so a
+  /// failed network refresh cannot hide local cleanup candidates.
+  Future<void> refreshCacheInventory() async {
+    await initialize();
+    await _scanOrphanAssetDirectories();
+    await _refreshMetadataIntegrity();
     notifyListeners();
   }
 
@@ -353,14 +426,17 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         );
     _manager = manager;
     _snapshot = manager.snapshot;
+    await _scanOrphanAssetDirectories();
     _snapshotSubscription = manager.snapshots.listen((snapshot) {
       _snapshot = snapshot;
       _logDownloadSnapshot(snapshot);
       _reconcileMetadataWithSnapshot(snapshot);
       unawaited(_persistMetadata());
       notifyListeners();
+      unawaited(_refreshMetadataIntegrityAfterSnapshot());
     });
     _reconcileMetadataWithSnapshot(_snapshot);
+    await _refreshMetadataIntegrity();
     _logDownloadSnapshot(_snapshot);
     await _persistMetadata();
     _initialized = true;
@@ -420,6 +496,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         outputPath: completedPath == null || completedPath.isEmpty
             ? null
             : completedPath,
+        clearOutputPath: completedPath == null || completedPath.isEmpty,
         errorMessage: errorMessage,
         clearError: errorMessage == null,
       );
@@ -450,31 +527,172 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     Directory cacheRoot,
     String assetId,
   ) async {
+    if (!_isSafeAssetId(assetId)) {
+      debugPrint('[BiliOffline] refusing unsafe asset id: $assetId');
+      return;
+    }
     final assetDirectory = Directory('${cacheRoot.path}/assets/$assetId');
-    if (await assetDirectory.exists()) {
+    if (await assetDirectory.exists() &&
+        await _isPathInsideCacheRoot(assetDirectory)) {
       await assetDirectory.delete(recursive: true);
     }
   }
 
   Future<void> _deleteAssetDirectoryForMetadata(
-    BiliOfflineDownloadMetadata metadata,
-  ) async {
+    BiliOfflineDownloadMetadata metadata, {
+    String? assetId,
+  }) async {
     final cacheRoot = _cacheRoot;
     if (cacheRoot != null) {
-      await _deleteAssetDirectory(cacheRoot, metadata.assetId);
+      for (final cleanupAssetId in biliOfflineCacheCleanupAssetIds(
+        metadataAssetId: metadata.assetId,
+        taskAssetId: assetId,
+      )) {
+        await _deleteAssetDirectory(cacheRoot, cleanupAssetId);
+      }
     }
     final outputPath = metadata.outputPath;
     if (outputPath == null || outputPath.isEmpty) {
       return;
     }
     final outputFile = File(outputPath);
-    if (await outputFile.exists()) {
+    if (await outputFile.exists() && await _isPathInsideCacheRoot(outputFile)) {
       await outputFile.delete();
       return;
     }
     final outputDirectory = Directory(outputPath);
-    if (await outputDirectory.exists()) {
+    if (await outputDirectory.exists() &&
+        await _isPathInsideCacheRoot(outputDirectory)) {
       await outputDirectory.delete(recursive: true);
+    }
+  }
+
+  bool _isSafeAssetId(String assetId) {
+    final value = assetId.trim();
+    return value.isNotEmpty &&
+        value != '.' &&
+        value != '..' &&
+        !value.contains('/') &&
+        !value.contains('\\');
+  }
+
+  Future<bool> _isPathInsideCacheRoot(FileSystemEntity entity) async {
+    final cacheRoot = _cacheRoot;
+    if (cacheRoot == null) {
+      return false;
+    }
+    return _isBiliOfflinePathInsideRoot(cacheRoot, entity);
+  }
+
+  Future<void> _scanOrphanAssetDirectories() async {
+    final cacheRoot = _cacheRoot;
+    if (cacheRoot == null) {
+      return;
+    }
+    final assetsDirectory = Directory('${cacheRoot.path}/assets');
+    if (!await assetsDirectory.exists()) {
+      _orphanAssetDirectories.clear();
+      return;
+    }
+
+    final discovered = <String, String>{};
+    try {
+      await for (final entity in assetsDirectory.list(
+        followLinks: false,
+        recursive: false,
+      )) {
+        if (entity is! Directory && entity is! File) {
+          continue;
+        }
+        final segments = entity.uri.pathSegments;
+        if (segments.isEmpty) {
+          continue;
+        }
+        final assetId = segments.lastWhere(
+          (segment) => segment.isNotEmpty && segment != '/',
+          orElse: () => '',
+        );
+        if (assetId.isEmpty) {
+          continue;
+        }
+        if (_metadataByAssetId.containsKey(assetId) ||
+            _snapshot.tasks.any(
+              (task) =>
+                  task.state != VesperDownloadState.removed &&
+                  task.assetId == assetId,
+            )) {
+          continue;
+        }
+        discovered[assetId] = entity.path;
+      }
+    } on FileSystemException catch (error) {
+      // A transient directory permission/read error must not make the whole
+      // offline page unusable. Keep the last known inventory and report it.
+      debugPrint('[BiliOffline] cache inventory scan failed: $error');
+      return;
+    }
+    _orphanAssetDirectories
+      ..clear()
+      ..addAll(discovered);
+  }
+
+  Future<void> _refreshMetadataIntegrity() async {
+    final generation = ++_integrityRefreshGeneration;
+    final cacheRoot = _cacheRoot;
+    if (cacheRoot == null) {
+      return;
+    }
+    final next = <String, String>{};
+    final activeTasks = _snapshot.tasks
+        .where((task) => task.state != VesperDownloadState.removed)
+        .toList(growable: false);
+    for (final metadata in _metadataByAssetId.values) {
+      final task = _taskForMetadata(metadata, activeTasks);
+      if (task != null &&
+          task.assetId.isNotEmpty &&
+          task.assetId != metadata.assetId) {
+        // The synchronous inventory reports this identity mismatch. It does
+        // not need a filesystem probe because neither asset can be trusted as
+        // the content described by the other record.
+        continue;
+      }
+      if (task != null && task.state != VesperDownloadState.completed) {
+        continue;
+      }
+      final playablePath = await resolveBiliOfflineCachePathWithinRoot(
+        cacheRoot: cacheRoot,
+        candidates: <String>{
+          ?metadata.outputPath,
+          ?task?.assetIndex.completedPath,
+          if (_isSafeAssetId(metadata.assetId))
+            '${cacheRoot.path}/assets/${metadata.assetId}',
+          if (task?.assetId case final String taskAssetId
+              when _isSafeAssetId(taskAssetId))
+            '${cacheRoot.path}/assets/$taskAssetId',
+        },
+      );
+      if (playablePath == null) {
+        next[metadata.assetId] = task == null
+            ? '缓存任务和文件均已丢失，无法播放。请清理这条失效缓存。'
+            : '缓存文件已丢失或不完整，无法播放。请清理这条失效缓存。';
+      }
+    }
+    if (generation != _integrityRefreshGeneration) {
+      return;
+    }
+    _metadataIntegrityErrors
+      ..clear()
+      ..addAll(next);
+  }
+
+  Future<void> _refreshMetadataIntegrityAfterSnapshot() async {
+    try {
+      await _refreshMetadataIntegrity();
+      if (!_disposed) {
+        notifyListeners();
+      }
+    } on FileSystemException catch (error) {
+      debugPrint('[BiliOffline] cache integrity refresh failed: $error');
     }
   }
 
@@ -517,6 +735,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_snapshotSubscription?.cancel() ?? Future<void>.value());
     super.dispose();
   }
@@ -673,4 +892,79 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       return null;
     }
   }
+}
+
+/// Resolves the first existing MP4 candidate that is a descendant of
+/// [cacheRoot]. The helper is intentionally path-based so the containment
+/// contract can be regression-tested without starting a native SDK manager.
+@visibleForTesting
+Future<String?> resolveBiliOfflineCachePathWithinRoot({
+  required Directory cacheRoot,
+  required Iterable<String> candidates,
+}) async {
+  for (final path in candidates) {
+    final normalizedPath = path.trim();
+    if (normalizedPath.isEmpty) {
+      continue;
+    }
+    final file = File(normalizedPath);
+    // The download profile is MP4-only.  Do not treat an in-root manifest,
+    // subtitle, or temporary artifact as a playable completed cache.
+    if (file.path.toLowerCase().endsWith('.mp4') &&
+        await file.exists() &&
+        await _isBiliOfflinePathInsideRoot(cacheRoot, file)) {
+      return file.path;
+    }
+
+    final directory = Directory(normalizedPath);
+    if (!await directory.exists() ||
+        !await _isBiliOfflinePathInsideRoot(cacheRoot, directory)) {
+      continue;
+    }
+    await for (final entity in directory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is! File ||
+          !entity.path.toLowerCase().endsWith('.mp4') ||
+          !await _isBiliOfflinePathInsideRoot(cacheRoot, entity)) {
+        continue;
+      }
+      return entity.path;
+    }
+  }
+  return null;
+}
+
+Future<bool> _isBiliOfflinePathInsideRoot(
+  Directory cacheRoot,
+  FileSystemEntity entity,
+) async {
+  try {
+    final rootPath = await cacheRoot.resolveSymbolicLinks();
+    final targetPath = await entity.resolveSymbolicLinks();
+    final prefix = rootPath.endsWith(Platform.pathSeparator)
+        ? rootPath
+        : '$rootPath${Platform.pathSeparator}';
+    // Never treat the cache root itself as a playable/deletable artifact.
+    return targetPath.startsWith(prefix);
+  } on FileSystemException {
+    return false;
+  }
+}
+
+/// Returns every canonical asset directory that may belong to a cache entry.
+///
+/// A restored SDK task can carry an asset ID that differs from stale app
+/// metadata. Both IDs must be considered during deletion; otherwise one of
+/// the directories is left behind and is rediscovered as an orphan later.
+@visibleForTesting
+Set<String> biliOfflineCacheCleanupAssetIds({
+  required String metadataAssetId,
+  String? taskAssetId,
+}) {
+  return <String>{
+    if (metadataAssetId.trim().isNotEmpty) metadataAssetId,
+    if (taskAssetId != null && taskAssetId.trim().isNotEmpty) taskAssetId,
+  };
 }

@@ -1,4 +1,5 @@
 export 'app_mode/pages/bili_hub_page.dart';
+export 'app_mode/pages/bili_library_page.dart';
 export 'app_mode/pages/bili_settings_page.dart';
 export 'app_mode/pages/bili_video_detail_page.dart';
 export 'common/models/bili_models.dart';

@@ -129,6 +129,14 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
           onTap: () => unawaited(_showPageSelectionSheet()),
         ),
       ],
+      const SizedBox(height: 10),
+      _WatchLaterButton(
+        selected: _isInWatchLater,
+        busy:
+            _watchLaterLoading ||
+            _pendingEngagementAction == BiliEngagementAction.watchLater,
+        onTap: () => unawaited(_toggleWatchLater()),
+      ),
       const SizedBox(height: 18),
       _PlaybackSectionHeader(
         title: '相关推荐',

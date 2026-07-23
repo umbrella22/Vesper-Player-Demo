@@ -114,6 +114,183 @@ void main() {
       expect(exporter.sourcePath, file.path);
       expect(exporter.displayName, endsWith('.mp4'));
     });
+
+    test('does not attempt playback for cache with missing metadata', () async {
+      final entry = _offlineEntry(metadataMissing: true);
+      final controller = _FakeOfflineController(<BiliOfflineDownloadEntry>[
+        entry,
+      ]);
+      final viewModel = OfflineCacheViewModel(
+        controller: controller,
+        client: BiliClient(httpClient: _FakeBiliHttpClient()),
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.initialize();
+
+      expect(viewModel.invalidEntries.value, <BiliOfflineDownloadEntry>[entry]);
+      await expectLater(
+        viewModel.openEntry(entry),
+        throwsA(
+          predicate<Object>(
+            (error) =>
+                error.toString().contains('信息已丢失') &&
+                error.toString().contains('无法播放'),
+          ),
+        ),
+      );
+      expect(viewModel.entries.value, hasLength(1));
+    });
+
+    test('cleans all invalid cache entries and reports the count', () async {
+      final invalidA = _offlineEntry(
+        assetId: 'invalid-a',
+        metadataMissing: true,
+      );
+      final invalidB = _offlineEntry(
+        assetId: 'invalid-b',
+        metadataMissing: true,
+      );
+      final valid = _offlineEntry(assetId: 'valid');
+      final controller = _FakeOfflineController(<BiliOfflineDownloadEntry>[
+        invalidA,
+        invalidB,
+        valid,
+      ]);
+      final viewModel = OfflineCacheViewModel(controller: controller);
+      addTearDown(viewModel.dispose);
+
+      await viewModel.initialize();
+      final result = await viewModel.cleanupInvalidEntries();
+
+      expect(result.deletedCount, 2);
+      expect(result.failedCount, 0);
+      expect(result.message, '已清理 2 条失效缓存');
+      expect(controller.removedAssetIds, <String>['invalid-a', 'invalid-b']);
+      expect(viewModel.invalidEntries.value, isEmpty);
+      expect(viewModel.entries.value, <BiliOfflineDownloadEntry>[valid]);
+    });
+  });
+
+  group('BiliOfflineCacheInventory', () {
+    test('does not resolve a completed file outside the cache root', () async {
+      final root = await Directory.systemTemp.createTemp(
+        'bili-offline-containment-test-',
+      );
+      final outside = await Directory.systemTemp.createTemp(
+        'bili-offline-outside-test-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => outside.delete(recursive: true));
+
+      final insideFile = File('${root.path}/assets/inside/video.mp4');
+      await insideFile.parent.create(recursive: true);
+      await insideFile.writeAsBytes(<int>[1, 2, 3]);
+      final outsideFile = File('${outside.path}/video.mp4');
+      await outsideFile.writeAsBytes(<int>[4, 5, 6]);
+
+      expect(
+        await resolveBiliOfflineCachePathWithinRoot(
+          cacheRoot: root,
+          candidates: <String>[outsideFile.path],
+        ),
+        isNull,
+      );
+      expect(
+        await resolveBiliOfflineCachePathWithinRoot(
+          cacheRoot: root,
+          candidates: <String>[insideFile.path],
+        ),
+        insideFile.path,
+      );
+
+      final manifest = File('${root.path}/assets/inside/video.mpd');
+      await manifest.writeAsString('<MPD />');
+      expect(
+        await resolveBiliOfflineCachePathWithinRoot(
+          cacheRoot: root,
+          candidates: <String>[manifest.path],
+        ),
+        isNull,
+      );
+    });
+
+    test('cleanup considers metadata and restored task asset IDs', () {
+      expect(
+        biliOfflineCacheCleanupAssetIds(
+          metadataAssetId: 'metadata-asset',
+          taskAssetId: 'restored-task-asset',
+        ),
+        <String>{'metadata-asset', 'restored-task-asset'},
+      );
+      expect(
+        biliOfflineCacheCleanupAssetIds(
+          metadataAssetId: 'same-asset',
+          taskAssetId: 'same-asset',
+        ),
+        <String>{'same-asset'},
+      );
+    });
+
+    test('does not duplicate a task claimed by metadata task ID', () {
+      final task = _orphanDownloadTask();
+      final metadata = BiliOfflineDownloadMetadata(
+        assetId: 'metadata-asset',
+        taskId: task.taskId,
+        bvid: 'BV1xx411c7mD',
+        cid: 11,
+        videoTitle: '离线视频',
+        pageTitle: 'P1',
+        coverUrl: '',
+        qualityLabel: '1080P',
+        createdAtMs: 100,
+      );
+
+      final entries = BiliOfflineCacheInventory.build(
+        metadata: <BiliOfflineDownloadMetadata>[metadata],
+        snapshot: VesperDownloadSnapshot(
+          tasks: <VesperDownloadTaskSnapshot>[task],
+        ),
+      );
+
+      expect(entries, hasLength(1));
+      expect(entries.single.metadata, same(metadata));
+      expect(entries.single.task, same(task));
+      expect(entries.single.metadataMissing, isFalse);
+      expect(entries.single.isUnplayable, isTrue);
+      expect(entries.single.unplayableReason, contains('不匹配'));
+    });
+
+    test('surfaces an SDK task whose Bili metadata was lost', () {
+      final task = _orphanDownloadTask();
+      final entries = BiliOfflineCacheInventory.build(
+        metadata: const <BiliOfflineDownloadMetadata>[],
+        snapshot: VesperDownloadSnapshot(
+          tasks: <VesperDownloadTaskSnapshot>[task],
+        ),
+      );
+
+      expect(entries, hasLength(1));
+      expect(entries.single.metadata.assetId, 'orphan-asset');
+      expect(entries.single.metadataMissing, isTrue);
+      expect(entries.single.isUnplayable, isTrue);
+      expect(entries.single.unplayableReason, contains('无法播放'));
+    });
+
+    test('surfaces an asset directory with no task or metadata', () {
+      final entries = BiliOfflineCacheInventory.build(
+        metadata: const <BiliOfflineDownloadMetadata>[],
+        snapshot: const VesperDownloadSnapshot.initial(),
+        orphanAssetDirectories: const <String, String>{
+          'orphan-directory': '/tmp/offline-cache/assets/orphan-directory',
+        },
+      );
+
+      expect(entries, hasLength(1));
+      expect(entries.single.metadata.assetId, 'orphan-directory');
+      expect(entries.single.metadata.outputPath, contains('orphan-directory'));
+      expect(entries.single.metadataMissing, isTrue);
+    });
   });
 
   group('BiliHubViewModel', () {
@@ -144,6 +321,18 @@ void main() {
         expect(viewModel.activeSearchKeyword.value, isNull);
       },
     );
+
+    test('resolves PGC history to the exact episode id', () async {
+      final client = _FakeBiliHubClient();
+      final viewModel = BiliHubViewModel(client: client);
+      addTearDown(viewModel.dispose);
+
+      final target = await viewModel.resolvePlaybackTarget('', episodeId: 9002);
+
+      expect(client.requestedEpisodeId, 9002);
+      expect(target.initialPage.episodeId, 9002);
+      expect(target.initialPage.cid, 1002);
+    });
 
     test('tracks search loading, results, and feed refresh state', () async {
       final client = _FakeBiliHubClient();
@@ -213,10 +402,14 @@ void main() {
   });
 }
 
-BiliOfflineDownloadEntry _offlineEntry({String? outputPath}) {
+BiliOfflineDownloadEntry _offlineEntry({
+  String? outputPath,
+  String assetId = 'BV1xx411c7mD-c11-q80-avc-test',
+  bool metadataMissing = false,
+}) {
   return BiliOfflineDownloadEntry(
     metadata: BiliOfflineDownloadMetadata(
-      assetId: 'BV1xx411c7mD-c11-q80-avc-test',
+      assetId: assetId,
       bvid: 'BV1xx411c7mD',
       cid: 11,
       videoTitle: '离线视频',
@@ -225,6 +418,32 @@ BiliOfflineDownloadEntry _offlineEntry({String? outputPath}) {
       qualityLabel: '1080P',
       outputPath: outputPath,
       createdAtMs: 100,
+    ),
+    metadataMissing: metadataMissing,
+  );
+}
+
+VesperDownloadTaskSnapshot _orphanDownloadTask() {
+  return const VesperDownloadTaskSnapshot(
+    taskId: 42,
+    assetId: 'orphan-asset',
+    source: VesperDownloadSource(
+      source: VesperPlayerSource(
+        uri: 'file:///tmp/orphan.mp4',
+        label: '孤儿缓存',
+        kind: VesperPlayerSourceKind.local,
+        protocol: VesperPlayerSourceProtocol.file,
+      ),
+      contentFormat: VesperDownloadContentFormat.singleFile,
+    ),
+    profile: VesperDownloadProfile(
+      targetOutputFormat: VesperDownloadOutputFormat.mp4,
+    ),
+    state: VesperDownloadState.completed,
+    progress: VesperDownloadProgressSnapshot(receivedBytes: 10, totalBytes: 10),
+    assetIndex: VesperDownloadAssetIndex(
+      contentFormat: VesperDownloadContentFormat.singleFile,
+      completedPath: '/tmp/orphan.mp4',
     ),
   );
 }
@@ -258,6 +477,21 @@ final class _FakeOfflineController extends BiliOfflineDownloadController {
   @override
   Future<BiliOfflineStorageUsage> resolveStorageUsage() async {
     return storageUsage;
+  }
+
+  @override
+  Future<String?> resolvePlayableCachePath(
+    BiliOfflineDownloadEntry entry,
+  ) async {
+    for (final path in <String?>[
+      entry.metadata.outputPath,
+      entry.task?.assetIndex.completedPath,
+    ]) {
+      if (path != null && path.isNotEmpty && await File(path).exists()) {
+        return path;
+      }
+    }
+    return null;
   }
 
   @override
@@ -296,6 +530,8 @@ final class _FakeMediaExporter extends BiliOfflineMediaExporter {
 }
 
 final class _FakeBiliHubClient extends BiliClient {
+  int? requestedEpisodeId;
+
   @override
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
     return page == 1
@@ -334,6 +570,53 @@ final class _FakeBiliHubClient extends BiliClient {
           ]
         : const <BiliSearchResult>[];
   }
+
+  @override
+  Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) async {
+    requestedEpisodeId = episodeId;
+    return _pgcHistoryDetail();
+  }
+}
+
+BiliVideoDetail _pgcHistoryDetail() {
+  return const BiliVideoDetail(
+    aid: 101,
+    bvid: 'BVPGCHISTORY',
+    title: '番剧历史',
+    ownerMid: 0,
+    ownerName: '番剧',
+    ownerAvatarUrl: '',
+    coverUrl: '',
+    description: '',
+    publishedAtLabel: null,
+    playCountLabel: '--',
+    danmakuCountLabel: '--',
+    replyCountLabel: '--',
+    likeCountLabel: '--',
+    coinCountLabel: '--',
+    favoriteCountLabel: '--',
+    shareCountLabel: '--',
+    pages: <BiliVideoPageEntry>[
+      BiliVideoPageEntry(
+        cid: 1001,
+        pageNumber: 1,
+        title: '第一话',
+        durationSeconds: 1200,
+        aid: 101,
+        bvid: 'BVPGCEPISODE1',
+        episodeId: 9001,
+      ),
+      BiliVideoPageEntry(
+        cid: 1002,
+        pageNumber: 2,
+        title: '第二话',
+        durationSeconds: 1300,
+        aid: 102,
+        bvid: 'BVPGCEPISODE2',
+        episodeId: 9002,
+      ),
+    ],
+  );
 }
 
 final class _FakeBiliHttpClient implements HttpClient {

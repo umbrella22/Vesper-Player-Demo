@@ -37,6 +37,7 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasSession = _client.hasAuthenticatedSession;
     return Scaffold(
       backgroundColor: scaffoldBackground(context),
       appBar: AppBar(
@@ -49,26 +50,65 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: GridView.builder(
-          padding: EdgeInsets.only(
-            bottom: 12 + MediaQuery.paddingOf(context).bottom,
-          ),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.15,
-          ),
-          itemCount: biliRegionSections.length,
-          itemBuilder: (context, index) {
-            final section = biliRegionSections[index];
-            return _RegionCard(
-              section: section,
-              onTap: () => _openSection(section),
-            );
-          },
+      body: hasSession ? _buildRegionGrid() : _buildLoginRequired(theme),
+    );
+  }
+
+  Widget _buildRegionGrid() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: GridView.builder(
+        padding: EdgeInsets.only(
+          bottom: 12 + MediaQuery.paddingOf(context).bottom,
+        ),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.15,
+        ),
+        itemCount: biliRegionSections.length,
+        itemBuilder: (context, index) {
+          final section = biliRegionSections[index];
+          return _RegionCard(
+            section: section,
+            onTap: () => _openSection(section),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoginRequired(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.lock_outline_rounded,
+              size: 42,
+              color: Color(0xFFFB7299),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '需要登录后查看分区内容',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: const Color(0xFF20232B),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请返回首页完成 Bilibili 登录，再重新进入分类。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF8B9098),
+              ),
+            ),
+          ],
         ),
       ),
     );

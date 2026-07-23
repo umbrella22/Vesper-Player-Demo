@@ -31,7 +31,9 @@ final class BiliOfflineDownloadStore {
       final rawEntries = switch (decoded) {
         {'entries': final List<dynamic> entries} => entries,
         final List<dynamic> entries => entries,
-        _ => const <dynamic>[],
+        _ => throw const FormatException(
+          'Unexpected offline cache metadata shape.',
+        ),
       };
       final entries = rawEntries
           .whereType<Map<Object?, Object?>>()
@@ -45,8 +47,6 @@ final class BiliOfflineDownloadStore {
       return const <BiliOfflineDownloadMetadata>[];
     } on TypeError {
       await _quarantineCorruptFile(file);
-      return const <BiliOfflineDownloadMetadata>[];
-    } on IOException {
       return const <BiliOfflineDownloadMetadata>[];
     }
   }

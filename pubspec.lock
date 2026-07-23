@@ -539,42 +539,42 @@ packages:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vesper_player_android:
     dependency: "direct overridden"
     description:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_android"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vesper_player_external_playback:
     dependency: "direct main"
     description:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_external_playback"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vesper_player_ios:
     dependency: "direct overridden"
     description:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_ios"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vesper_player_platform_interface:
     dependency: "direct overridden"
     description:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_platform_interface"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vesper_player_ui:
     dependency: "direct main"
     description:
       path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_ui"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   vm_service:
     dependency: transitive
     description:

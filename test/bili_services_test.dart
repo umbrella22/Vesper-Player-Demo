@@ -270,10 +270,27 @@ void main() {
       expect(detail.pages.first.bvid, 'BV1111111111');
       expect(detail.pages.first.aid, 101);
       expect(detail.pages.first.cid, 1001);
+      expect(detail.pages.first.episodeId, 9001);
       expect(detail.pages.first.title, '第一话');
       expect(detail.pages.last.bvid, 'BV2222222222');
       expect(detail.pages.last.cid, 1002);
+      expect(detail.pages.last.episodeId, 9002);
       expect(detail.pages.last.coverUrl, 'https://example.com/ep2.jpg');
+    });
+
+    test('fetches a PGC season by episode id', () async {
+      final httpClient = _FakeRegionHttpClient();
+      final client = BiliClient(httpClient: httpClient);
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      final detail = await client.fetchPgcEpisodeDetail(9002);
+
+      expect(detail.pages.last.episodeId, 9002);
+      final request = httpClient.requestedUris.lastWhere(
+        (uri) => uri.path == '/pgc/view/web/season',
+      );
+      expect(request.queryParameters['ep_id'], '9002');
+      expect(request.queryParameters, isNot(contains('season_id')));
     });
 
     test('fetches related videos from archive endpoint', () async {
@@ -708,6 +725,15 @@ void main() {
           HttpHeaders.refererHeader:
               'https://www.bilibili.com/video/BV1xx411c7mD',
         },
+        subtitleTracks: <BiliSubtitleTrack>[
+          BiliSubtitleTrack(
+            id: 'subtitle:bili:42',
+            language: 'zh-CN',
+            languageLabel: '中文（简体）',
+            url: 'file:///tmp/subtitle.vtt',
+            isDefault: true,
+          ),
+        ],
       );
 
       final source = resolved.toSource();
@@ -718,6 +744,15 @@ void main() {
         source.headers[HttpHeaders.refererHeader],
         'https://www.bilibili.com/video/BV1xx411c7mD',
       );
+      expect(source.externalSubtitles, hasLength(1));
+      expect(source.externalSubtitles.single.id, 'subtitle:bili:42');
+      expect(
+        source.externalSubtitles.single.mimeType,
+        VesperExternalSubtitleSource.mimeWebvtt,
+      );
+      expect(source.externalSubtitles.single.language, 'zh-CN');
+      expect(source.externalSubtitles.single.label, '中文（简体）');
+      expect(source.externalSubtitles.single.isDefault, isTrue);
     });
 
     test(
@@ -2234,6 +2269,7 @@ final class _FakeRegionHttpClient implements HttpClient {
             },
             'episodes': <Object?>[
               <String, Object?>{
+                'id': 9001,
                 'aid': 101,
                 'bvid': 'BV1111111111',
                 'cid': 1001,
@@ -2244,6 +2280,7 @@ final class _FakeRegionHttpClient implements HttpClient {
                 'pub_time': 1719057600,
               },
               <String, Object?>{
+                'id': 9002,
                 'aid': 102,
                 'bvid': 'BV2222222222',
                 'cid': 1002,

@@ -61,6 +61,7 @@ final class BiliVideoPageEntry {
     this.aid,
     this.bvid,
     this.coverUrl,
+    this.episodeId,
   });
 
   final int cid;
@@ -70,6 +71,7 @@ final class BiliVideoPageEntry {
   final int? aid;
   final String? bvid;
   final String? coverUrl;
+  final int? episodeId;
 }
 
 final class BiliVideoDetail {
@@ -122,6 +124,127 @@ final class BiliFavoriteFolder {
   final int id;
   final String title;
   final bool containsCurrentVideo;
+}
+
+/// A user returned by the authenticated following-list endpoint.
+final class BiliFollowingUser {
+  const BiliFollowingUser({
+    required this.mid,
+    required this.name,
+    required this.avatarUrl,
+    this.sign = '',
+    this.officialLabel,
+    this.vipLabel,
+    this.isSpecial = false,
+  });
+
+  final int mid;
+  final String name;
+  final String avatarUrl;
+  final String sign;
+  final String? officialLabel;
+  final String? vipLabel;
+  final bool isSpecial;
+}
+
+/// A video item returned by Bilibili's server-side playback history API.
+final class BiliRemoteHistoryEntry {
+  const BiliRemoteHistoryEntry({
+    required this.aid,
+    required this.bvid,
+    required this.cid,
+    required this.title,
+    required this.pageTitle,
+    required this.coverUrl,
+    required this.ownerName,
+    required this.durationMs,
+    required this.progressMs,
+    required this.viewedAtMs,
+    this.episodeId = 0,
+    this.business,
+  });
+
+  final int aid;
+  final String bvid;
+  final int cid;
+  final String title;
+  final String pageTitle;
+  final String coverUrl;
+  final String ownerName;
+  final int durationMs;
+  final int progressMs;
+  final int viewedAtMs;
+  final int episodeId;
+  final String? business;
+
+  bool get isFinished => durationMs > 0 && progressMs >= durationMs - 3000;
+}
+
+final class BiliRemoteHistoryPage {
+  const BiliRemoteHistoryPage({
+    required this.entries,
+    required this.hasMore,
+    this.nextMax = 0,
+    this.nextViewAtMs = 0,
+  });
+
+  final List<BiliRemoteHistoryEntry> entries;
+  final bool hasMore;
+  final int nextMax;
+  final int nextViewAtMs;
+}
+
+/// A video item in the user's Bilibili "watch later" queue.
+final class BiliWatchLaterEntry {
+  const BiliWatchLaterEntry({
+    required this.aid,
+    required this.bvid,
+    required this.cid,
+    required this.title,
+    required this.pageTitle,
+    required this.coverUrl,
+    required this.ownerName,
+    required this.durationMs,
+    required this.progressMs,
+    this.episodeId = 0,
+    this.addedAtMs,
+    this.business,
+  });
+
+  final int aid;
+  final String bvid;
+  final int cid;
+  final String title;
+  final String pageTitle;
+  final String coverUrl;
+  final String ownerName;
+  final int durationMs;
+  final int progressMs;
+  final int episodeId;
+  final int? addedAtMs;
+  final String? business;
+}
+
+/// A subtitle rendition advertised by `/x/player/v2`.
+///
+/// `url` is a local WebVTT file after [BiliClient.fetchVideoSubtitles]
+/// materializes the Bilibili JSON subtitle payload.
+final class BiliSubtitleTrack {
+  const BiliSubtitleTrack({
+    required this.id,
+    required this.language,
+    required this.languageLabel,
+    required this.url,
+    this.isDefault = false,
+    this.format = 'webvtt',
+  });
+
+  final String id;
+  final String language;
+  final String languageLabel;
+  final String url;
+  final bool isDefault;
+  final String format;
 }
 
 final class BiliCommentPicture {
@@ -319,12 +442,18 @@ final class BiliPlaybackHistoryEntry {
     required this.ownerName,
     required this.playedAtMs,
     required this.lastPositionMs,
+    this.aid = 0,
+    this.episodeId = 0,
+    this.business,
     this.durationMs,
   });
 
   factory BiliPlaybackHistoryEntry.fromJson(Map<String, Object?> json) {
     return BiliPlaybackHistoryEntry(
       bvid: json['bvid'] as String? ?? '',
+      aid: json['aid'] as int? ?? 0,
+      episodeId: json['episodeId'] as int? ?? 0,
+      business: json['business'] as String?,
       cid: json['cid'] as int? ?? 0,
       videoTitle: json['videoTitle'] as String? ?? '',
       pageTitle: json['pageTitle'] as String? ?? '',
@@ -337,6 +466,9 @@ final class BiliPlaybackHistoryEntry {
   }
 
   final String bvid;
+  final int aid;
+  final int episodeId;
+  final String? business;
   final int cid;
   final String videoTitle;
   final String pageTitle;
@@ -349,6 +481,9 @@ final class BiliPlaybackHistoryEntry {
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'bvid': bvid,
+      'aid': aid,
+      'episodeId': episodeId,
+      'business': business,
       'cid': cid,
       'videoTitle': videoTitle,
       'pageTitle': pageTitle,
@@ -373,6 +508,8 @@ final class BiliResolvedPlayback {
     required this.isLocalFile,
     this.headers = const <String, String>{},
     this.videoTracks = const <VesperMediaTrack>[],
+    this.subtitleTracks = const <BiliSubtitleTrack>[],
+    this.subtitleError,
     this.debugPath,
   });
 
@@ -386,10 +523,24 @@ final class BiliResolvedPlayback {
   final bool isLocalFile;
   final Map<String, String> headers;
   final List<VesperMediaTrack> videoTracks;
+  final List<BiliSubtitleTrack> subtitleTracks;
+  final String? subtitleError;
   final String? debugPath;
 
   VesperPlayerSource toSource() {
     final sourceLabel = subtitle.isEmpty ? title : '$title · $subtitle';
+    final externalSubtitles = subtitleTracks
+        .map(
+          (track) => VesperExternalSubtitleSource(
+            id: track.id,
+            uri: track.url,
+            mimeType: VesperExternalSubtitleSource.mimeWebvtt,
+            language: track.language,
+            label: track.languageLabel,
+            isDefault: track.isDefault,
+          ),
+        )
+        .toList(growable: false);
     if (isLocalFile) {
       return VesperPlayerSource(
         uri: uri,
@@ -397,6 +548,7 @@ final class BiliResolvedPlayback {
         kind: VesperPlayerSourceKind.local,
         protocol: protocol,
         headers: headers,
+        externalSubtitles: externalSubtitles,
       );
     }
 
@@ -405,6 +557,7 @@ final class BiliResolvedPlayback {
       label: sourceLabel,
       protocol: protocol,
       headers: headers,
+      externalSubtitles: externalSubtitles,
     );
   }
 }

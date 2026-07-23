@@ -206,11 +206,3 @@ final class _HomeVideoItem {
   final String playCountLabel;
   final bool vertical;
 }
-
-String _formatPosition(int positionMs, int? durationMs) {
-  final left = biliFormatDurationSeconds(positionMs ~/ 1000);
-  final right = durationMs == null
-      ? '--:--'
-      : biliFormatDurationSeconds(durationMs ~/ 1000);
-  return '$left / $right';
-}

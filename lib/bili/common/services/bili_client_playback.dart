@@ -28,6 +28,11 @@ extension BiliClientPlayback on BiliClient {
           final dashParseResult = _parseDashManifest(dashData);
           final dashManifest = dashParseResult.manifest;
           if (dashManifest != null) {
+            final subtitles = await _resolveOptionalSubtitles(
+              bvid: pageBvid,
+              cid: page.cid,
+              aid: page.aid ?? detail.aid,
+            );
             final manifestText = _manifestBuilder.build(dashManifest);
             final file = await _writeDashManifest(
               bvid: pageBvid,
@@ -48,6 +53,8 @@ extension BiliClientPlayback on BiliClient {
                   '${dashManifest.audioStreams.length}A, source headers)',
               isLocalFile: true,
               videoTracks: _buildDashVideoTracks(dashManifest.videoStreams),
+              subtitleTracks: subtitles.tracks,
+              subtitleError: subtitles.error,
               debugPath: file.path,
             );
           }
@@ -88,6 +95,22 @@ extension BiliClientPlayback on BiliClient {
 
   bool _supportsDashPlaybackPlatform(TargetPlatform platform) {
     return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+  }
+
+  Future<({List<BiliSubtitleTrack> tracks, String? error})>
+  _resolveOptionalSubtitles({
+    required String bvid,
+    required int cid,
+    required int aid,
+  }) async {
+    try {
+      final tracks = await fetchVideoSubtitles(bvid: bvid, cid: cid, aid: aid);
+      return (tracks: tracks, error: null);
+    } catch (error) {
+      // Subtitle discovery/materialization is optional and must not make an
+      // otherwise playable video source fail to resolve.
+      return (tracks: const <BiliSubtitleTrack>[], error: '字幕加载失败：$error');
+    }
   }
 
   Map<String, Object?> _buildDashPlayUrlParams({
@@ -403,8 +426,14 @@ extension BiliClientPlayback on BiliClient {
       final reason = fallbackReason.isEmpty
           ? 'DASH unavailable'
           : fallbackReason;
+      final pageBvid = page.bvid ?? detail.bvid;
+      final subtitles = await _resolveOptionalSubtitles(
+        bvid: pageBvid,
+        cid: page.cid,
+        aid: page.aid ?? detail.aid,
+      );
       return BiliResolvedPlayback(
-        bvid: page.bvid ?? detail.bvid,
+        bvid: pageBvid,
         cid: page.cid,
         title: detail.title,
         subtitle: 'P${page.pageNumber} · ${page.title}',
@@ -414,6 +443,8 @@ extension BiliClientPlayback on BiliClient {
         transportLabel:
             'Bilibili progressive MP4 fallback (qn=$actualQuality; $reason)',
         isLocalFile: false,
+        subtitleTracks: subtitles.tracks,
+        subtitleError: subtitles.error,
       );
     }
 
