@@ -35,19 +35,17 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 
 - Directory: `android/`
 - Preferred entrypoint: `cd android && ./gradlew <task>`
-- Wrapper version: Gradle 8.14 from `android/gradle/wrapper/gradle-wrapper.properties`
+- Wrapper version: Gradle 9.4.0 from `android/gradle/wrapper/gradle-wrapper.properties`
 - If a tool requires the unpacked Gradle home instead of the wrapper, use:
-  `android/.gradle/wrapper/dists/gradle-8.14-all/c2qonpi39x1mddn7hk5gh9iqj/gradle-8.14`
+  `android/.gradle/wrapper/dists/gradle-9.4.0-bin/lcvyxq3t37f6mx9miaydrrgs/gradle-9.4.0`
 
 ### SDK Android Project
 
 - Directory: `third_party/vesper-player-sdk/lib/android/`
 - Preferred entrypoint: `cd third_party/vesper-player-sdk/lib/android && ./gradlew <task>`
-- Wrapper version: Gradle 9.4.0 from `third_party/vesper-player-sdk/lib/android/gradle/wrapper/gradle-wrapper.properties`
-- Distribution root if a tool asks for the wrapper cache path:
-  `third_party/vesper-player-sdk/lib/android/.gradle/wrapper/dists/gradle-9.4.0-bin`
-- Current unpacked Gradle home if a tool needs the executable directory:
-  `third_party/vesper-player-sdk/lib/android/.gradle/wrapper/dists/gradle-9.4.0-bin/lcvyxq3t37f6mx9miaydrrgs/gradle-9.4.0`
+- Wrapper version: Gradle 9.6.0 from `third_party/vesper-player-sdk/lib/android/gradle/wrapper/gradle-wrapper.properties`
+- The SDK wrapper distribution follows the active `GRADLE_USER_HOME`; prefer
+  the SDK's wrapper and do not reuse the app project's Gradle 9.4.0 install.
 
 ## Repository-Specific Constraints
 
