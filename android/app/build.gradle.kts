@@ -69,7 +69,8 @@ val playerSourceNormalizerMetadataDirFile =
 val playerFfmpegPluginBuildProfile =
     providers.provider {
         if (gradle.startParameter.taskNames.any { taskName ->
-                taskName.contains("Release", ignoreCase = true)
+                taskName.contains("Release", ignoreCase = true) ||
+                    taskName.contains("Profile", ignoreCase = true)
             }
         ) {
             "release"
@@ -121,6 +122,11 @@ android {
     }
 
     buildTypes {
+        getByName("profile") {
+            matchingFallbacks.clear()
+            matchingFallbacks += "release"
+        }
+
         release {
             signingConfig = signingConfigs.getByName("debug")
         }

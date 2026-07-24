@@ -42,18 +42,25 @@ sync_swift_package_platform() {
     grep -Eo '\.iOS\("[0-9.]+"\)' "$manifest_path" | head -n 1 || true
   )"
 
-  if [[ -z "$current_platform" ]]; then
-    echo "Failed to locate the iOS platform declaration in $manifest_path" >&2
-    exit 1
-  fi
-
   local desired_platform=".iOS(\"$deployment_target\")"
   if [[ "$current_platform" == "$desired_platform" ]]; then
     echo "$package_name already targets iOS $deployment_target"
     return 0
   fi
 
-  perl -0pi -e 's/\.iOS\("[0-9.]+"\)/.iOS("'"$deployment_target"'")/' "$manifest_path"
+  if [[ -n "$current_platform" ]]; then
+    perl -0pi -e 's/\.iOS\("[0-9.]+"\)/.iOS("'"$deployment_target"'")/' "$manifest_path"
+  else
+    perl -0pi -e \
+      's/(let package = Package\(\n[ \t]+name: "[^"]+",\n)/$1    platforms: [\n        .iOS("'"$deployment_target"'"),\n    ],\n/' \
+      "$manifest_path"
+  fi
+
+  if ! grep -Fq "$desired_platform" "$manifest_path"; then
+    echo "Failed to set the iOS platform declaration in $manifest_path" >&2
+    exit 1
+  fi
+
   echo "Updated $package_name to iOS $deployment_target"
 }
 

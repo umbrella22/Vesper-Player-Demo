@@ -385,6 +385,34 @@ void main() {
       },
     );
 
+    test('fetches paged replies for a root video comment', () async {
+      final httpClient = _FakeRegionHttpClient();
+      final client = BiliClient(httpClient: httpClient);
+      addTearDown(() => client.transport.httpClient.close(force: true));
+      const rootReplyId = 9007199254740993;
+
+      final page = await client.fetchVideoCommentReplyPage(
+        _engagementDetail,
+        rootReplyId: rootReplyId,
+        page: 2,
+        pageSize: 2,
+      );
+
+      expect(page.replies.map((reply) => reply.id), <int>[601, 602]);
+      expect(page.page, 2);
+      expect(page.pageSize, 2);
+      expect(page.totalCount, 5);
+      expect(page.hasMore, isTrue);
+      final request = httpClient.requestedUris.lastWhere(
+        (uri) => uri.path == '/x/v2/reply/reply',
+      );
+      expect(request.queryParameters['type'], '1');
+      expect(request.queryParameters['oid'], '${_engagementDetail.aid}');
+      expect(request.queryParameters['root'], '$rootReplyId');
+      expect(request.queryParameters['pn'], '2');
+      expect(request.queryParameters['ps'], '2');
+    });
+
     test('refreshes browser cookies and retries ranking after risk', () async {
       final httpClient = _FakeRegionHttpClient(riskFirstRanking: true);
       final client = BiliClient(httpClient: httpClient);
@@ -2363,6 +2391,32 @@ final class _FakeRegionHttpClient implements HttpClient {
               'stat': <String, Object?>{'view': 12000, 'danmaku': 345},
             },
           ],
+        }),
+      );
+    }
+
+    if (url.path == '/x/v2/reply/reply') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'page': <String, Object?>{'num': 2, 'size': 2, 'count': 5},
+            'replies': <Object?>[
+              <String, Object?>{
+                'rpid': 601,
+                'ctime': 1760000400,
+                'member': <String, Object?>{'uname': '分页回复一'},
+                'content': <String, Object?>{'message': '第二页第一条'},
+              },
+              <String, Object?>{
+                'rpid': 602,
+                'ctime': 1760000500,
+                'member': <String, Object?>{'uname': '分页回复二'},
+                'content': <String, Object?>{'message': '第二页第二条'},
+              },
+            ],
+          },
         }),
       );
     }

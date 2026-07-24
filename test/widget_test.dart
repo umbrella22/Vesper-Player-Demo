@@ -616,6 +616,43 @@ final _playingPlaybackSnapshot = VesperPlayerSnapshot(
   effectiveVideoTrackId: 'video-80-7-1000-0',
 );
 
+const _expiredPlaybackAddressError = VesperPlayerError(
+  message: 'Source error: HTTP 403',
+  code: VesperPlayerErrorCode.backendFailure,
+  category: VesperPlayerErrorCategory.network,
+  retriable: true,
+  details: <String, Object?>{'errorCodeName': 'ERROR_CODE_IO_BAD_HTTP_STATUS'},
+);
+
+const _iosExpiredPlaybackAddressError = VesperPlayerError(
+  message: 'The requested URL returned error: 403',
+  code: VesperPlayerErrorCode.backendFailure,
+  category: VesperPlayerErrorCategory.platform,
+  retriable: false,
+  details: <String, Object?>{
+    'avPlayerItemErrorStatusCode': '403',
+    'avPlayerItemErrorDomain': 'CoreMediaErrorDomain',
+  },
+);
+
+BiliVideoComment _playbackCommentReply({
+  required int id,
+  required String authorName,
+  required String message,
+}) {
+  return BiliVideoComment(
+    id: id,
+    authorName: authorName,
+    authorAvatarUrl: '',
+    createdAtLabel: '刚刚',
+    message: message,
+    likeCountLabel: '0',
+    pictures: const <BiliCommentPicture>[],
+    replies: const <BiliVideoComment>[],
+    timeLinks: const <BiliCommentTimeLink>[],
+  );
+}
+
 final class _FakePlaybackClient extends BiliClient {
   _FakePlaybackClient();
 
@@ -654,8 +691,19 @@ final class _FakePlaybackClient extends BiliClient {
   var coinRequests = 0;
   final sentComments = <String>[];
   final commentPageRequests = <int>[];
+  final commentReplyPageRequests = <int>[];
   final resolvedPlaybackRequests = <int>[];
+  final blockedPlaybackResolutions = <int, Completer<BiliResolvedPlayback>>{};
   final extraComments = <BiliVideoComment>[];
+  final Map<int, List<BiliVideoComment>>
+  commentReplyPages = <int, List<BiliVideoComment>>{
+    1: <BiliVideoComment>[
+      _playbackCommentReply(id: 502, authorName: '立在哪里无寒冬', message: '删了让我发'),
+      _playbackCommentReply(id: 503, authorName: '楼中楼用户二', message: '第二条完整回复'),
+      _playbackCommentReply(id: 504, authorName: '楼中楼用户三', message: '第三条完整回复'),
+    ],
+  };
+  int commentReplyTotalCount = 3;
   final List<BiliVideoComment> comments = const <BiliVideoComment>[
     BiliVideoComment(
       id: 501,
@@ -699,6 +747,10 @@ final class _FakePlaybackClient extends BiliClient {
     required TargetPlatform platform,
   }) async {
     resolvedPlaybackRequests.add(page.cid);
+    final blockedResolution = blockedPlaybackResolutions.remove(page.cid);
+    if (blockedResolution != null) {
+      return blockedResolution.future;
+    }
     return _resolvedPlaybackFor(detail, page);
   }
 
@@ -788,6 +840,24 @@ final class _FakePlaybackClient extends BiliClient {
   }
 
   @override
+  Future<BiliVideoCommentReplyPage> fetchVideoCommentReplyPage(
+    BiliVideoDetail detail, {
+    required int rootReplyId,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    commentReplyPageRequests.add(page);
+    final replies = commentReplyPages[page] ?? const <BiliVideoComment>[];
+    return BiliVideoCommentReplyPage(
+      replies: replies.take(pageSize).toList(growable: false),
+      page: page,
+      pageSize: pageSize,
+      totalCount: commentReplyTotalCount,
+      hasMore: replies.isNotEmpty && page * pageSize < commentReplyTotalCount,
+    );
+  }
+
+  @override
   Future<BiliVideoComment?> addVideoComment({
     required BiliVideoDetail detail,
     required String message,
@@ -863,9 +933,13 @@ final class _FakePlaybackClient extends BiliClient {
 
 final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   _FakePlaybackVesperPlatform({VesperPlayerSnapshot? initialSnapshot})
-    : initialSnapshot = initialSnapshot ?? _playbackSnapshot;
+    : initialSnapshot = initialSnapshot ?? _playbackSnapshot,
+      _currentSnapshot = initialSnapshot ?? _playbackSnapshot;
 
   final VesperPlayerSnapshot initialSnapshot;
+  final StreamController<VesperPlayerEvent> _eventsController =
+      StreamController<VesperPlayerEvent>.broadcast();
+  VesperPlayerSnapshot _currentSnapshot;
   final selectedSources = <VesperPlayerSource>[];
   final seekRatios = <double>[];
   final seekDeltas = <int>[];
@@ -875,6 +949,12 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   VesperNativeFramePipelineConfiguration? lastNativeFramePipelineConfiguration;
   int playCalls = 0;
   int pauseCalls = 0;
+  int refreshCalls = 0;
+  int disposeCalls = 0;
+  int clearSystemPlaybackCalls = 0;
+  int failSelectedSourcesRemaining = 0;
+  VesperPlayerError selectedSourceFailure = _expiredPlaybackAddressError;
+  VesperPlayerSnapshot? selectedSourceSuccessSnapshot;
 
   @override
   Future<VesperPlatformCreateResult> createPlayer({
@@ -908,22 +988,59 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
 
   @override
   Stream<VesperPlayerEvent> eventsFor(String playerId) {
-    return const Stream<VesperPlayerEvent>.empty();
+    return _eventsController.stream;
   }
 
   @override
   Future<void> initialize(String playerId) async {}
 
   @override
-  Future<void> dispose(String playerId) async {}
+  Future<void> dispose(String playerId) async {
+    disposeCalls += 1;
+  }
 
   @override
-  Future<void> refreshPlayer(String playerId) async {}
+  Future<void> refreshPlayer(String playerId) async {
+    refreshCalls += 1;
+  }
 
   @override
   Future<void> selectSource(String playerId, VesperPlayerSource source) async {
     selectedSources.add(source);
+    if (failSelectedSourcesRemaining > 0) {
+      failSelectedSourcesRemaining -= 1;
+      scheduleMicrotask(() => emitPlaybackError(selectedSourceFailure));
+      return;
+    }
+    final successSnapshot = selectedSourceSuccessSnapshot;
+    if (successSnapshot != null) {
+      scheduleMicrotask(() => emitSnapshot(successSnapshot));
+    }
   }
+
+  void emitSnapshot(VesperPlayerSnapshot snapshot) {
+    _currentSnapshot = snapshot;
+    _eventsController.add(
+      VesperPlayerSnapshotEvent(
+        playerId: 'playback-test-player',
+        snapshot: snapshot,
+      ),
+    );
+  }
+
+  void emitPlaybackError(VesperPlayerError error) {
+    final snapshot = _currentSnapshot.copyWith(lastError: error);
+    _currentSnapshot = snapshot;
+    _eventsController.add(
+      VesperPlayerErrorEvent(
+        playerId: 'playback-test-player',
+        error: error,
+        snapshot: snapshot,
+      ),
+    );
+  }
+
+  Future<void> closeEvents() => _eventsController.close();
 
   @override
   Future<void> play(String playerId) async {
@@ -1002,7 +1119,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   ) async {}
 
   @override
-  Future<void> clearSystemPlayback(String playerId) async {}
+  Future<void> clearSystemPlayback(String playerId) async {
+    clearSystemPlaybackCalls += 1;
+  }
 
   @override
   Future<VesperSystemPlaybackPermissionStatus>
@@ -1242,6 +1361,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   addTearDown(() {
     VesperPlayerPlatform.instance = previousPlatform;
   });
+  addTearDown(platform.closeEvents);
   const playerPluginsChannel = MethodChannel(
     'dev.ikaros.bilibili_player/player_plugins',
   );
@@ -1971,6 +2091,224 @@ void main() {
   });
 
   testWidgets(
+    'playback reparses an expired address three times before showing a dialog',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+      harness.platform.failSelectedSourcesRemaining = 3;
+
+      harness.platform.emitPlaybackError(_expiredPlaybackAddressError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(harness.client.resolvedPlaybackRequests, <int>[
+        _playbackPageOne.cid,
+        _playbackPageOne.cid,
+        _playbackPageOne.cid,
+      ]);
+      expect(harness.platform.selectedSources, hasLength(3));
+      expect(find.text('播放地址刷新失败'), findsOneWidget);
+      expect(find.textContaining('重试 3 次'), findsOneWidget);
+      expect(find.text('知道了'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('重新解析'),
+        ),
+        findsOneWidget,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'manual reparse does not reuse the expired initial address',
+    (WidgetTester tester) async {
+      const decodeError = VesperPlayerError(
+        message: 'decoder failed',
+        code: VesperPlayerErrorCode.decodeFailure,
+        category: VesperPlayerErrorCategory.decode,
+        retriable: false,
+      );
+      final harness = await _pumpPlaybackPage(
+        tester,
+        initialSnapshot: _playbackSnapshot.copyWith(lastError: decodeError),
+      );
+
+      await tester.tap(find.text('重新解析'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        for (var attempt = 0; attempt < 100; attempt += 1) {
+          if (harness.client.resolvedPlaybackRequests.isNotEmpty) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      await tester.pump();
+
+      expect(harness.platform.refreshCalls, 0);
+      expect(harness.platform.clearSystemPlaybackCalls, 1);
+      expect(harness.platform.disposeCalls, 1);
+      expect(harness.client.resolvedPlaybackRequests, <int>[
+        _playbackPageOne.cid,
+      ]);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'iOS HTTP failure evidence triggers Bilibili address reparse',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      harness.platform.emitPlaybackError(_iosExpiredPlaybackAddressError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump(const Duration(seconds: 5));
+
+      expect(harness.client.resolvedPlaybackRequests, <int>[
+        _playbackPageOne.cid,
+      ]);
+      expect(harness.platform.selectedSources, hasLength(1));
+      expect(find.text('播放地址刷新失败'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'unrelated iOS platform failures do not trigger address reparse',
+    (WidgetTester tester) async {
+      const platformError = VesperPlayerError(
+        message: 'platform channel failed',
+        code: VesperPlayerErrorCode.backendFailure,
+        category: VesperPlayerErrorCategory.platform,
+        retriable: false,
+      );
+      final harness = await _pumpPlaybackPage(tester);
+
+      harness.platform.emitPlaybackError(platformError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(harness.client.resolvedPlaybackRequests, isEmpty);
+      expect(harness.platform.selectedSources, isEmpty);
+      expect(find.text('播放地址刷新失败'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'transient network failures do not trigger address reparse',
+    (WidgetTester tester) async {
+      const networkError = VesperPlayerError(
+        message: 'network timeout',
+        code: VesperPlayerErrorCode.backendFailure,
+        category: VesperPlayerErrorCategory.network,
+        retriable: true,
+        details: <String, Object?>{
+          'errorCodeName': 'ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT',
+        },
+      );
+      final harness = await _pumpPlaybackPage(tester);
+
+      harness.platform.emitPlaybackError(networkError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(harness.client.resolvedPlaybackRequests, isEmpty);
+      expect(harness.platform.selectedSources, isEmpty);
+      expect(find.text('播放地址刷新失败'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'FairPlay license failures do not trigger media address reparse',
+    (WidgetTester tester) async {
+      const licenseError = VesperPlayerError(
+        message: 'FairPlay license request failed',
+        code: VesperPlayerErrorCode.backendFailure,
+        category: VesperPlayerErrorCategory.network,
+        retriable: true,
+        details: <String, Object?>{
+          'keySystem': 'fairPlay',
+          'httpStatusCode': '503',
+        },
+      );
+      final harness = await _pumpPlaybackPage(tester);
+
+      harness.platform.emitPlaybackError(licenseError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(harness.client.resolvedPlaybackRequests, isEmpty);
+      expect(harness.platform.selectedSources, isEmpty);
+      expect(find.text('播放地址刷新失败'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'switching pages invalidates an in-flight address recovery',
+    (WidgetTester tester) async {
+      final blockedRecovery = Completer<BiliResolvedPlayback>();
+      final harness = await _pumpPlaybackPage(
+        tester,
+        configureClient: (client) {
+          client.blockedPlaybackResolutions[_playbackPageOne.cid] =
+              blockedRecovery;
+        },
+      );
+
+      harness.platform.emitPlaybackError(_expiredPlaybackAddressError);
+      await tester.pump();
+      expect(harness.client.resolvedPlaybackRequests, <int>[
+        _playbackPageOne.cid,
+      ]);
+
+      await tester.tap(find.text('合集 · 共 3 个分 P'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('P2'));
+      await tester.runAsync(() async {
+        for (var attempt = 0; attempt < 100; attempt += 1) {
+          if (harness.client.resolvedPlaybackRequests.contains(
+            _playbackPageTwo.cid,
+          )) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      await tester.pumpAndSettle();
+
+      expect(harness.client.resolvedPlaybackRequests, <int>[
+        _playbackPageOne.cid,
+        _playbackPageTwo.cid,
+      ]);
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>['https://example.test/${_playbackPageTwo.cid}.mp4'],
+      );
+
+      blockedRecovery.complete(
+        _resolvedPlaybackFor(_playbackDetail(), _playbackPageOne),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>['https://example.test/${_playbackPageTwo.cid}.mp4'],
+      );
+      expect(find.text('播放地址刷新失败'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback page opens page collection from a bottom sheet',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(tester);
@@ -2291,6 +2629,68 @@ void main() {
 
       expect(harness.platform.seekRatios, isNotEmpty);
       expect(harness.platform.seekRatios.last, moreOrLessEquals(0.5));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback comment replies load the next page near the list end',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        configureClient: (client) {
+          client.commentReplyPages
+            ..clear()
+            ..[1] = List<BiliVideoComment>.generate(
+              20,
+              (index) => _playbackCommentReply(
+                id: 700 + index,
+                authorName: '楼中楼用户${index + 1}',
+                message: '楼中楼第${index + 1}条',
+              ),
+            )
+            ..[2] = <BiliVideoComment>[
+              _playbackCommentReply(
+                id: 720,
+                authorName: '楼中楼用户21',
+                message: '楼中楼第21条',
+              ),
+            ];
+          client.commentReplyTotalCount = 21;
+        },
+      );
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('共3条回复 >'));
+      await tester.pumpAndSettle();
+
+      expect(harness.client.commentReplyPageRequests, <int>[1]);
+      expect(find.text('相关回复共21条'), findsOneWidget);
+      final repliesList = find.byKey(
+        const PageStorageKey<String>('playback-comment-replies'),
+      );
+      final repliesScrollable = find.descendant(
+        of: repliesList,
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('playback-comment-reply-719')),
+        400,
+        scrollable: repliesScrollable,
+      );
+      await tester.pumpAndSettle();
+
+      expect(harness.client.commentReplyPageRequests, <int>[1, 2]);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('playback-comment-reply-720')),
+        300,
+        scrollable: repliesScrollable,
+      );
+      expect(
+        find.textContaining('楼中楼第21条', findRichText: true),
+        findsOneWidget,
+      );
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -2863,6 +3263,106 @@ void main() {
   );
 
   testWidgets(
+    'tv playback subtitle panel selects an SDK subtitle track',
+    (WidgetTester tester) async {
+      final subtitleSnapshot = _playbackSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsTrackCatalog: true,
+          supportsTrackSelection: true,
+          supportsSubtitleTrackSelection: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[
+            VesperMediaTrack(
+              id: 'subtitle:bili:zh-CN',
+              kind: VesperMediaTrackKind.subtitle,
+              label: '中文（中国大陆）',
+              language: 'zh-CN',
+              isDefault: true,
+            ),
+            VesperMediaTrack(
+              id: 'subtitle:bili:en-US',
+              kind: VesperMediaTrackKind.subtitle,
+              label: 'English',
+              language: 'en-US',
+            ),
+          ],
+        ),
+        confirmedSubtitleSelection: const VesperTrackSelection.track(
+          'subtitle:bili:zh-CN',
+        ),
+      );
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+        initialSnapshot: subtitleSnapshot,
+      );
+
+      await tester.tapAt(const Offset(600, 450));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .ancestor(of: find.text('字幕'), matching: find.byType(TvFocusable))
+            .last,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('关闭'), findsNWidgets(2));
+      expect(find.text('自动'), findsOneWidget);
+      expect(find.text('中文（中国大陆）'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'tv_panel_中文（中国大陆）',
+      );
+
+      await tester.tap(
+        find
+            .ancestor(
+              of: find.text('English'),
+              matching: find.byType(TvFocusable),
+            )
+            .last,
+      );
+      await tester.pump();
+
+      expect(harness.platform.subtitleSelections, hasLength(1));
+      expect(
+        harness.platform.subtitleSelections.single.mode,
+        VesperTrackSelectionMode.track,
+      );
+      expect(
+        harness.platform.subtitleSelections.single.trackId,
+        'subtitle:bili:en-US',
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv playback subtitle panel exposes unavailable state',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+
+      await tester.tapAt(const Offset(600, 450));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .ancestor(of: find.text('字幕'), matching: find.byType(TvFocusable))
+            .last,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('当前播放内核不支持字幕切换。'), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_close');
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'tv playback page panel uses right drawer with focused and selected states',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
@@ -2944,13 +3444,15 @@ void main() {
       final forwardX = tester.getTopLeft(find.text('快进 10s')).dx;
       final qualityX = tester.getTopLeft(find.text('清晰度')).dx;
       final speedX = tester.getTopLeft(find.text('倍速')).dx;
+      final subtitleX = tester.getTopLeft(find.text('字幕')).dx;
       final pagesX = tester.getTopLeft(find.text('分P')).dx;
 
       expect(playX, lessThan(rewindX));
       expect(rewindX, lessThan(forwardX));
       expect(forwardX, lessThan(qualityX));
       expect(qualityX, lessThan(speedX));
-      expect(speedX, lessThan(pagesX));
+      expect(speedX, lessThan(subtitleX));
+      expect(subtitleX, lessThan(pagesX));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );

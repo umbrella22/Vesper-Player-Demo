@@ -30,7 +30,7 @@ part 'bili_playback_widgets.dart';
 
 enum BiliPlaybackPresentationMode { phone, tv }
 
-enum TvPlaybackPanelType { none, quality, speed, pages }
+enum TvPlaybackPanelType { none, quality, speed, subtitles, pages }
 
 enum _PlaybackInfoTab { intro, comments }
 
@@ -94,6 +94,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       <TvPlaybackPanelType, FocusNode>{};
   TvPlaybackPanelType? _lastOpenedTvPanel;
   bool _tvPlaybackInitialFocusRequested = false;
+  bool _playbackRecoveryDialogVisible = false;
 
   bool get _isTvMode =>
       widget.presentationMode == BiliPlaybackPresentationMode.tv;
@@ -106,6 +107,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     _infoTabController = TabController(length: 2, vsync: this)
       ..addListener(_handleInfoTabChanged);
     _commentsScrollController.addListener(_handleCommentsScrollPosition);
+    _commentRepliesScrollController.addListener(
+      _handleCommentRepliesScrollPosition,
+    );
     _viewModel = BiliPlaybackViewModel(
       detail: widget.detail,
       initialPage: widget.initialPage,
@@ -134,6 +138,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     _infoTabController.dispose();
     _commentsScrollController.removeListener(_handleCommentsScrollPosition);
     _commentsScrollController.dispose();
+    _commentRepliesScrollController.removeListener(
+      _handleCommentRepliesScrollPosition,
+    );
     _commentRepliesScrollController.dispose();
     _relatedScrollController.dispose();
     _commentComposerController.dispose();
@@ -194,6 +201,18 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   bool get _commentsLoadingMore => _viewModel.commentsLoadingMore;
 
   bool get _commentsHasMore => _viewModel.commentsHasMore;
+
+  List<BiliVideoComment> get _commentReplies => _viewModel.commentReplies;
+
+  bool get _commentRepliesLoading => _viewModel.commentRepliesLoading;
+
+  bool get _commentRepliesLoadingMore => _viewModel.commentRepliesLoadingMore;
+
+  bool get _commentRepliesHasMore => _viewModel.commentRepliesHasMore;
+
+  String? get _commentRepliesError => _viewModel.commentRepliesError;
+
+  int? get _commentRepliesTotalCount => _viewModel.commentRepliesTotalCount;
 
   bool get _commentSubmitting => _viewModel.commentSubmitting;
 
@@ -339,6 +358,18 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     }
   }
 
+  void _handleCommentRepliesScrollPosition() {
+    if (_selectedInfoTab != _PlaybackInfoTab.comments ||
+        _openedCommentReplies == null ||
+        !_commentRepliesScrollController.hasClients) {
+      return;
+    }
+    final position = _commentRepliesScrollController.position;
+    if (position.maxScrollExtent - position.pixels <= 360) {
+      unawaited(_loadMoreCommentReplies());
+    }
+  }
+
   void _handleMobileStagePointerMove(PointerMoveEvent event) {
     if (_isTvMode ||
         _viewModel.isFullscreen ||
@@ -383,6 +414,14 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     if (message != null && mounted) {
       _showMessage(message);
     }
+    final recoveryNotice = _viewModel.consumePendingPlaybackRecoveryNotice();
+    if (recoveryNotice != null && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_showPlaybackRecoveryNotice(recoveryNotice));
+        }
+      });
+    }
   }
 
   Future<void> _showViewModelMessage(Future<String?> operation) async {
@@ -406,6 +445,18 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   Future<void> _loadMoreComments() {
     return _viewModel.loadMoreComments();
+  }
+
+  Future<void> _loadMoreCommentReplies() {
+    return _viewModel.loadMoreCommentReplies();
+  }
+
+  Future<void> _retryCommentReplies() {
+    final rootComment = _openedCommentReplies;
+    if (rootComment == null) {
+      return Future<void>.value();
+    }
+    return _viewModel.retryCommentReplies(rootComment);
   }
 
   Future<void> _toggleLike() {
@@ -562,6 +613,12 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       _openedCommentReplies = comment;
       _mobileStageCollapseOffset = 0;
     });
+    unawaited(_viewModel.loadCommentReplies(comment));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _commentRepliesScrollController.hasClients) {
+        _commentRepliesScrollController.jumpTo(0);
+      }
+    });
   }
 
   void _closeCommentReplies() {
@@ -574,6 +631,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
           ? _commentsScrollController.offset
           : 0;
     });
+    _viewModel.clearCommentReplies();
   }
 
   Future<void> _toggleFullscreen() async {
@@ -781,6 +839,45 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showPlaybackRecoveryNotice(
+    BiliPlaybackRecoveryNotice notice,
+  ) async {
+    if (!mounted || _playbackRecoveryDialogVisible) {
+      return;
+    }
+    _playbackRecoveryDialogVisible = true;
+    bool retry = false;
+    try {
+      retry =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: Text(notice.title),
+                content: Text(notice.message),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('知道了'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('重新解析'),
+                  ),
+                ],
+              );
+            },
+          ) ??
+          false;
+    } finally {
+      _playbackRecoveryDialogVisible = false;
+    }
+    if (retry && mounted) {
+      await _reloadCurrentPage();
+    }
   }
 
   @override
@@ -1353,6 +1450,63 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     }
   }
 
+  List<_TvPanelOption> _tvSubtitlePanelOptions(VesperPlayerSnapshot snapshot) {
+    final tracks = _subtitleTracks(snapshot);
+    if (tracks.isEmpty ||
+        !snapshot.capabilities.supportsSubtitleTrackSelection) {
+      return const <_TvPanelOption>[];
+    }
+    final selection = _subtitleSelection(snapshot);
+    final selectedTrackId = selection.mode == VesperTrackSelectionMode.track
+        ? selection.trackId
+        : null;
+    return <_TvPanelOption>[
+      _TvPanelOption(
+        label: '关闭',
+        selected: selection.mode == VesperTrackSelectionMode.disabled,
+        onTap: () {
+          unawaited(_selectSubtitle(const VesperTrackSelection.disabled()));
+        },
+      ),
+      _TvPanelOption(
+        label: '自动',
+        selected: selection.mode == VesperTrackSelectionMode.auto,
+        onTap: () {
+          unawaited(_selectSubtitle(const VesperTrackSelection.auto()));
+        },
+      ),
+      for (final track in tracks)
+        _TvPanelOption(
+          label: _subtitleTrackLabel(track),
+          selected: selectedTrackId == track.id,
+          onTap: () {
+            unawaited(_selectSubtitle(VesperTrackSelection.track(track.id)));
+          },
+        ),
+    ];
+  }
+
+  String? _tvSubtitlePanelMessage(VesperPlayerSnapshot snapshot) {
+    if (!snapshot.capabilities.supportsSubtitleTrackSelection) {
+      return '当前播放内核不支持字幕切换。';
+    }
+    if (_subtitleTracks(snapshot).isNotEmpty) {
+      return null;
+    }
+    final advertised =
+        _resolvedPlayback?.subtitleTracks ?? const <BiliSubtitleTrack>[];
+    final subtitleError =
+        snapshot.subtitleState.catalogError?.message ??
+        _resolvedPlayback?.subtitleError;
+    if (subtitleError != null) {
+      return subtitleError;
+    }
+    final isLoading =
+        snapshot.subtitleState.catalogState ==
+        VesperSubtitleCatalogState.loading;
+    return advertised.isEmpty && !isLoading ? '当前视频没有可用字幕。' : '字幕正在准备，请稍后重试。';
+  }
+
   Widget _buildTvPanel(
     VesperPlayerController controller,
     VesperPlayerSnapshot snapshot,
@@ -1361,18 +1515,22 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     final qualityIds = _availableBiliQualityIds(tracks);
     final currentQualityId = _currentBiliQualityId(snapshot, tracks);
     final rates = _playbackRates(snapshot);
+    final subtitleOptions = _tvSubtitlePanelOptions(snapshot);
+    final subtitleMessage = _tvSubtitlePanelMessage(snapshot);
     final pages = widget.detail.pages;
     final isPgc =
         widget.detail.ownerMid <= 0 && widget.detail.ownerName == '番剧';
     final label = switch (_tvPanel) {
       TvPlaybackPanelType.quality => '清晰度',
       TvPlaybackPanelType.speed => '倍速',
+      TvPlaybackPanelType.subtitles => '字幕',
       TvPlaybackPanelType.pages => isPgc ? '选集' : '分P',
       TvPlaybackPanelType.none => '',
     };
     final subtitle = switch (_tvPanel) {
       TvPlaybackPanelType.quality => '确认后立即切换当前播放清晰度',
       TvPlaybackPanelType.speed => '确认后立即改变播放速度',
+      TvPlaybackPanelType.subtitles => '字幕语言与显示方式',
       TvPlaybackPanelType.pages =>
         isPgc ? '上下选择剧集，确认播放选中的一集' : '上下选择分 P，确认播放选中的分段',
       TvPlaybackPanelType.none => '',
@@ -1402,6 +1560,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
               ),
             )
             .toList(),
+      TvPlaybackPanelType.subtitles => subtitleOptions,
       TvPlaybackPanelType.pages =>
         pages
             .map(
@@ -1447,10 +1606,14 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
               child: SafeArea(
                 left: false,
                 child: _TvPanelDrawer(
+                  key: ValueKey<TvPlaybackPanelType>(_tvPanel),
                   panel: _tvPanel,
                   label: label,
                   subtitle: subtitle,
                   options: options,
+                  emptyMessage: _tvPanel == TvPlaybackPanelType.subtitles
+                      ? subtitleMessage
+                      : null,
                   onClose: _closeTvPanelAndRestoreFocus,
                 ),
               ),
@@ -1614,6 +1777,15 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                     icon: Icons.speed_rounded,
                     focusNode: _tvPanelButtonNode(TvPlaybackPanelType.speed),
                     onTap: () => _openTvPanel(TvPlaybackPanelType.speed),
+                  ),
+                  const SizedBox(width: 14),
+                  _TvBarButton(
+                    label: '字幕',
+                    icon: Icons.subtitles_outlined,
+                    focusNode: _tvPanelButtonNode(
+                      TvPlaybackPanelType.subtitles,
+                    ),
+                    onTap: () => _openTvPanel(TvPlaybackPanelType.subtitles),
                   ),
                   if (widget.detail.pages.length > 1) ...[
                     const SizedBox(width: 14),
@@ -1839,10 +2011,12 @@ class _TvBarButton extends StatelessWidget {
 
 class _TvPanelDrawer extends StatelessWidget {
   const _TvPanelDrawer({
+    super.key,
     required this.panel,
     required this.label,
     required this.subtitle,
     required this.options,
+    required this.emptyMessage,
     required this.onClose,
   });
 
@@ -1850,6 +2024,7 @@ class _TvPanelDrawer extends StatelessWidget {
   final String label;
   final String subtitle;
   final List<_TvPanelOption> options;
+  final String? emptyMessage;
   final VoidCallback onClose;
 
   @override
@@ -1878,10 +2053,23 @@ class _TvPanelDrawer extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         Expanded(
-          child: _TvPanelOptionList(panel: panel, options: options),
+          child: options.isEmpty
+              ? Center(
+                  child: Text(
+                    emptyMessage ?? '暂无可用选项。',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xA6FFFFFF),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.5,
+                    ),
+                  ),
+                )
+              : _TvPanelOptionList(panel: panel, options: options),
         ),
         TvFocusable(
-          autofocus: false,
+          autofocus: options.isEmpty,
           showGlow: false,
           scale: 1.04,
           focusCornerRadius: 12,

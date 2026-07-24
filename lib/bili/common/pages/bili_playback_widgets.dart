@@ -1148,89 +1148,48 @@ class _PlaybackBottomSheetScaffold extends StatelessWidget {
   }
 }
 
-class _CommentReplyDetail extends StatelessWidget {
-  const _CommentReplyDetail({
-    required this.comment,
-    required this.onSeekToTime,
-  });
+class _CommentReplySummary extends StatelessWidget {
+  const _CommentReplySummary({required this.totalCount});
 
-  final BiliVideoComment comment;
-  final ValueChanged<int> onSeekToTime;
+  final int totalCount;
 
   @override
   Widget build(BuildContext context) {
-    final replies = comment.replies;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _CommentTile(
-          comment: comment,
-          onSeekToTime: onSeekToTime,
-          onOpenReplies: (_) {},
-          showRepliesPreview: false,
-        ),
-        const SizedBox(height: 18),
-        SizedBox(
-          width: double.infinity,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(color: Color(0xFFF5F6FA)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '相关回复共${comment.replyCount > 0 ? comment.replyCount : replies.length}条',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF8C929F),
-                        fontWeight: FontWeight.w900,
-                        fontFeatures: const [ui.FontFeature.tabularFigures()],
-                      ),
-                    ),
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xFFF5F6FA)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '相关回复共$totalCount条',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF8C929F),
+                    fontWeight: FontWeight.w900,
+                    fontFeatures: const [ui.FontFeature.tabularFigures()],
                   ),
-                  const Icon(
-                    Icons.sort_rounded,
-                    size: 20,
-                    color: Color(0xFF8C929F),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    '按时间',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF8C929F),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              const Icon(
+                Icons.sort_rounded,
+                size: 20,
+                color: Color(0xFF8C929F),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '按时间',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF8C929F),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        if (replies.isEmpty)
-          Text(
-            '暂无相关回复',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8C929F),
-              fontWeight: FontWeight.w700,
-            ),
-          )
-        else
-          for (final reply in replies) ...[
-            _CommentTile(
-              comment: reply,
-              onSeekToTime: onSeekToTime,
-              onOpenReplies: (_) {},
-              showRepliesPreview: false,
-            ),
-            if (reply != replies.last)
-              const Divider(
-                height: 28,
-                thickness: 0.7,
-                color: Color(0xFFE8EAF0),
-              ),
-          ],
-      ],
+      ),
     );
   }
 }
@@ -1238,14 +1197,30 @@ class _CommentReplyDetail extends StatelessWidget {
 class _CommentReplyPanel extends StatelessWidget {
   const _CommentReplyPanel({
     required this.comment,
+    required this.replies,
+    required this.totalCount,
+    required this.loading,
+    required this.loadingMore,
+    required this.hasMore,
+    required this.errorMessage,
     required this.controller,
     required this.onClose,
+    required this.onLoadMore,
+    required this.onRetry,
     required this.onSeekToTime,
   });
 
   final BiliVideoComment comment;
+  final List<BiliVideoComment> replies;
+  final int? totalCount;
+  final bool loading;
+  final bool loadingMore;
+  final bool hasMore;
+  final String? errorMessage;
   final ScrollController controller;
   final VoidCallback onClose;
+  final Future<void> Function() onLoadMore;
+  final Future<void> Function() onRetry;
   final ValueChanged<int> onSeekToTime;
 
   @override
@@ -1283,19 +1258,168 @@ class _CommentReplyPanel extends StatelessWidget {
         ),
         const Divider(height: 1, color: Color(0xFFE8EAF0)),
         Expanded(
-          child: ListView(
+          child: ListView.builder(
             key: const PageStorageKey<String>('playback-comment-replies'),
             controller: controller,
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
-            children: [
-              _CommentReplyDetail(comment: comment, onSeekToTime: onSeekToTime),
-            ],
+            itemCount: replies.length + 3,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: _CommentTile(
+                    comment: comment,
+                    onSeekToTime: onSeekToTime,
+                    onOpenReplies: (_) {},
+                    showRepliesPreview: false,
+                  ),
+                );
+              }
+              if (index == 1) {
+                final visibleTotal =
+                    totalCount ??
+                    (comment.replyCount > 0
+                        ? comment.replyCount
+                        : replies.length);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _CommentReplySummary(totalCount: visibleTotal),
+                );
+              }
+
+              final replyIndex = index - 2;
+              if (replyIndex < replies.length) {
+                final reply = replies[replyIndex];
+                return KeyedSubtree(
+                  key: ValueKey<String>('playback-comment-reply-${reply.id}'),
+                  child: Column(
+                    children: [
+                      _CommentTile(
+                        comment: reply,
+                        onSeekToTime: onSeekToTime,
+                        onOpenReplies: (_) {},
+                        showRepliesPreview: false,
+                      ),
+                      if (replyIndex != replies.length - 1)
+                        const Divider(
+                          height: 28,
+                          thickness: 0.7,
+                          color: Color(0xFFE8EAF0),
+                        ),
+                    ],
+                  ),
+                );
+              }
+
+              return _CommentReplyLoadFooter(
+                hasReplies: replies.isNotEmpty,
+                loading: loading || loadingMore,
+                hasMore: hasMore,
+                errorMessage: errorMessage,
+                onLoadMore: onLoadMore,
+                onRetry: onRetry,
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CommentReplyLoadFooter extends StatelessWidget {
+  const _CommentReplyLoadFooter({
+    required this.hasReplies,
+    required this.loading,
+    required this.hasMore,
+    required this.errorMessage,
+    required this.onLoadMore,
+    required this.onRetry,
+  });
+
+  final bool hasReplies;
+  final bool loading;
+  final bool hasMore;
+  final String? errorMessage;
+  final Future<void> Function() onLoadMore;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 22),
+        child: Center(
+          child: SizedBox.square(
+            dimension: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.2),
+          ),
+        ),
+      );
+    }
+    if (errorMessage case final message?) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFFB64A5A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: () => unawaited(onRetry()),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!hasReplies) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: Text(
+            '暂无相关回复',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF8C929F),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+    if (hasMore) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: TextButton.icon(
+            onPressed: () => unawaited(onLoadMore()),
+            icon: const Icon(Icons.expand_more_rounded, size: 20),
+            label: const Text('加载更多回复'),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Center(
+        child: Text(
+          '没有更多回复了',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: const Color(0xFFA0A6B2),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2145,8 +2269,8 @@ class _EpisodePreviewTile extends StatelessWidget {
   }
 }
 
-class _RelatedVideoList extends StatelessWidget {
-  const _RelatedVideoList({
+class _RelatedVideoSliverList extends StatelessWidget {
+  const _RelatedVideoSliverList({
     required this.items,
     required this.loading,
     required this.errorMessage,
@@ -2163,61 +2287,74 @@ class _RelatedVideoList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty && loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 18),
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 18),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
+        ),
       );
     }
     if (items.isEmpty && errorMessage != null) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF2F4),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Text(
-            errorMessage!,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8D2A46),
-              height: 1.45,
-              fontWeight: FontWeight.w600,
+      return SliverToBoxAdapter(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF2F4),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              errorMessage!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF8D2A46),
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
       );
     }
     if (items.isEmpty) {
-      return Text(
-        '暂无相关视频',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: const Color(0xFF8C929F),
-          fontWeight: FontWeight.w700,
+      return SliverToBoxAdapter(
+        child: Text(
+          '暂无相关视频',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFF8C929F),
+            fontWeight: FontWeight.w700,
+          ),
         ),
       );
     }
 
-    return Column(
-      children: [
-        for (final item in items) ...[
-          _RelatedVideoTile(
-            item: item,
-            opening: openingBvid == item.bvid,
-            onTap: () => onTap(item),
-          ),
-          if (item != items.last)
-            const Divider(height: 18, thickness: 0.7, color: Color(0xFFE8EAF0)),
-        ],
-        if (loading) ...[
-          const SizedBox(height: 14),
-          const Center(
-            child: SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
+    final relatedChildCount = items.length * 2 - 1;
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, index) {
+        if (index >= relatedChildCount) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 14),
+            child: Center(
+              child: SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
             ),
-          ),
-        ],
-      ],
+          );
+        }
+        if (index.isOdd) {
+          return const Divider(
+            height: 18,
+            thickness: 0.7,
+            color: Color(0xFFE8EAF0),
+          );
+        }
+        final item = items[index ~/ 2];
+        return _RelatedVideoTile(
+          item: item,
+          opening: openingBvid == item.bvid,
+          onTap: () => onTap(item),
+        );
+      }, childCount: relatedChildCount + (loading ? 1 : 0)),
     );
   }
 }

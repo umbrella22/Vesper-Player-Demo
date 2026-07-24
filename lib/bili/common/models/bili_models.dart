@@ -315,6 +315,22 @@ final class BiliVideoCommentPage {
   final bool hasMore;
 }
 
+final class BiliVideoCommentReplyPage {
+  const BiliVideoCommentReplyPage({
+    required this.replies,
+    required this.page,
+    required this.pageSize,
+    required this.hasMore,
+    this.totalCount,
+  });
+
+  final List<BiliVideoComment> replies;
+  final int page;
+  final int pageSize;
+  final int? totalCount;
+  final bool hasMore;
+}
+
 final class BiliVideoEngagement {
   const BiliVideoEngagement({
     required this.isAuthenticated,

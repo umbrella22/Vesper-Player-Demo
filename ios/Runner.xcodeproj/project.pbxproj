@@ -166,7 +166,6 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
-				D9A7C0012F5A100100C0DE01 /* Embed player-remux-ffmpeg plugin */,
 				E5F2A9B42DC9B8F000C4905E /* Sign Flutter Native Asset Frameworks */,
 			);
 			buildRules = (
@@ -275,21 +274,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
-		};
-		D9A7C0012F5A100100C0DE01 /* Embed player-remux-ffmpeg plugin */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Embed player-remux-ffmpeg plugin";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "export VESPER_APPLE_FFMPEG_PROFILE=\"${VESPER_APPLE_FFMPEG_PROFILE:-remux-local}\"\n/bin/bash \"$SRCROOT/../third_party/vesper-player-sdk/scripts/ios/embed-player-remux-ffmpeg-plugin.sh\" \"vesper_player_ios.framework\"";
 		};
 		E5F2A9B42DC9B8F000C4905E /* Sign Flutter Native Asset Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

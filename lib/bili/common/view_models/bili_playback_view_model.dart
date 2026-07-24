@@ -26,6 +26,16 @@ enum BiliCodecStrategy {
   final String label;
 }
 
+final class BiliPlaybackRecoveryNotice {
+  const BiliPlaybackRecoveryNotice({
+    required this.title,
+    required this.message,
+  });
+
+  final String title;
+  final String message;
+}
+
 final class BiliPlaybackViewModel extends ChangeNotifier {
   BiliPlaybackViewModel({
     required this.detail,
@@ -62,10 +72,18 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   final BiliClient client;
   final BiliHistoryStore historyStore;
   final BiliOfflineDownloadController offlineController;
-  final BiliResolvedPlayback? _initialResolvedPlayback;
+  BiliResolvedPlayback? _initialResolvedPlayback;
   final VesperExternalPlaybackController _externalPlaybackForCast =
       VesperExternalPlaybackController();
+  static const int _maxPlaybackRecoveryAttempts = 3;
+  static const List<Duration> _playbackRecoveryBackoff = <Duration>[
+    Duration.zero,
+    Duration(milliseconds: 400),
+    Duration(milliseconds: 800),
+  ];
+  static const Duration _playbackRecoverySuccessWindow = Duration(seconds: 5);
   static const int _commentsPageSize = 20;
+  static const int _commentRepliesPageSize = 20;
 
   late Future<VesperPlayerController> _controllerFuture;
   VesperPlayerController? _controller;
@@ -76,11 +94,15 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   BiliResolvedPlayback? _resolvedPlayback;
   BiliVideoEngagement? _engagement;
   List<BiliVideoComment> _comments = const <BiliVideoComment>[];
+  List<BiliVideoComment> _commentReplies = const <BiliVideoComment>[];
   List<BiliFeedVideo> _relatedVideos = const <BiliFeedVideo>[];
   bool _engagementLoading = false;
   bool _commentsLoading = false;
   bool _commentsLoadingMore = false;
   bool _commentsHasMore = false;
+  bool _commentRepliesLoading = false;
+  bool _commentRepliesLoadingMore = false;
+  bool _commentRepliesHasMore = false;
   bool _commentSubmitting = false;
   bool _relatedVideosLoading = false;
   bool _watchLaterLoading = false;
@@ -89,18 +111,33 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   int _watchLaterRequestGeneration = 0;
   BiliEngagementAction? _pendingEngagementAction;
   String? _commentsError;
+  String? _commentRepliesError;
   String? _relatedVideosError;
   int _sentCoinCount = 0;
   int _commentsPage = 0;
+  int _commentRepliesPage = 0;
+  int? _commentRepliesRootId;
+  int? _commentRepliesTotalCount;
+  int _commentRepliesRequestGeneration = 0;
   int? _selectedBiliQualityId;
   BiliCodecStrategy _selectedCodecStrategy = BiliCodecStrategy.defaultStrategy;
   VesperSystemPlaybackPermissionStatus _systemPlaybackPermissionStatus =
       VesperSystemPlaybackPermissionStatus.notRequired;
   String? _castMessage;
   String? _pendingMessage;
+  BiliPlaybackRecoveryNotice? _pendingPlaybackRecoveryNotice;
   bool _castPausedLocalPlayback = false;
   bool _isFullscreen = false;
   bool _isDisposed = false;
+  bool _playbackRecoveryInFlight = false;
+  bool _playbackRecoveryFailureReported = false;
+  bool _playbackSourceTransitionInFlight = false;
+  int _playbackRecoveryAttempts = 0;
+  int _playbackRecoveryGeneration = 0;
+  int _controllerGeneration = 0;
+  VesperPlayerError? _deferredPlaybackRecoveryError;
+  StreamSubscription<VesperPlayerEvent>? _controllerEventsSubscription;
+  Timer? _playbackRecoverySuccessTimer;
   StreamSubscription<VesperExternalPlaybackSessionEvent>?
   _castEventsSubscription;
   late final BiliExternalPlaybackManager _dlnaManager;
@@ -121,6 +158,8 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
 
   List<BiliVideoComment> get comments => _comments;
 
+  List<BiliVideoComment> get commentReplies => _commentReplies;
+
   List<BiliFeedVideo> get relatedVideos => _relatedVideos;
 
   bool get engagementLoading => _engagementLoading;
@@ -130,6 +169,12 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   bool get commentsLoadingMore => _commentsLoadingMore;
 
   bool get commentsHasMore => _commentsHasMore;
+
+  bool get commentRepliesLoading => _commentRepliesLoading;
+
+  bool get commentRepliesLoadingMore => _commentRepliesLoadingMore;
+
+  bool get commentRepliesHasMore => _commentRepliesHasMore;
 
   bool get commentSubmitting => _commentSubmitting;
 
@@ -144,6 +189,10 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   bool get watchLaterKnown => _watchLaterKnown;
 
   String? get commentsError => _commentsError;
+
+  String? get commentRepliesError => _commentRepliesError;
+
+  int? get commentRepliesTotalCount => _commentRepliesTotalCount;
 
   String? get relatedVideosError => _relatedVideosError;
 
@@ -194,6 +243,12 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     return message;
   }
 
+  BiliPlaybackRecoveryNotice? consumePendingPlaybackRecoveryNotice() {
+    final notice = _pendingPlaybackRecoveryNotice;
+    _pendingPlaybackRecoveryNotice = null;
+    return notice;
+  }
+
   void setFullscreen(bool value) {
     if (_isFullscreen == value) {
       return;
@@ -203,9 +258,11 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   Future<VesperPlayerController> _createController() async {
+    final generation = ++_controllerGeneration;
     VesperPlayerController? nextController;
     try {
       final initialResolved = _initialResolvedPlayback;
+      _initialResolvedPlayback = null;
       final resolved =
           initialResolved != null && initialResolved.cid == _selectedPage.cid
           ? initialResolved
@@ -227,6 +284,8 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         benchmarkConfiguration: biliPlayerBenchmarkConfiguration(),
         sourceNormalizerConfiguration: sourceNormalizerConfiguration,
       );
+      _resetPlaybackRecoveryState(clearPendingNotice: true);
+      await _replaceControllerEventSubscription(nextController, generation);
       await nextController.initialize();
       final initialPositionMs = _pendingInitialPositionMs;
       if (initialPositionMs != null) {
@@ -253,12 +312,15 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         }
       }
       await _configureSystemPlayback(nextController, resolved);
+      _controller = nextController;
       await nextController.play();
+      if (nextController.snapshot.lastError case final lastError?) {
+        _handleControllerError(lastError, generation);
+      }
 
       if (_isDisposed) {
         await nextController.dispose();
       } else {
-        _controller = nextController;
         _notify();
       }
       return nextController;
@@ -266,16 +328,25 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       if (nextController != null) {
         await nextController.dispose();
       }
+      if (_controllerGeneration == generation) {
+        _controller = null;
+      }
       rethrow;
     }
   }
 
   Future<void> reloadCurrentPage() async {
+    _controllerGeneration += 1;
+    _resetPlaybackRecoveryState(clearPendingNotice: true);
     final previous = _controller;
     final previousSnapshot = previous?.snapshot;
     _controller = null;
     if (previous != null && previousSnapshot != null) {
-      await _persistLatestHistory(previous, fallback: previousSnapshot);
+      if (previousSnapshot.lastError != null) {
+        unawaited(_persistHistory(previousSnapshot));
+      } else {
+        await _persistLatestHistory(previous, fallback: previousSnapshot);
+      }
     }
     if (previous != null) {
       await _disposeController(previous);
@@ -363,6 +434,126 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       _commentsLoadingMore = false;
       _notify();
     }
+  }
+
+  Future<void> loadCommentReplies(BiliVideoComment rootComment) async {
+    final rootReplyId = rootComment.id;
+    final generation = ++_commentRepliesRequestGeneration;
+    _commentRepliesRootId = rootReplyId;
+    _commentReplies = rootComment.replies;
+    _commentRepliesPage = 0;
+    _commentRepliesTotalCount = rootComment.replyCount > 0
+        ? rootComment.replyCount
+        : rootComment.replies.length;
+    _commentRepliesHasMore =
+        _commentRepliesTotalCount! > rootComment.replies.length;
+    _commentRepliesLoading = true;
+    _commentRepliesLoadingMore = false;
+    _commentRepliesError = null;
+    _notify();
+    try {
+      final page = await client.fetchVideoCommentReplyPage(
+        detail,
+        rootReplyId: rootReplyId,
+        page: 1,
+        pageSize: _commentRepliesPageSize,
+      );
+      if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        return;
+      }
+      _commentReplies = page.replies;
+      _commentRepliesPage = page.page;
+      _commentRepliesTotalCount =
+          page.totalCount ??
+          (rootComment.replyCount > 0
+              ? rootComment.replyCount
+              : page.replies.length);
+      _commentRepliesHasMore = page.hasMore;
+    } catch (error) {
+      if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        return;
+      }
+      _commentRepliesError = '回复加载失败：$error';
+    } finally {
+      if (_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        _commentRepliesLoading = false;
+        _notify();
+      }
+    }
+  }
+
+  Future<void> loadMoreCommentReplies() async {
+    final rootReplyId = _commentRepliesRootId;
+    if (rootReplyId == null ||
+        _commentRepliesLoading ||
+        _commentRepliesLoadingMore ||
+        !_commentRepliesHasMore) {
+      return;
+    }
+    final generation = _commentRepliesRequestGeneration;
+    _commentRepliesLoadingMore = true;
+    _commentRepliesError = null;
+    _notify();
+    try {
+      final nextPage = _commentRepliesPage <= 0 ? 1 : _commentRepliesPage + 1;
+      final page = await client.fetchVideoCommentReplyPage(
+        detail,
+        rootReplyId: rootReplyId,
+        page: nextPage,
+        pageSize: _commentRepliesPageSize,
+      );
+      if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        return;
+      }
+      final seenIds = _commentReplies.map((reply) => reply.id).toSet();
+      final additions = page.replies
+          .where((reply) => seenIds.add(reply.id))
+          .toList(growable: false);
+      if (additions.isEmpty) {
+        _commentRepliesHasMore = false;
+      } else {
+        _commentReplies = <BiliVideoComment>[..._commentReplies, ...additions];
+        _commentRepliesPage = page.page;
+        _commentRepliesTotalCount = page.totalCount ?? _commentReplies.length;
+        _commentRepliesHasMore = page.hasMore;
+      }
+    } catch (error) {
+      if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        return;
+      }
+      _commentRepliesError = '加载更多回复失败：$error';
+    } finally {
+      if (_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
+        _commentRepliesLoadingMore = false;
+        _notify();
+      }
+    }
+  }
+
+  Future<void> retryCommentReplies(BiliVideoComment rootComment) {
+    if (_commentRepliesRootId != rootComment.id || _commentRepliesPage <= 0) {
+      return loadCommentReplies(rootComment);
+    }
+    return loadMoreCommentReplies();
+  }
+
+  void clearCommentReplies() {
+    _commentRepliesRequestGeneration += 1;
+    _commentRepliesRootId = null;
+    _commentReplies = const <BiliVideoComment>[];
+    _commentRepliesPage = 0;
+    _commentRepliesTotalCount = null;
+    _commentRepliesHasMore = false;
+    _commentRepliesLoading = false;
+    _commentRepliesLoadingMore = false;
+    _commentRepliesError = null;
+    _notify();
+  }
+
+  bool _isCurrentCommentRepliesRequest(int rootReplyId, int generation) {
+    return !_isDisposed &&
+        _commentRepliesRootId == rootReplyId &&
+        _commentRepliesRequestGeneration == generation;
   }
 
   Future<String?> submitComment(String message) async {
@@ -587,10 +778,11 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return null;
     }
 
-    final currentSnapshot = controller.snapshot;
-    await _persistLatestHistory(controller, fallback: currentSnapshot);
-
+    _playbackSourceTransitionInFlight = true;
+    _resetPlaybackRecoveryState(clearPendingNotice: true);
     try {
+      final currentSnapshot = controller.snapshot;
+      unawaited(_persistHistory(currentSnapshot));
       final resolved = await client.resolvePlayback(
         detail: detail,
         page: page,
@@ -613,6 +805,8 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return null;
     } catch (error) {
       return '切换分 P 失败：$error';
+    } finally {
+      _playbackSourceTransitionInFlight = false;
     }
   }
 
@@ -640,6 +834,256 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       _notify();
     }
     return resolved;
+  }
+
+  Future<void> _replaceControllerEventSubscription(
+    VesperPlayerController controller,
+    int generation,
+  ) async {
+    await _controllerEventsSubscription?.cancel();
+    if (_isDisposed || generation != _controllerGeneration) {
+      return;
+    }
+    _controllerEventsSubscription = controller.events.listen((event) {
+      if (_isDisposed || generation != _controllerGeneration) {
+        return;
+      }
+      switch (event) {
+        case VesperPlayerSnapshotEvent():
+          _handleControllerSnapshot(event.snapshot, generation);
+        case VesperPlayerErrorEvent():
+          _handleControllerError(event.error, generation);
+        default:
+      }
+    });
+  }
+
+  void _handleControllerSnapshot(
+    VesperPlayerSnapshot snapshot,
+    int generation,
+  ) {
+    if (_isDisposed || generation != _controllerGeneration) {
+      return;
+    }
+    if (snapshot.lastError != null) {
+      _playbackRecoverySuccessTimer?.cancel();
+      return;
+    }
+    if (_playbackRecoveryAttempts > 0 &&
+        !_playbackRecoveryInFlight &&
+        snapshot.playbackState == VesperPlaybackState.playing) {
+      _schedulePlaybackRecoverySuccessReset(generation);
+    }
+  }
+
+  void _handleControllerError(VesperPlayerError error, int generation) {
+    if (_isDisposed || generation != _controllerGeneration) {
+      return;
+    }
+    if (_playbackSourceTransitionInFlight) {
+      return;
+    }
+    if (!_shouldAutoRecoverPlaybackSource(error)) {
+      return;
+    }
+    _playbackRecoverySuccessTimer?.cancel();
+    if (_playbackRecoveryFailureReported) {
+      return;
+    }
+    if (_playbackRecoveryInFlight) {
+      _deferredPlaybackRecoveryError = error;
+      return;
+    }
+    if (_playbackRecoveryAttempts >= _maxPlaybackRecoveryAttempts) {
+      _emitPlaybackRecoveryFailure(error.message);
+      return;
+    }
+    unawaited(
+      _attemptPlaybackRecovery(error, generation, _playbackRecoveryGeneration),
+    );
+  }
+
+  bool _shouldAutoRecoverPlaybackSource(VesperPlayerError error) {
+    final resolved = _resolvedPlayback;
+    if (resolved == null || resolved.isLocalFile) {
+      return false;
+    }
+    if (error.details['domain'] == 'subtitle') {
+      return false;
+    }
+    if (error.details['keySystem'] != null ||
+        error.details['domain'] == 'drm') {
+      return false;
+    }
+    if (error.code == VesperPlayerErrorCode.invalidSource ||
+        error.category == VesperPlayerErrorCategory.source) {
+      return true;
+    }
+    if (error.code != VesperPlayerErrorCode.backendFailure ||
+        (error.category != VesperPlayerErrorCategory.network &&
+            error.category != VesperPlayerErrorCategory.platform)) {
+      return false;
+    }
+    final iosHttpStatus = int.tryParse(
+      '${error.details['avPlayerItemErrorStatusCode'] ?? ''}',
+    );
+    if (iosHttpStatus != null && iosHttpStatus >= 400 && iosHttpStatus <= 599) {
+      return true;
+    }
+    return switch ('${error.details['errorCodeName'] ?? ''}') {
+      'ERROR_CODE_IO_BAD_HTTP_STATUS' ||
+      'ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE' => true,
+      _ => false,
+    };
+  }
+
+  Future<void> _attemptPlaybackRecovery(
+    VesperPlayerError triggerError,
+    int controllerGeneration,
+    int recoveryGeneration,
+  ) async {
+    if (_isDisposed ||
+        controllerGeneration != _controllerGeneration ||
+        recoveryGeneration != _playbackRecoveryGeneration ||
+        _playbackSourceTransitionInFlight ||
+        _playbackRecoveryInFlight) {
+      return;
+    }
+    final controller = _controller;
+    final recoveryPage = _selectedPage;
+    if (controller == null) {
+      return;
+    }
+
+    _playbackRecoveryInFlight = true;
+    _playbackRecoverySuccessTimer?.cancel();
+    var lastFailureMessage = triggerError.message;
+    try {
+      while (!_isDisposed &&
+          controllerGeneration == _controllerGeneration &&
+          recoveryGeneration == _playbackRecoveryGeneration &&
+          !_playbackSourceTransitionInFlight &&
+          _playbackRecoveryAttempts < _maxPlaybackRecoveryAttempts) {
+        final attempt = _playbackRecoveryAttempts + 1;
+        _playbackRecoveryAttempts = attempt;
+        _deferredPlaybackRecoveryError = null;
+        final backoff = _playbackRecoveryBackoff[attempt - 1];
+        if (backoff > Duration.zero) {
+          await Future<void>.delayed(backoff);
+          if (_isDisposed ||
+              controllerGeneration != _controllerGeneration ||
+              recoveryGeneration != _playbackRecoveryGeneration ||
+              _playbackSourceTransitionInFlight) {
+            return;
+          }
+        }
+
+        final timeline = controller.snapshot.timeline;
+        final resumeRatio =
+            timeline.durationMs != null &&
+                timeline.durationMs! > 0 &&
+                timeline.positionMs > 0
+            ? (timeline.positionMs / timeline.durationMs!)
+                  .clamp(0.0, 1.0)
+                  .toDouble()
+            : null;
+        try {
+          final resolved = await client.resolvePlayback(
+            detail: detail,
+            page: recoveryPage,
+            platform: defaultTargetPlatform,
+          );
+          if (_isDisposed ||
+              controllerGeneration != _controllerGeneration ||
+              recoveryGeneration != _playbackRecoveryGeneration ||
+              _playbackSourceTransitionInFlight ||
+              recoveryPage.cid != _selectedPage.cid) {
+            return;
+          }
+          _resolvedPlayback = resolved;
+          _notify();
+          await controller.selectSource(resolved.toSource());
+          await _configureSystemPlayback(controller, resolved);
+          if (resumeRatio != null && resumeRatio > 0) {
+            await controller.seekToRatio(resumeRatio);
+          }
+          await controller.play();
+          if (_isDisposed ||
+              controllerGeneration != _controllerGeneration ||
+              recoveryGeneration != _playbackRecoveryGeneration ||
+              _playbackSourceTransitionInFlight) {
+            return;
+          }
+          await Future<void>.delayed(Duration.zero);
+          final deferredError = _deferredPlaybackRecoveryError;
+          if (deferredError != null) {
+            lastFailureMessage = deferredError.message;
+            continue;
+          }
+          _schedulePlaybackRecoverySuccessReset(
+            controllerGeneration,
+            recoveryGeneration,
+          );
+          return;
+        } catch (error) {
+          lastFailureMessage = '重新解析失败：$error';
+        }
+      }
+    } finally {
+      if (recoveryGeneration == _playbackRecoveryGeneration) {
+        _playbackRecoveryInFlight = false;
+      }
+    }
+
+    if (!_isDisposed &&
+        controllerGeneration == _controllerGeneration &&
+        recoveryGeneration == _playbackRecoveryGeneration &&
+        _playbackRecoveryAttempts >= _maxPlaybackRecoveryAttempts) {
+      _emitPlaybackRecoveryFailure(lastFailureMessage);
+    }
+  }
+
+  void _schedulePlaybackRecoverySuccessReset(
+    int controllerGeneration, [
+    int? expectedRecoveryGeneration,
+  ]) {
+    final recoveryGeneration =
+        expectedRecoveryGeneration ?? _playbackRecoveryGeneration;
+    _playbackRecoverySuccessTimer?.cancel();
+    _playbackRecoverySuccessTimer = Timer(_playbackRecoverySuccessWindow, () {
+      if (_isDisposed ||
+          controllerGeneration != _controllerGeneration ||
+          recoveryGeneration != _playbackRecoveryGeneration) {
+        return;
+      }
+      _resetPlaybackRecoveryState(clearPendingNotice: false);
+      _notify();
+    });
+  }
+
+  void _emitPlaybackRecoveryFailure(String failureMessage) {
+    if (_playbackRecoveryFailureReported) {
+      return;
+    }
+    _playbackRecoveryFailureReported = true;
+    _pendingPlaybackRecoveryNotice = BiliPlaybackRecoveryNotice(
+      title: '播放地址刷新失败',
+      message: '已自动重新解析并重试 3 次，仍然无法恢复播放。\n\n$failureMessage',
+    );
+    _notify();
+  }
+
+  void _resetPlaybackRecoveryState({required bool clearPendingNotice}) {
+    _playbackRecoveryGeneration += 1;
+    _playbackRecoverySuccessTimer?.cancel();
+    _playbackRecoverySuccessTimer = null;
+    _playbackRecoveryInFlight = false;
+    _playbackRecoveryFailureReported = false;
+    _playbackRecoveryAttempts = 0;
+    _deferredPlaybackRecoveryError = null;
+    if (clearPendingNotice) {
+      _pendingPlaybackRecoveryNotice = null;
+    }
   }
 
   Future<void> _disposeController(VesperPlayerController controller) async {
@@ -1261,11 +1705,13 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _playbackRecoverySuccessTimer?.cancel();
     final controller = _controller;
     final snapshot = controller?.snapshot;
     if (controller != null && snapshot != null) {
       unawaited(_persistLatestHistory(controller, fallback: snapshot));
     }
+    unawaited(_controllerEventsSubscription?.cancel() ?? Future<void>.value());
     unawaited(_castEventsSubscription?.cancel() ?? Future<void>.value());
     _externalPlaybackForCast.dispose();
     _dlnaManager.dispose();

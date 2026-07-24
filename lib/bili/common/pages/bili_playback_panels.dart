@@ -122,21 +122,26 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
 
     return NotificationListener<ScrollNotification>(
       onNotification: _handleMobileContentScroll,
-      child: ListView(
+      child: CustomScrollView(
         key: const PageStorageKey<String>('playback-related'),
         controller: _relatedScrollController,
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
-        padding: const EdgeInsets.only(top: 14, bottom: 18),
-        children: [
-          ...topChildren,
-          _RelatedVideoList(
-            items: _relatedVideos,
-            loading: _relatedVideosLoading,
-            errorMessage: _relatedVideosError,
-            openingBvid: _openingRelatedBvid,
-            onTap: (video) => unawaited(_openRelatedVideo(video)),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.only(top: 14),
+            sliver: SliverList(delegate: SliverChildListDelegate(topChildren)),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.only(bottom: 18),
+            sliver: _RelatedVideoSliverList(
+              items: _relatedVideos,
+              loading: _relatedVideosLoading,
+              errorMessage: _relatedVideosError,
+              openingBvid: _openingRelatedBvid,
+              onTap: (video) => unawaited(_openRelatedVideo(video)),
+            ),
           ),
         ],
       ),
@@ -150,8 +155,16 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
         onNotification: _handleMobileContentScroll,
         child: _CommentReplyPanel(
           comment: openedCommentReplies,
+          replies: _commentReplies,
+          totalCount: _commentRepliesTotalCount,
+          loading: _commentRepliesLoading,
+          loadingMore: _commentRepliesLoadingMore,
+          hasMore: _commentRepliesHasMore,
+          errorMessage: _commentRepliesError,
           controller: _commentRepliesScrollController,
           onClose: _closeCommentReplies,
+          onLoadMore: _loadMoreCommentReplies,
+          onRetry: _retryCommentReplies,
           onSeekToTime: (seconds) {
             _closeCommentReplies();
             unawaited(_seekToCommentTime(seconds));

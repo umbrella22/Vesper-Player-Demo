@@ -452,6 +452,64 @@ class BiliClient {
     );
   }
 
+  Future<BiliVideoCommentReplyPage> fetchVideoCommentReplyPage(
+    BiliVideoDetail detail, {
+    required int rootReplyId,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final normalizedPage = page < 1 ? 1 : page;
+    final normalizedPageSize = pageSize.clamp(1, 49).toInt();
+    if (detail.aid <= 0 || rootReplyId <= 0) {
+      return BiliVideoCommentReplyPage(
+        replies: const <BiliVideoComment>[],
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        hasMore: false,
+      );
+    }
+
+    await _transport.ensureReady();
+    final data = await _transport.getData(
+      host: 'api.bilibili.com',
+      path: '/x/v2/reply/reply',
+      params: <String, Object?>{
+        'type': 1,
+        'oid': detail.aid,
+        'root': rootReplyId,
+        'pn': normalizedPage,
+        'ps': normalizedPageSize,
+      },
+      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+    );
+
+    final seenIds = <int>{};
+    final replies = readObjectList(data['replies'])
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
+        .map(_parseVideoComment)
+        .whereType<BiliVideoComment>()
+        .where((reply) => seenIds.add(reply.id))
+        .toList(growable: false);
+    final pageInfo = readObjectMap(data['page']);
+    final responsePage = readInt(pageInfo['num']) ?? normalizedPage;
+    final responsePageSize = readInt(pageInfo['size']) ?? normalizedPageSize;
+    final totalCount =
+        readInt(pageInfo['count']) ??
+        readInt(pageInfo['acount']) ??
+        readInt(pageInfo['total']);
+    final hasMore = totalCount == null
+        ? replies.length >= normalizedPageSize
+        : responsePage * responsePageSize < totalCount;
+    return BiliVideoCommentReplyPage(
+      replies: replies,
+      page: responsePage,
+      pageSize: responsePageSize,
+      totalCount: totalCount,
+      hasMore: replies.isNotEmpty && hasMore,
+    );
+  }
+
   Future<String> fetchDanmakuXml({
     required String bvid,
     required int cid,
