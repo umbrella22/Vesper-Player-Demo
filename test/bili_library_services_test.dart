@@ -449,6 +449,10 @@ void main() {
       expect(httpClient.posts, hasLength(2));
       expect(httpClient.posts.first.fields['bvid'], 'BV1later');
       expect(httpClient.posts.first.fields['csrf'], 'csrf');
+      final addRequest = httpClient.requestHeaders.entries.singleWhere(
+        (entry) => entry.key.path == '/x/v2/history/toview/add',
+      );
+      expect(addRequest.value['cookie'], contains('SESSDATA=sess'));
       expect(advertised.single.language, 'zh-CN');
       expect(advertised.single.url, 'https://subtitle.example/track.json');
     },
@@ -1002,11 +1006,16 @@ final class _LibraryHttpClientRequest implements HttpClientRequest {
     this._response, {
     this.onClose,
     void Function(String name, Object value)? onHeader,
-  }) : _headers = _LibraryHttpHeaders(onSet: onHeader);
+  }) : _onHeader = onHeader;
 
   final _LibraryHttpClientResponse _response;
   final void Function(String body)? onClose;
-  final _LibraryHttpHeaders _headers;
+  final void Function(String name, Object value)? _onHeader;
+  bool _headersMutable = true;
+  late final _LibraryHttpHeaders _headers = _LibraryHttpHeaders(
+    onSet: _onHeader,
+    isMutable: () => _headersMutable,
+  );
   final List<int> _body = <int>[];
   int _contentLength = -1;
 
@@ -1017,10 +1026,18 @@ final class _LibraryHttpClientRequest implements HttpClientRequest {
   int get contentLength => _contentLength;
 
   @override
-  set contentLength(int value) => _contentLength = value;
+  set contentLength(int value) {
+    if (!_headersMutable) {
+      throw const HttpException('HTTP headers are not mutable');
+    }
+    _contentLength = value;
+  }
 
   @override
-  void add(List<int> data) => _body.addAll(data);
+  void add(List<int> data) {
+    _headersMutable = false;
+    _body.addAll(data);
+  }
 
   @override
   Future<HttpClientResponse> close() async {
@@ -1070,19 +1087,30 @@ final class _LibraryHttpClientResponse extends Stream<List<int>>
 }
 
 final class _LibraryHttpHeaders implements HttpHeaders {
-  _LibraryHttpHeaders({this.onSet});
+  _LibraryHttpHeaders({this.onSet, this.isMutable});
 
   final void Function(String name, Object value)? onSet;
+  final bool Function()? isMutable;
   ContentType? _contentType;
+
+  void _ensureMutable() {
+    if (isMutable?.call() == false) {
+      throw const HttpException('HTTP headers are not mutable');
+    }
+  }
 
   @override
   ContentType? get contentType => _contentType;
 
   @override
-  set contentType(ContentType? value) => _contentType = value;
+  set contentType(ContentType? value) {
+    _ensureMutable();
+    _contentType = value;
+  }
 
   @override
   void set(String name, Object value, {bool preserveHeaderCase = false}) {
+    _ensureMutable();
     onSet?.call(name, value);
   }
 

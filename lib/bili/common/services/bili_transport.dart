@@ -279,15 +279,15 @@ class BiliTransport {
     request.headers.set('Sec-Fetch-Dest', 'empty');
     request.headers.set('Sec-Fetch-Mode', 'cors');
     request.headers.set('Sec-Fetch-Site', 'same-site');
+    List<int>? payload;
     if (requestBody != null) {
       request.headers.contentType = ContentType(
         'application',
         'x-www-form-urlencoded',
         charset: 'utf-8',
       );
-      final payload = utf8.encode(requestBody);
+      payload = utf8.encode(requestBody);
       request.contentLength = payload.length;
-      request.add(payload);
     }
 
     // A subtitle/media URL can be hosted on a CDN outside Bilibili's
@@ -298,6 +298,9 @@ class BiliTransport {
         HttpHeaders.cookieHeader,
         buildCookieHeader(_cookies),
       );
+    }
+    if (payload != null) {
+      request.add(payload);
     }
 
     final response = await request.close();

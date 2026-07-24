@@ -2101,7 +2101,10 @@ final class _FakeEngagementHttpClientRequest implements HttpClientRequest {
   final _FakeEngagementHttpClientResponse response;
   final void Function(String body) onClose;
   final List<int> _body = <int>[];
-  final _FakeRegionHttpHeaders _headers = _FakeRegionHttpHeaders();
+  bool _headersMutable = true;
+  late final _FakeRegionHttpHeaders _headers = _FakeRegionHttpHeaders(
+    isMutable: () => _headersMutable,
+  );
   int _contentLength = -1;
 
   @override
@@ -2112,11 +2115,15 @@ final class _FakeEngagementHttpClientRequest implements HttpClientRequest {
 
   @override
   set contentLength(int value) {
+    if (!_headersMutable) {
+      throw const HttpException('HTTP headers are not mutable');
+    }
     _contentLength = value;
   }
 
   @override
   void add(List<int> data) {
+    _headersMutable = false;
     _body.addAll(data);
   }
 
@@ -2491,19 +2498,30 @@ final class _FakeRegionHttpClientResponse extends Stream<List<int>>
 }
 
 final class _FakeRegionHttpHeaders implements HttpHeaders {
+  _FakeRegionHttpHeaders({this.isMutable});
+
+  final bool Function()? isMutable;
   final Map<String, List<String>> values = <String, List<String>>{};
   ContentType? _contentType;
+
+  void _ensureMutable() {
+    if (isMutable?.call() == false) {
+      throw const HttpException('HTTP headers are not mutable');
+    }
+  }
 
   @override
   ContentType? get contentType => _contentType;
 
   @override
   set contentType(ContentType? value) {
+    _ensureMutable();
     _contentType = value;
   }
 
   @override
   void set(String name, Object value, {bool preserveHeaderCase = false}) {
+    _ensureMutable();
     values[name] = <String>[value.toString()];
   }
 
