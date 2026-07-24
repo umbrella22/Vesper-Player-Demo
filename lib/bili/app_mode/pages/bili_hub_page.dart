@@ -440,13 +440,17 @@ class _BiliHubPageState extends State<BiliHubPage> {
 
   Widget _buildHomeBody(BuildContext context) {
     final showsSearchResults = _viewModel.showsSearchResults.value;
-    final items = showsSearchResults
-        ? _viewModel.results.value
-              .map(_HomeVideoItem.fromSearch)
-              .toList(growable: false)
-        : _viewModel.feedItems.value
-              .map(_HomeVideoItem.fromFeed)
-              .toList(growable: false);
+    late final int itemCount;
+    late final _HomeVideoItem Function(int index) itemAt;
+    if (showsSearchResults) {
+      final results = _viewModel.results.value;
+      itemCount = results.length;
+      itemAt = (index) => _HomeVideoItem.fromSearch(results[index]);
+    } else {
+      final feedItems = _viewModel.feedItems.value;
+      itemCount = feedItems.length;
+      itemAt = (index) => _HomeVideoItem.fromFeed(feedItems[index]);
+    }
 
     if (_viewModel.isBootstrapping.value) {
       return const SliverFillRemaining(
@@ -482,7 +486,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
         if ((showsSearchResults && _viewModel.isSearching.value) ||
             (!showsSearchResults &&
                 _viewModel.isRefreshingFeed.value &&
-                items.isEmpty))
+                itemCount == 0))
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: 32),
@@ -491,7 +495,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
           )
         else if (showsSearchResults &&
             _viewModel.searchErrorMessage.value == null &&
-            items.isEmpty)
+            itemCount == 0)
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -503,11 +507,12 @@ class _BiliHubPageState extends State<BiliHubPage> {
           )
         else
           _HomeVideoGrid(
-            items: items,
+            itemCount: itemCount,
+            itemAt: itemAt,
             onTap: (item) => _openPlayback(item.bvid),
             onCacheTap: (item) => unawaited(_openHomeCacheSurface(item)),
           ),
-        if (items.isNotEmpty)
+        if (itemCount > 0)
           SliverToBoxAdapter(
             child: _LoadMoreFooter(
               isLoading: showsSearchResults

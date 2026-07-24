@@ -1235,6 +1235,71 @@ class _CommentReplyDetail extends StatelessWidget {
   }
 }
 
+class _CommentReplyPanel extends StatelessWidget {
+  const _CommentReplyPanel({
+    required this.comment,
+    required this.controller,
+    required this.onClose,
+    required this.onSeekToTime,
+  });
+
+  final BiliVideoComment comment;
+  final ScrollController controller;
+  final VoidCallback onClose;
+  final ValueChanged<int> onSeekToTime;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          key: const ValueKey<String>('playback-comment-replies-header'),
+          height: 54,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '评论详情',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: const Color(0xFF171923),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: onClose,
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                tooltip: '关闭评论详情',
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 28,
+                  color: Color(0xFF9AA0AA),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: Color(0xFFE8EAF0)),
+        Expanded(
+          child: ListView(
+            key: const PageStorageKey<String>('playback-comment-replies'),
+            controller: controller,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
+            children: [
+              _CommentReplyDetail(comment: comment, onSeekToTime: onSeekToTime),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _DanmakuEntryPill extends StatelessWidget {
   const _DanmakuEntryPill({required this.danmakuCountLabel});
 
@@ -1336,26 +1401,141 @@ class _PlaybackMetaChip extends StatelessWidget {
   }
 }
 
+class _PlaybackIntroSummary extends StatelessWidget {
+  const _PlaybackIntroSummary({
+    required this.title,
+    required this.description,
+    required this.expanded,
+    required this.onToggleExpanded,
+    required this.metadata,
+  });
+
+  final String title;
+  final String description;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
+  final Widget metadata;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleLarge?.copyWith(
+      color: const Color(0xFF11131A),
+      fontWeight: FontWeight.w900,
+      height: 1.18,
+    );
+    final descriptionStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: const Color(0xFF626875),
+      height: 1.62,
+      fontWeight: FontWeight.w500,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textDirection = Directionality.of(context);
+        final textScaler = MediaQuery.textScalerOf(context);
+        final locale = Localizations.maybeLocaleOf(context);
+        final descriptionPainter = TextPainter(
+          text: TextSpan(text: description, style: descriptionStyle),
+          maxLines: 3,
+          textDirection: textDirection,
+          textScaler: textScaler,
+          locale: locale,
+        )..layout(maxWidth: constraints.maxWidth);
+        final showsExpandButton =
+            description.isNotEmpty && descriptionPainter.didExceedMaxLines;
+        descriptionPainter.dispose();
+        final effectiveExpanded = showsExpandButton && expanded;
+        final titleLinePainter = TextPainter(
+          text: TextSpan(text: 'M', style: titleStyle),
+          maxLines: 1,
+          textDirection: textDirection,
+          textScaler: textScaler,
+          locale: locale,
+        )..layout();
+        final titleFirstLineHeight = titleLinePainter.preferredLineHeight;
+        titleLinePainter.dispose();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    key: const ValueKey<String>('playback-intro-title'),
+                    maxLines: effectiveExpanded ? 4 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle,
+                  ),
+                ),
+                if (showsExpandButton)
+                  _IntroExpandButton(
+                    key: const ValueKey<String>('playback-intro-expand'),
+                    expanded: effectiveExpanded,
+                    firstLineHeight: titleFirstLineHeight,
+                    onTap: onToggleExpanded,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 9),
+            metadata,
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 13),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: Text(
+                  description,
+                  key: const ValueKey<String>('playback-intro-description'),
+                  maxLines: showsExpandButton && !effectiveExpanded ? 3 : null,
+                  overflow: showsExpandButton && !effectiveExpanded
+                      ? TextOverflow.ellipsis
+                      : TextOverflow.visible,
+                  style: descriptionStyle,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _IntroExpandButton extends StatelessWidget {
-  const _IntroExpandButton({required this.expanded, required this.onTap});
+  const _IntroExpandButton({
+    super.key,
+    required this.expanded,
+    required this.firstLineHeight,
+    required this.onTap,
+  });
 
   final bool expanded;
+  final double firstLineHeight;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: onTap,
-      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       padding: EdgeInsets.zero,
+      alignment: Alignment.topCenter,
       icon: AnimatedRotation(
         turns: expanded ? 0.5 : 0,
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
-        child: const Icon(
-          Icons.keyboard_arrow_down_rounded,
-          color: Color(0xFF9AA0AA),
-          size: 28,
+        child: Transform.translate(
+          offset: Offset(0, (firstLineHeight - 28) / 2),
+          child: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: Color(0xFF9AA0AA),
+            size: 28,
+          ),
         ),
       ),
       tooltip: expanded ? '收起简介' : '展开简介',

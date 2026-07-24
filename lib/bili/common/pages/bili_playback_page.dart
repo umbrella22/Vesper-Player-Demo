@@ -69,7 +69,11 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   bool _dlnaPickerOpen = false;
   bool _introExpanded = false;
   _PlaybackInfoTab _selectedInfoTab = _PlaybackInfoTab.intro;
+  BiliVideoComment? _openedCommentReplies;
   final ScrollController _commentsScrollController = ScrollController();
+  final ScrollController _commentRepliesScrollController = ScrollController(
+    keepScrollOffset: false,
+  );
   final ScrollController _relatedScrollController = ScrollController();
   final TextEditingController _commentComposerController =
       TextEditingController();
@@ -130,6 +134,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     _infoTabController.dispose();
     _commentsScrollController.removeListener(_handleCommentsScrollPosition);
     _commentsScrollController.dispose();
+    _commentRepliesScrollController.dispose();
     _relatedScrollController.dispose();
     _commentComposerController.dispose();
     _commentComposerFocusNode.dispose();
@@ -312,9 +317,12 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   }
 
   ScrollController _scrollControllerForInfoTab(_PlaybackInfoTab tab) {
-    return tab == _PlaybackInfoTab.comments
+    if (tab != _PlaybackInfoTab.comments) {
+      return _relatedScrollController;
+    }
+    return _openedCommentReplies == null
         ? _commentsScrollController
-        : _relatedScrollController;
+        : _commentRepliesScrollController;
   }
 
   ScrollController get _activeInfoScrollController =>
@@ -332,7 +340,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   }
 
   void _handleMobileStagePointerMove(PointerMoveEvent event) {
-    if (_isTvMode || _viewModel.isFullscreen) {
+    if (_isTvMode ||
+        _viewModel.isFullscreen ||
+        _viewModel.controller?.snapshot.playbackState ==
+            VesperPlaybackState.playing) {
       return;
     }
     final delta = event.delta;
@@ -542,27 +553,27 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     );
   }
 
-  Future<void> _showCommentReplies(BiliVideoComment comment) async {
+  void _showCommentReplies(BiliVideoComment comment) {
     if (!mounted) {
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return _PlaybackBottomSheetScaffold(
-          title: '评论详情',
-          child: _CommentReplyDetail(
-            comment: comment,
-            onSeekToTime: (seconds) {
-              Navigator.of(context).pop();
-              unawaited(_seekToCommentTime(seconds));
-            },
-          ),
-        );
-      },
-    );
+    _commentComposerFocusNode.unfocus();
+    setState(() {
+      _openedCommentReplies = comment;
+      _mobileStageCollapseOffset = 0;
+    });
+  }
+
+  void _closeCommentReplies() {
+    if (_openedCommentReplies == null) {
+      return;
+    }
+    setState(() {
+      _openedCommentReplies = null;
+      _mobileStageCollapseOffset = _commentsScrollController.hasClients
+          ? _commentsScrollController.offset
+          : 0;
+    });
   }
 
   Future<void> _toggleFullscreen() async {
@@ -895,9 +906,13 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                     MediaQuery.paddingOf(context).top + 64;
                 final collapseDistance =
                     expandedStageHeight - collapsedStageHeight;
+                final effectiveCollapseOffset =
+                    snapshot.playbackState == VesperPlaybackState.playing
+                    ? 0.0
+                    : _mobileStageCollapseOffset;
                 final collapseProgress = collapseDistance <= 0
                     ? 0.0
-                    : (_mobileStageCollapseOffset / collapseDistance)
+                    : (effectiveCollapseOffset / collapseDistance)
                           .clamp(0.0, 1.0)
                           .toDouble();
                 final stageHeight = ui.lerpDouble(

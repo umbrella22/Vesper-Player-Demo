@@ -7,6 +7,8 @@ import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/download/download.dart';
 
 enum BiliLibrarySection { following, history, watchLater }
@@ -45,16 +47,26 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   static const int _watchLaterPageSize = 30;
 
   late final TabController _tabController;
+  late final List<BiliLibrarySection> _visibleSections;
   final Map<BiliLibrarySection, _LibraryLoadState> _states =
       <BiliLibrarySection, _LibraryLoadState>{};
+
+  bool get _isTv => widget.presentationMode == BiliPlaybackPresentationMode.tv;
 
   @override
   void initState() {
     super.initState();
+    _visibleSections = _isTv
+        ? const <BiliLibrarySection>[
+            BiliLibrarySection.history,
+            BiliLibrarySection.watchLater,
+          ]
+        : BiliLibrarySection.values;
+    final requestedIndex = _visibleSections.indexOf(widget.initialSection);
     _tabController = TabController(
-      length: BiliLibrarySection.values.length,
+      length: _visibleSections.length,
       vsync: this,
-      initialIndex: widget.initialSection.index,
+      initialIndex: requestedIndex < 0 ? 0 : requestedIndex,
     )..addListener(_handleTabChanged);
     _load(_sectionForIndex(_tabController.index));
   }
@@ -68,7 +80,8 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   BiliLibrarySection _sectionForIndex(int index) {
-    return BiliLibrarySection.values[index.clamp(0, 2)];
+    final safeIndex = index.clamp(0, _visibleSections.length - 1);
+    return _visibleSections[safeIndex];
   }
 
   void _handleTabChanged() {
@@ -91,13 +104,14 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     if (!force && state.loaded && hasAuthenticatedSession) {
       return;
     }
+    List<BiliRemoteHistoryEntry>? refreshedLocalHistory;
     if (section == BiliLibrarySection.history) {
       // Local history remains useful while logged out and is also a fallback
       // when the cloud cursor endpoint is temporarily unavailable.
       try {
         final local = await (widget.historyStore ?? const BiliHistoryStore())
             .loadEntries();
-        state.localHistory = local
+        refreshedLocalHistory = local
             .map(
               (entry) => BiliRemoteHistoryEntry(
                 aid: entry.aid,
@@ -115,20 +129,22 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
               ),
             )
             .toList(growable: false);
-        state.history = state.localHistory;
-        state.remoteHistoryCount = 0;
       } catch (_) {
-        state.localHistory = const <BiliRemoteHistoryEntry>[];
-        state.history = const <BiliRemoteHistoryEntry>[];
-        state.remoteHistoryCount = 0;
+        refreshedLocalHistory = const <BiliRemoteHistoryEntry>[];
       }
     }
     if (!hasAuthenticatedSession) {
       if (mounted) {
         setState(() {
+          if (section == BiliLibrarySection.history) {
+            state.localHistory = refreshedLocalHistory!;
+            state.history = refreshedLocalHistory;
+            state.remoteHistoryCount = 0;
+          }
           _clearAuthenticatedData(section, state);
           state.loading = false;
           state.loaded = true;
+          state.authenticationRequired = true;
           state.error =
               section == BiliLibrarySection.history && state.history.isNotEmpty
               ? null
@@ -140,24 +156,19 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
 
     if (mounted) {
       setState(() {
-        if (force) {
-          state.page = 1;
-          state.hasMore = true;
-          state.remoteHistoryCount = 0;
-          state.historyMax = 0;
-          state.historyViewAtMs = 0;
-        }
         state.loading = true;
         state.error = null;
+        state.authenticationRequired = false;
       });
     }
     try {
       switch (section) {
         case BiliLibrarySection.following:
-          state.following = await widget.client.fetchFollowingUsers(
+          final following = await widget.client.fetchFollowingUsers(
             page: 1,
             pageSize: _followingPageSize,
           );
+          state.following = following;
           state.hasMore = state.following.length >= _followingPageSize;
         case BiliLibrarySection.history:
           final page = await widget.client.fetchRemoteHistoryPage(
@@ -166,6 +177,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           );
           final remote = page.entries;
           final seen = remote.map(_historyIdentity).toSet();
+          state.localHistory = refreshedLocalHistory!;
           state.history = <BiliRemoteHistoryEntry>[
             ...remote,
             ...state.localHistory.where(
@@ -177,17 +189,34 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           state.historyViewAtMs = page.nextViewAtMs;
           state.hasMore = page.hasMore;
         case BiliLibrarySection.watchLater:
-          state.watchLater = await widget.client.fetchWatchLater(
+          final watchLater = await widget.client.fetchWatchLater(
             page: 1,
             pageSize: _watchLaterPageSize,
           );
+          state.watchLater = watchLater;
           state.hasMore = state.watchLater.length >= _watchLaterPageSize;
       }
+      state.page = 1;
       state.loaded = true;
+      state.authenticationRequired = false;
     } catch (error) {
       state.error = _libraryError(error);
-      if (error is BiliApiException && error.code == -101) {
+      final authenticationRequired =
+          error is BiliApiException && error.code == -101;
+      state.authenticationRequired = authenticationRequired;
+      if (authenticationRequired) {
+        if (section == BiliLibrarySection.history) {
+          state.localHistory = refreshedLocalHistory!;
+        }
         _clearAuthenticatedData(section, state);
+      } else if (section == BiliLibrarySection.history &&
+          !state.loaded &&
+          state.history.isEmpty &&
+          refreshedLocalHistory!.isNotEmpty) {
+        state.localHistory = refreshedLocalHistory;
+        state.history = refreshedLocalHistory;
+        state.remoteHistoryCount = 0;
+        state.hasMore = false;
       }
     } finally {
       state.loading = false;
@@ -210,6 +239,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     setState(() {
       state.loadingMore = true;
       state.error = null;
+      state.authenticationRequired = false;
     });
     try {
       var receivedCount = 0;
@@ -279,9 +309,12 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       };
       state.hasMore =
           (responseHasMore ?? receivedCount >= pageSize) && uniqueCount > 0;
+      state.authenticationRequired = false;
     } catch (error) {
       state.error = _libraryError(error);
-      if (error is BiliApiException && error.code == -101) {
+      state.authenticationRequired =
+          error is BiliApiException && error.code == -101;
+      if (state.authenticationRequired) {
         _clearAuthenticatedData(section, state);
       } else {
         _showMessage('加载更多失败：$error');
@@ -448,6 +481,13 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isTv) {
+      return _buildTvPage(context);
+    }
+    return _buildPhonePage(context);
+  }
+
+  Widget _buildPhonePage(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F4F8),
       appBar: AppBar(
@@ -472,6 +512,323 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         children: BiliLibrarySection.values
             .map((section) => _buildSection(context, section))
             .toList(growable: false),
+      ),
+    );
+  }
+
+  Widget _buildTvPage(BuildContext context) {
+    return TvDirectionalFocusScope(
+      debugLabel: 'tv_library',
+      onBack: () => Navigator.of(context).maybePop(),
+      child: Scaffold(
+        key: const ValueKey<String>('bili-tv-library-root'),
+        backgroundColor: const Color(0xFF0A0A0E),
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildTvHeader(context),
+              Expanded(
+                child: AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) {
+                    final section = _sectionForIndex(_tabController.index);
+                    return KeyedSubtree(
+                      key: ValueKey<String>(
+                        'bili-tv-library-section-${section.name}',
+                      ),
+                      child: _buildTvSection(context, section),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTvHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 22, 28, 12),
+      child: Row(
+        children: [
+          _TvLibraryHeaderButton(
+            key: const ValueKey<String>('bili-tv-library-back'),
+            icon: Icons.arrow_back_rounded,
+            tooltip: '返回',
+            onTap: () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: 18),
+          const Expanded(
+            child: Text(
+              '我的内容',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, _) {
+              final selectedSection = _sectionForIndex(_tabController.index);
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < _visibleSections.length; index++)
+                    Padding(
+                      padding: EdgeInsets.only(left: index == 0 ? 0 : 10),
+                      child: _TvLibraryTab(
+                        key: ValueKey<String>(
+                          'bili-tv-library-tab-${_visibleSections[index].name}',
+                        ),
+                        icon: _tvSectionIcon(_visibleSections[index]),
+                        label: _tvSectionLabel(_visibleSections[index]),
+                        selected: selectedSection == _visibleSections[index],
+                        onTap: () => _selectTvSection(_visibleSections[index]),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(width: 12),
+          AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, _) {
+              final section = _sectionForIndex(_tabController.index);
+              return _TvLibraryHeaderButton(
+                key: const ValueKey<String>('bili-tv-library-refresh'),
+                icon: Icons.refresh_rounded,
+                tooltip: '刷新',
+                loading: _stateFor(section).loading,
+                onTap: () => unawaited(_load(section, force: true)),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _selectTvSection(BiliLibrarySection section) {
+    final index = _visibleSections.indexOf(section);
+    if (index < 0) {
+      return;
+    }
+    if (_tabController.index != index) {
+      _tabController.animateTo(
+        index,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    unawaited(_load(section));
+  }
+
+  IconData _tvSectionIcon(BiliLibrarySection section) {
+    return switch (section) {
+      BiliLibrarySection.following => Icons.people_alt_outlined,
+      BiliLibrarySection.history => Icons.history_rounded,
+      BiliLibrarySection.watchLater => Icons.watch_later_outlined,
+    };
+  }
+
+  String _tvSectionLabel(BiliLibrarySection section) {
+    return switch (section) {
+      BiliLibrarySection.following => '关注',
+      BiliLibrarySection.history => '历史播放',
+      BiliLibrarySection.watchLater => '稍后再看',
+    };
+  }
+
+  Widget _buildTvSection(BuildContext context, BiliLibrarySection section) {
+    final state = _stateFor(section);
+    if (state.loading && !state.loaded) {
+      return const _TvLibraryLoadingView();
+    }
+    if (state.error != null && !_hasData(section, state)) {
+      final canLogin =
+          widget.onLoginTap != null && state.authenticationRequired;
+      return _TvLibraryStatusView(
+        icon: Icons.lock_outline_rounded,
+        title: '暂时无法显示',
+        message: state.error!,
+        primaryLabel: canLogin ? '登录' : '重试',
+        primaryIcon: canLogin ? Icons.login_rounded : Icons.refresh_rounded,
+        onPrimary: canLogin
+            ? () => unawaited(_handleLogin())
+            : () => unawaited(_load(section, force: true)),
+        secondaryLabel: canLogin ? '重试' : null,
+        secondaryIcon: canLogin ? Icons.refresh_rounded : null,
+        onSecondary: canLogin
+            ? () => unawaited(_load(section, force: true))
+            : null,
+      );
+    }
+    return switch (section) {
+      BiliLibrarySection.following => _buildTvFollowingGrid(state),
+      BiliLibrarySection.history => _buildTvHistoryGrid(state),
+      BiliLibrarySection.watchLater => _buildTvWatchLaterGrid(state),
+    };
+  }
+
+  Widget _buildTvFollowingGrid(_LibraryLoadState state) {
+    if (state.following.isEmpty) {
+      return _TvLibraryStatusView(
+        icon: Icons.people_alt_outlined,
+        title: '还没有关注内容',
+        message: '关注的 UP 主会显示在这里。',
+        primaryLabel: '刷新',
+        primaryIcon: Icons.refresh_rounded,
+        onPrimary: () =>
+            unawaited(_load(BiliLibrarySection.following, force: true)),
+      );
+    }
+    return _buildTvGrid(
+      section: BiliLibrarySection.following,
+      childAspectRatio: 0.95,
+      itemCount: state.following.length + (state.hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == state.following.length) {
+          return _TvLibraryLoadMoreTile(
+            key: const ValueKey<String>('bili-tv-library-load-more-following'),
+            loading: state.loadingMore,
+            onTap: () => unawaited(_loadMore(BiliLibrarySection.following)),
+          );
+        }
+        final user = state.following[index];
+        return _TvFollowingCard(
+          key: ValueKey<String>('bili-tv-library-card-following-${user.mid}'),
+          user: user,
+          autofocus: index == 0,
+          onTap: () => _showMessage('TV 端暂不支持打开 UP 主空间。'),
+        );
+      },
+    );
+  }
+
+  Widget _buildTvHistoryGrid(_LibraryLoadState state) {
+    if (state.history.isEmpty) {
+      return _TvLibraryStatusView(
+        icon: Icons.history_rounded,
+        title: '还没有播放历史',
+        message: '看过的视频会在这里继续播放。',
+        primaryLabel: '刷新',
+        primaryIcon: Icons.refresh_rounded,
+        onPrimary: () =>
+            unawaited(_load(BiliLibrarySection.history, force: true)),
+      );
+    }
+    return _buildTvGrid(
+      section: BiliLibrarySection.history,
+      itemCount: state.history.length + (state.hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == state.history.length) {
+          return _TvLibraryLoadMoreTile(
+            key: const ValueKey<String>('bili-tv-library-load-more-history'),
+            loading: state.loadingMore,
+            onTap: () => unawaited(_loadMore(BiliLibrarySection.history)),
+          );
+        }
+        final item = state.history[index];
+        final identity = _historyIdentity(item);
+        return _TvLibraryVideoCard(
+          key: ValueKey<String>('bili-tv-library-card-history-$identity'),
+          title: item.title,
+          subtitle: '${item.ownerName} · ${item.pageTitle}',
+          coverUrl: item.coverUrl,
+          progressMs: item.progressMs,
+          durationMs: item.durationMs,
+          autofocus: index == 0,
+          debugLabel: 'tv_library_history_$identity',
+          onTap: () => _openVideo(
+            bvid: item.bvid,
+            aid: item.aid,
+            cid: item.cid,
+            episodeId: item.episodeId,
+            initialPositionMs: item.progressMs,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTvWatchLaterGrid(_LibraryLoadState state) {
+    if (state.watchLater.isEmpty) {
+      return _TvLibraryStatusView(
+        icon: Icons.watch_later_outlined,
+        title: '稍后再看是空的',
+        message: '加入的视频会显示在这里。',
+        primaryLabel: '刷新',
+        primaryIcon: Icons.refresh_rounded,
+        onPrimary: () =>
+            unawaited(_load(BiliLibrarySection.watchLater, force: true)),
+      );
+    }
+    return _buildTvGrid(
+      section: BiliLibrarySection.watchLater,
+      itemCount: state.watchLater.length + (state.hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == state.watchLater.length) {
+          return _TvLibraryLoadMoreTile(
+            key: const ValueKey<String>('bili-tv-library-load-more-watchLater'),
+            loading: state.loadingMore,
+            onTap: () => unawaited(_loadMore(BiliLibrarySection.watchLater)),
+          );
+        }
+        final item = state.watchLater[index];
+        final identity = _watchLaterIdentity(item);
+        return _TvLibraryVideoCard(
+          key: ValueKey<String>('bili-tv-library-card-watchLater-$identity'),
+          title: item.title,
+          subtitle: '${item.ownerName} · ${item.pageTitle}',
+          coverUrl: item.coverUrl,
+          progressMs: item.progressMs,
+          durationMs: item.durationMs,
+          autofocus: index == 0,
+          debugLabel: 'tv_library_watch_later_$identity',
+          removeKey: ValueKey<String>('bili-tv-library-remove-$identity'),
+          onRemove: () => unawaited(_removeWatchLater(item)),
+          onTap: () => _openVideo(
+            bvid: item.bvid,
+            aid: item.aid,
+            cid: item.cid,
+            episodeId: item.episodeId,
+            initialPositionMs: item.progressMs,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTvGrid({
+    required BiliLibrarySection section,
+    required int itemCount,
+    required NullableIndexedWidgetBuilder itemBuilder,
+    double childAspectRatio = 1.08,
+  }) {
+    return TvFocusAreaScope(
+      area: TvFocusArea.content,
+      child: GridView.builder(
+        key: ValueKey<String>('bili-tv-library-grid-${section.name}'),
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.fromLTRB(32, 20, 32, 34),
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 260,
+          mainAxisSpacing: 24,
+          crossAxisSpacing: 22,
+          childAspectRatio: childAspectRatio,
+        ),
+        itemCount: itemCount,
+        itemBuilder: itemBuilder,
       ),
     );
   }
@@ -614,6 +971,7 @@ final class _LibraryLoadState {
   int historyMax = 0;
   int historyViewAtMs = 0;
   String? error;
+  bool authenticationRequired = false;
   List<BiliFollowingUser> following = const <BiliFollowingUser>[];
   List<BiliRemoteHistoryEntry> localHistory = const <BiliRemoteHistoryEntry>[];
   List<BiliRemoteHistoryEntry> history = const <BiliRemoteHistoryEntry>[];
@@ -838,6 +1196,727 @@ class _LibraryEmptyView extends StatelessWidget {
           style: TextStyle(color: Colors.grey.shade600),
         ),
       ],
+    );
+  }
+}
+
+int _tvLibraryCoverCacheWidth(BuildContext context, double logicalWidth) {
+  return (logicalWidth * MediaQuery.devicePixelRatioOf(context))
+      .ceil()
+      .clamp(160, 720)
+      .toInt();
+}
+
+class _TvLibraryHeaderButton extends StatelessWidget {
+  const _TvLibraryHeaderButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: TvFocusableSurface(
+        useOverlayLift: false,
+        focusPadding: 0,
+        scale: 1.05,
+        borderRadius: 12,
+        focusArea: TvFocusArea.content,
+        debugLabel: 'tv_library_$tooltip',
+        onTap: onTap,
+        builder: (context, focused) {
+          return Tooltip(
+            message: tooltip,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                color: focused
+                    ? Colors.white.withValues(alpha: 0.20)
+                    : Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: focused
+                      ? Colors.white.withValues(alpha: 0.78)
+                      : Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              child: Center(
+                child: loading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Color(0xFFFB7299),
+                        ),
+                      )
+                    : Icon(icon, color: Colors.white, size: 24),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TvLibraryTab extends StatelessWidget {
+  const _TvLibraryTab({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 146,
+      height: 48,
+      child: TvFocusableSurface(
+        useOverlayLift: false,
+        focusPadding: 0,
+        scale: 1.04,
+        borderRadius: 12,
+        focusArea: TvFocusArea.content,
+        debugLabel: 'tv_library_tab_$label',
+        onTap: onTap,
+        builder: (context, focused) {
+          final foreground = selected || focused
+              ? Colors.white
+              : const Color(0x99FFFFFF);
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: focused
+                  ? Colors.white.withValues(alpha: 0.20)
+                  : selected
+                  ? const Color(0xFFFB7299).withValues(alpha: 0.86)
+                  : Colors.white.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: focused
+                    ? Colors.white.withValues(alpha: 0.82)
+                    : selected
+                    ? const Color(0x44FFFFFF)
+                    : const Color(0x14FFFFFF),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: foreground, size: 21),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 15,
+                      fontWeight: selected || focused
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TvLibraryLoadingView extends StatelessWidget {
+  const _TvLibraryLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.6,
+              color: Color(0xFFFB7299),
+            ),
+          ),
+          SizedBox(height: 18),
+          Text(
+            '正在加载内容',
+            style: TextStyle(
+              color: Color(0x99FFFFFF),
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TvLibraryStatusView extends StatelessWidget {
+  const _TvLibraryStatusView({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.primaryLabel,
+    this.primaryIcon,
+    this.onPrimary,
+    this.secondaryLabel,
+    this.secondaryIcon,
+    this.onSecondary,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? primaryLabel;
+  final IconData? primaryIcon;
+  final VoidCallback? onPrimary;
+  final String? secondaryLabel;
+  final IconData? secondaryIcon;
+  final VoidCallback? onSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: const Color(0x88FFFFFF), size: 54),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 9),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0x99FFFFFF),
+                  fontSize: 15,
+                  height: 1.45,
+                ),
+              ),
+              if (onPrimary != null && primaryLabel != null) ...[
+                const SizedBox(height: 24),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _TvLibraryActionButton(
+                      autofocus: true,
+                      icon: primaryIcon ?? Icons.check_rounded,
+                      label: primaryLabel!,
+                      primary: true,
+                      onTap: onPrimary!,
+                    ),
+                    if (onSecondary != null && secondaryLabel != null)
+                      _TvLibraryActionButton(
+                        icon: secondaryIcon ?? Icons.more_horiz_rounded,
+                        label: secondaryLabel!,
+                        onTap: onSecondary!,
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TvLibraryActionButton extends StatelessWidget {
+  const _TvLibraryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+    this.autofocus = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 160,
+      height: 50,
+      child: TvFocusableSurface(
+        autofocus: autofocus,
+        useOverlayLift: false,
+        focusPadding: 0,
+        scale: 1.04,
+        borderRadius: 12,
+        focusArea: TvFocusArea.content,
+        debugLabel: 'tv_library_action_$label',
+        onTap: onTap,
+        builder: (context, focused) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: focused
+                  ? Colors.white.withValues(alpha: 0.22)
+                  : primary
+                  ? const Color(0xFFFB7299)
+                  : Colors.white.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: focused
+                    ? Colors.white.withValues(alpha: 0.85)
+                    : primary
+                    ? const Color(0x44FFFFFF)
+                    : const Color(0x18FFFFFF),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TvFollowingCard extends StatelessWidget {
+  const _TvFollowingCard({
+    super.key,
+    required this.user,
+    required this.autofocus,
+    required this.onTap,
+  });
+
+  final BiliFollowingUser user;
+  final bool autofocus;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarCacheWidth = _tvLibraryCoverCacheWidth(context, 76);
+    return TvFocusableSurface(
+      autofocus: autofocus,
+      useOverlayLift: false,
+      focusPadding: 0,
+      scale: 1.045,
+      borderRadius: 12,
+      focusArea: TvFocusArea.content,
+      debugLabel: 'tv_library_following_${user.mid}',
+      onTap: onTap,
+      builder: (context, focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: focused
+                ? Colors.white.withValues(alpha: 0.16)
+                : Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: focused
+                  ? const Color(0xFFFB7299)
+                  : const Color(0x18FFFFFF),
+              width: focused ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ClipOval(
+                child: SizedBox(
+                  width: 76,
+                  height: 76,
+                  child: ColoredBox(
+                    color: const Color(0xFF262630),
+                    child: user.avatarUrl.isEmpty
+                        ? const Icon(
+                            Icons.person_outline_rounded,
+                            color: Color(0x88FFFFFF),
+                            size: 38,
+                          )
+                        : Image.network(
+                            user.avatarUrl,
+                            fit: BoxFit.cover,
+                            cacheWidth: avatarCacheWidth,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.person_outline_rounded,
+                              color: Color(0x88FFFFFF),
+                              size: 38,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                user.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                user.sign.isEmpty ? (user.officialLabel ?? '已关注') : user.sign,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0x88FFFFFF),
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TvLibraryVideoCard extends StatelessWidget {
+  const _TvLibraryVideoCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.coverUrl,
+    required this.progressMs,
+    required this.durationMs,
+    required this.autofocus,
+    required this.debugLabel,
+    required this.onTap,
+    this.removeKey,
+    this.onRemove,
+  });
+
+  final String title;
+  final String subtitle;
+  final String coverUrl;
+  final int progressMs;
+  final int durationMs;
+  final bool autofocus;
+  final String debugLabel;
+  final VoidCallback onTap;
+  final Key? removeKey;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = durationMs <= 0
+        ? 0.0
+        : (progressMs / durationMs).clamp(0.0, 1.0).toDouble();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cacheWidth = _tvLibraryCoverCacheWidth(
+          context,
+          constraints.maxWidth,
+        );
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: TvFocusableSurface(
+                autofocus: autofocus,
+                useOverlayLift: false,
+                focusPadding: 0,
+                scale: 1.045,
+                borderRadius: 12,
+                focusArea: TvFocusArea.content,
+                debugLabel: debugLabel,
+                onTap: onTap,
+                builder: (context, focused) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          curve: Curves.easeOutCubic,
+                          foregroundDecoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: focused
+                                  ? const Color(0xFFFB7299)
+                                  : const Color(0x1AFFFFFF),
+                              width: focused ? 2 : 1,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ColoredBox(
+                                  color: const Color(0xFF1A1A24),
+                                  child: coverUrl.isEmpty
+                                      ? const Icon(
+                                          Icons.video_library_outlined,
+                                          color: Color(0x55FFFFFF),
+                                          size: 42,
+                                        )
+                                      : Image.network(
+                                          coverUrl,
+                                          fit: BoxFit.cover,
+                                          cacheWidth: cacheWidth,
+                                          errorBuilder: (_, _, _) =>
+                                              const ColoredBox(
+                                                color: Color(0xFF1A1A24),
+                                                child: Icon(
+                                                  Icons.broken_image_outlined,
+                                                  color: Color(0x55FFFFFF),
+                                                  size: 36,
+                                                ),
+                                              ),
+                                        ),
+                                ),
+                                if (progress > 0)
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: LinearProgressIndicator(
+                                      value: progress,
+                                      minHeight: 4,
+                                      backgroundColor: Colors.black.withValues(
+                                        alpha: 0.42,
+                                      ),
+                                      color: const Color(0xFFFB7299),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: focused
+                              ? Colors.white
+                              : const Color(0xE6FFFFFF),
+                          fontSize: 14,
+                          fontWeight: focused
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0x77FFFFFF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.15,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            if (onRemove != null)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _TvLibraryRemoveButton(key: removeKey, onTap: onRemove!),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TvLibraryRemoveButton extends StatelessWidget {
+  const _TvLibraryRemoveButton({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: TvFocusableSurface(
+        useOverlayLift: false,
+        focusPadding: 0,
+        scale: 1.06,
+        borderRadius: 10,
+        focusArea: TvFocusArea.content,
+        debugLabel: 'tv_library_remove_watch_later',
+        onTap: onTap,
+        builder: (context, focused) {
+          return Tooltip(
+            message: '移出稍后再看',
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                color: focused
+                    ? const Color(0xFFFB7299)
+                    : Colors.black.withValues(alpha: 0.74),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: focused
+                      ? Colors.white.withValues(alpha: 0.88)
+                      : Colors.white.withValues(alpha: 0.22),
+                ),
+              ),
+              child: const Icon(
+                Icons.remove_circle_outline_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TvLibraryLoadMoreTile extends StatelessWidget {
+  const _TvLibraryLoadMoreTile({
+    super.key,
+    required this.loading,
+    required this.onTap,
+  });
+
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusableSurface(
+      useOverlayLift: false,
+      focusPadding: 0,
+      scale: 1.04,
+      borderRadius: 12,
+      focusArea: TvFocusArea.content,
+      debugLabel: 'tv_library_load_more',
+      onTap: loading ? () {} : onTap,
+      builder: (context, focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: focused
+                ? Colors.white.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: focused
+                  ? Colors.white.withValues(alpha: 0.72)
+                  : const Color(0x16FFFFFF),
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (loading)
+                  const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Color(0xFFFB7299),
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.expand_more_rounded,
+                    color: Color(0xCCFFFFFF),
+                    size: 32,
+                  ),
+                const SizedBox(height: 10),
+                Text(
+                  loading ? '加载中' : '加载更多',
+                  style: const TextStyle(
+                    color: Color(0xCCFFFFFF),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

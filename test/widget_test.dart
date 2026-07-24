@@ -445,6 +445,29 @@ BiliVideoDetail _playbackDetail() {
   );
 }
 
+BiliVideoDetail _playbackDetailWith({String? title, String? description}) {
+  final base = _playbackDetail();
+  return BiliVideoDetail(
+    aid: base.aid,
+    bvid: base.bvid,
+    title: title ?? base.title,
+    ownerMid: base.ownerMid,
+    ownerName: base.ownerName,
+    ownerAvatarUrl: base.ownerAvatarUrl,
+    coverUrl: base.coverUrl,
+    description: description ?? base.description,
+    publishedAtLabel: base.publishedAtLabel,
+    playCountLabel: base.playCountLabel,
+    danmakuCountLabel: base.danmakuCountLabel,
+    replyCountLabel: base.replyCountLabel,
+    likeCountLabel: base.likeCountLabel,
+    coinCountLabel: base.coinCountLabel,
+    favoriteCountLabel: base.favoriteCountLabel,
+    shareCountLabel: base.shareCountLabel,
+    pages: base.pages,
+  );
+}
+
 BiliVideoDetail _pgcPlaybackDetail() {
   return const BiliVideoDetail(
     aid: 3001,
@@ -1725,6 +1748,55 @@ void main() {
     );
   });
 
+  testWidgets('tv mine hides following and keeps library actions aligned', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(find.text('关注列表'), findsNothing);
+    final historyAction = find
+        .ancestor(of: find.text('历史播放'), matching: find.byType(TvFocusable))
+        .last;
+    final watchLaterAction = find
+        .ancestor(of: find.text('稍后再看'), matching: find.byType(TvFocusable))
+        .last;
+    expect(historyAction, findsOneWidget);
+    expect(watchLaterAction, findsOneWidget);
+
+    final historyRect = tester.getRect(historyAction);
+    final watchLaterRect = tester.getRect(watchLaterAction);
+    expect(historyRect.center.dy, closeTo(watchLaterRect.center.dy, 0.5));
+    expect(historyRect.overlaps(watchLaterRect), isFalse);
+  });
+
+  testWidgets('tv home only builds a bounded visible feed subset', (
+    WidgetTester tester,
+  ) async {
+    final items = _tvFeedItems(400);
+    await _pumpTvHomePage(tester, initialFeedItems: items, skipBootstrap: true);
+
+    final builtFeedCards = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      return key is ValueKey<String> && key.value.startsWith('feed_');
+    });
+    final builtCardCount = builtFeedCards.evaluate().length;
+
+    expect(builtCardCount, greaterThan(0));
+    expect(builtCardCount, lessThan(80));
+    expect(
+      find.byKey(ValueKey<String>('feed_${items.last.bvid}')),
+      findsNothing,
+    );
+  });
+
   testWidgets('tv rail focused item has stronger visual state', (
     WidgetTester tester,
   ) async {
@@ -1926,6 +1998,103 @@ void main() {
   );
 
   testWidgets(
+    'playback intro hides expand control for empty and fitting descriptions',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        detail: _playbackDetailWith(description: ''),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('playback-intro-expand')),
+        findsNothing,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        detail: _playbackDetailWith(description: '当前空间可以完整展示的简短简介。'),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('playback-intro-expand')),
+        findsNothing,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback intro expand aligns with title first line and toggles overflow',
+    (WidgetTester tester) async {
+      final detail = _playbackDetailWith(
+        title: '这是一个会换到第二行但展开按钮仍需对齐第一行的播放页测试标题',
+        description:
+            '这是一段需要折叠的长简介内容，用来验证简介在三行空间不足时才显示展开按钮。'
+            '继续补充足够多的文字，让它在手机宽度下稳定超过三行，同时确保展开后可以展示全部内容。'
+            '最后再增加一段文字，避免不同字体度量导致简介刚好落在三行以内。',
+      );
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        detail: detail,
+      );
+
+      final titleFinder = find.byKey(
+        const ValueKey<String>('playback-intro-title'),
+      );
+      final expandFinder = find.byKey(
+        const ValueKey<String>('playback-intro-expand'),
+      );
+      final descriptionFinder = find.byKey(
+        const ValueKey<String>('playback-intro-description'),
+      );
+      final iconFinder = find.descendant(
+        of: expandFinder,
+        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+      );
+      expect(expandFinder, findsOneWidget);
+      expect(tester.widget<Text>(descriptionFinder).maxLines, 3);
+
+      final titleContext = tester.element(titleFinder);
+      final titleStyle = tester.widget<Text>(titleFinder).style;
+      final titleLinePainter = TextPainter(
+        text: TextSpan(text: 'M', style: titleStyle),
+        maxLines: 1,
+        textDirection: Directionality.of(titleContext),
+        textScaler: MediaQuery.textScalerOf(titleContext),
+        locale: Localizations.maybeLocaleOf(titleContext),
+      )..layout();
+      final expectedIconCenterY =
+          tester.getTopLeft(titleFinder).dy +
+          titleLinePainter.preferredLineHeight / 2;
+      expect(
+        tester.getCenter(iconFinder).dy,
+        closeTo(expectedIconCenterY, 0.5),
+      );
+
+      await tester.tap(expandFinder);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(descriptionFinder).maxLines, isNull);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.descendant(
+                of: expandFinder,
+                matching: find.byType(IconButton),
+              ),
+            )
+            .tooltip,
+        '收起简介',
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback resumes an unfinished history position before autoplay',
     (WidgetTester tester) async {
       final harness = await _pumpPlaybackPage(tester, initialPositionMs: 45000);
@@ -2095,14 +2264,22 @@ void main() {
         tester.getSize(replyPreview).width,
         closeTo(tester.getSize(commentRow).width - 50, 0.1),
       );
+      final modalBarrierCountBefore = find
+          .byType(ModalBarrier)
+          .evaluate()
+          .length;
 
       await tester.tap(find.text('共3条回复 >'));
       await tester.pumpAndSettle();
 
       expect(find.text('评论详情'), findsOneWidget);
       expect(find.text('相关回复共3条'), findsOneWidget);
+      expect(
+        find.byType(ModalBarrier).evaluate().length,
+        modalBarrierCountBefore,
+      );
 
-      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.tap(find.byTooltip('关闭评论详情'));
       await tester.pumpAndSettle();
 
       final messageFinder = find.textContaining(
@@ -2114,6 +2291,44 @@ void main() {
 
       expect(harness.platform.seekRatios, isNotEmpty);
       expect(harness.platform.seekRatios.last, moreOrLessEquals(0.5));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'mobile comment replies stay below the playing video',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        initialSnapshot: _playingPlaybackSnapshot,
+      );
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('playback-comments')),
+        const Offset(0, -360),
+      );
+      await tester.pumpAndSettle();
+      final modalBarrierCountBefore = find
+          .byType(ModalBarrier)
+          .evaluate()
+          .length;
+      await tester.tap(find.text('共3条回复 >'));
+      await tester.pumpAndSettle();
+
+      final stageRect = tester.getRect(
+        find.byType(vesper_ui.VesperPlayerStage),
+      );
+      final replyHeaderRect = tester.getRect(
+        find.byKey(const ValueKey<String>('playback-comment-replies-header')),
+      );
+      expect(
+        find.byType(ModalBarrier).evaluate().length,
+        modalBarrierCountBefore,
+      );
+      expect(replyHeaderRect.top, greaterThanOrEqualTo(stageRect.bottom));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -2223,7 +2438,7 @@ void main() {
   );
 
   testWidgets(
-    'mobile playback stage collapses while video is playing',
+    'mobile playback stage stays expanded while lists scroll during playback',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
         tester,
@@ -2239,9 +2454,12 @@ void main() {
           )
           .opacity;
 
+      final stageFinder = find.byType(vesper_ui.VesperPlayerStage);
+      final stageSizeBefore = tester.getSize(stageFinder);
+
       await tester.drag(
-        find.byType(vesper_ui.VesperPlayerStage),
-        const Offset(0, -180),
+        find.byKey(const PageStorageKey<String>('playback-related')),
+        const Offset(0, -420),
       );
       await tester.pump();
       await tester.pump();
@@ -2255,7 +2473,27 @@ void main() {
           )
           .opacity;
 
-      expect(collapsedOpacityAfter, greaterThan(collapsedOpacityBefore));
+      expect(collapsedOpacityAfter, collapsedOpacityBefore);
+      expect(tester.getSize(stageFinder), stageSizeBefore);
+
+      await tester.tap(find.text('评论 78'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('playback-comments')),
+        const Offset(0, -420),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final commentsCollapsedOpacity = tester
+          .widget<Opacity>(
+            find
+                .ancestor(of: find.text('正在播放'), matching: find.byType(Opacity))
+                .first,
+          )
+          .opacity;
+      expect(commentsCollapsedOpacity, collapsedOpacityBefore);
+      expect(tester.getSize(stageFinder), stageSizeBefore);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );

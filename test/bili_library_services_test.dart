@@ -4,9 +4,11 @@ import 'dart:io';
 
 import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
+import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_player/vesper_player.dart';
@@ -107,6 +109,109 @@ void main() {
 
     expect(find.text('测试 UP'), findsNothing);
     expect(find.text('请先登录 Bilibili 后查看此内容。'), findsOneWidget);
+  });
+
+  testWidgets('tv history library uses the dark grid without following', (
+    WidgetTester tester,
+  ) async {
+    final historyRoot = Directory(
+      '${Directory.systemTemp.path}/bili-tv-library-history-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    addTearDown(() async {
+      if (await historyRoot.exists()) {
+        await historyRoot.delete(recursive: true);
+      }
+    });
+    final httpClient = _LibraryHttpClient(emptyHistoryCovers: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiliLibraryPage(
+          client: client,
+          initialSection: BiliLibrarySection.history,
+          historyStore: BiliHistoryStore(baseDirectory: historyRoot),
+          presentationMode: BiliPlaybackPresentationMode.tv,
+        ),
+      ),
+    );
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-library-card-history-cid:11')),
+    );
+
+    final root = tester.widget<Scaffold>(
+      find.byKey(const ValueKey<String>('bili-tv-library-root')),
+    );
+    expect(root.backgroundColor, const Color(0xFF0A0A0E));
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-library-grid-history')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-library-card-history-cid:11')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-library-tab-following')),
+      findsNothing,
+    );
+    expect(find.text('关注'), findsNothing);
+  });
+
+  testWidgets('tv watch later library exposes a focusable remove control', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyWatchLaterCovers: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiliLibraryPage(
+          client: client,
+          initialSection: BiliLibrarySection.watchLater,
+          presentationMode: BiliPlaybackPresentationMode.tv,
+        ),
+      ),
+    );
+    final card = find.byKey(
+      const ValueKey<String>('bili-tv-library-card-watchLater-cid:22'),
+    );
+    await _pumpLibraryUntilFound(tester, card);
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-library-grid-watchLater')),
+      findsOneWidget,
+    );
+    expect(card, findsOneWidget);
+    final remove = find.byKey(
+      const ValueKey<String>('bili-tv-library-remove-cid:22'),
+    );
+    expect(remove, findsOneWidget);
+    expect(
+      find.descendant(of: remove, matching: find.byType(TvFocusableSurface)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('history auth expiry drops cloud rows but keeps local history', (
@@ -593,6 +698,22 @@ void main() {
   });
 }
 
+Future<void> _pumpLibraryUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  int attempts = 20,
+}) async {
+  for (var attempt = 0; attempt < attempts; attempt += 1) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+  }
+}
+
 final class _RecordedPost {
   const _RecordedPost(this.uri, this.fields);
 
@@ -616,6 +737,7 @@ final class _LibraryHttpClient implements HttpClient {
     this.emptyFollowingAvatars = false,
     this.historyPaginationAuthExpires = false,
     this.emptyHistoryCovers = false,
+    this.emptyWatchLaterCovers = false,
   });
 
   final bool durationAsClockLabel;
@@ -632,6 +754,7 @@ final class _LibraryHttpClient implements HttpClient {
   final bool emptyFollowingAvatars;
   final bool historyPaginationAuthExpires;
   final bool emptyHistoryCovers;
+  final bool emptyWatchLaterCovers;
   final List<Uri> requestedUris = <Uri>[];
   final Map<Uri, Map<String, String>> requestHeaders =
       <Uri, Map<String, String>>{};
@@ -801,7 +924,9 @@ final class _LibraryHttpClient implements HttpClient {
               'bvid': 'BV1later',
               'cid': 22,
               'title': '稍后视频',
-              'pic': 'https://example.com/later.jpg',
+              'pic': emptyWatchLaterCovers
+                  ? ''
+                  : 'https://example.com/later.jpg',
               'page': 'P2',
               if (explicitMillisecondFields) ...<String, Object?>{
                 'duration_ms': 90000,

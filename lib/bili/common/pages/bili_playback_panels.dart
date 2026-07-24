@@ -29,72 +29,35 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
         ),
         const SizedBox(height: 18),
       ],
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              widget.detail.title,
-              maxLines: _introExpanded ? 4 : 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF11131A),
-                fontWeight: FontWeight.w900,
-                height: 1.18,
+      _PlaybackIntroSummary(
+        title: widget.detail.title,
+        description: description,
+        expanded: _introExpanded,
+        onToggleExpanded: _toggleIntroExpanded,
+        metadata: _PlaybackMetaLine(
+          entries: [
+            if (widget.detail.playCountLabel != '--')
+              _PlaybackMetaEntry(
+                icon: Icons.play_circle_outline_rounded,
+                label: '${widget.detail.playCountLabel}播放',
               ),
-            ),
-          ),
-          if (description.isNotEmpty)
-            _IntroExpandButton(
-              expanded: _introExpanded,
-              onTap: _toggleIntroExpanded,
-            ),
-        ],
-      ),
-      const SizedBox(height: 9),
-      _PlaybackMetaLine(
-        entries: [
-          if (widget.detail.playCountLabel != '--')
+            if (widget.detail.danmakuCountLabel != '--')
+              _PlaybackMetaEntry(
+                icon: Icons.subtitles_outlined,
+                label: widget.detail.danmakuCountLabel,
+              ),
+            if (widget.detail.publishedAtLabel != null)
+              _PlaybackMetaEntry(
+                icon: Icons.schedule_rounded,
+                label: widget.detail.publishedAtLabel!,
+              ),
             _PlaybackMetaEntry(
-              icon: Icons.play_circle_outline_rounded,
-              label: '${widget.detail.playCountLabel}播放',
+              icon: Icons.confirmation_number_outlined,
+              label: _selectedPage.bvid ?? widget.detail.bvid,
             ),
-          if (widget.detail.danmakuCountLabel != '--')
-            _PlaybackMetaEntry(
-              icon: Icons.subtitles_outlined,
-              label: widget.detail.danmakuCountLabel,
-            ),
-          if (widget.detail.publishedAtLabel != null)
-            _PlaybackMetaEntry(
-              icon: Icons.schedule_rounded,
-              label: widget.detail.publishedAtLabel!,
-            ),
-          _PlaybackMetaEntry(
-            icon: Icons.confirmation_number_outlined,
-            label: _selectedPage.bvid ?? widget.detail.bvid,
-          ),
-        ],
-      ),
-      if (description.isNotEmpty) ...[
-        const SizedBox(height: 13),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: Text(
-            description,
-            maxLines: _introExpanded ? null : 3,
-            overflow: _introExpanded
-                ? TextOverflow.visible
-                : TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF626875),
-              height: 1.62,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          ],
         ),
-      ],
+      ),
       if (!isPgc) ...[
         const SizedBox(height: 22),
         _ActionStatRow(
@@ -181,6 +144,22 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
   }
 
   Widget _buildCommentsPanel(BuildContext context) {
+    final openedCommentReplies = _openedCommentReplies;
+    if (openedCommentReplies != null) {
+      return NotificationListener<ScrollNotification>(
+        onNotification: _handleMobileContentScroll,
+        child: _CommentReplyPanel(
+          comment: openedCommentReplies,
+          controller: _commentRepliesScrollController,
+          onClose: _closeCommentReplies,
+          onSeekToTime: (seconds) {
+            _closeCommentReplies();
+            unawaited(_seekToCommentTime(seconds));
+          },
+        ),
+      );
+    }
+
     final bottomPadding = 118 + MediaQuery.viewPaddingOf(context).bottom;
     return Stack(
       children: [
@@ -204,8 +183,7 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
                 onLoadMore: _loadMoreComments,
                 onSeekToTime: (seconds) =>
                     unawaited(_seekToCommentTime(seconds)),
-                onOpenReplies: (comment) =>
-                    unawaited(_showCommentReplies(comment)),
+                onOpenReplies: _showCommentReplies,
               ),
             ],
           ),

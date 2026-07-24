@@ -5,6 +5,16 @@ int biliHomeGridCrossAxisCountForWidth(double crossAxisExtent) {
   return (crossAxisExtent / 220).floor().clamp(2, 5).toInt();
 }
 
+@visibleForTesting
+int biliHomeCoverCacheWidth({
+  required double tileWidth,
+  required double devicePixelRatio,
+}) {
+  assert(tileWidth > 0);
+  assert(devicePixelRatio > 0);
+  return (tileWidth * devicePixelRatio).ceil().clamp(160, 720).toInt();
+}
+
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
     required this.profile,
@@ -144,18 +154,20 @@ class _HomeSearchHeaderDelegate extends SliverPersistentHeaderDelegate {
 
 class _HomeVideoGrid extends StatelessWidget {
   const _HomeVideoGrid({
-    required this.items,
+    required this.itemCount,
+    required this.itemAt,
     required this.onTap,
     required this.onCacheTap,
   });
 
-  final List<_HomeVideoItem> items;
+  final int itemCount;
+  final _HomeVideoItem Function(int index) itemAt;
   final ValueChanged<_HomeVideoItem> onTap;
   final ValueChanged<_HomeVideoItem> onCacheTap;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
+    if (itemCount == 0) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
 
@@ -173,6 +185,10 @@ class _HomeVideoGrid extends StatelessWidget {
             crossAxisCount;
         final tileWidth = rawTileWidth <= 0 ? 1.0 : rawTileWidth;
         final tileHeight = tileWidth * 9 / 16 + _HomeVideoCard.infoHeight;
+        final coverCacheWidth = biliHomeCoverCacheWidth(
+          tileWidth: tileWidth,
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        );
 
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(
@@ -182,7 +198,7 @@ class _HomeVideoGrid extends StatelessWidget {
             18,
           ),
           sliver: SliverGrid.builder(
-            itemCount: items.length,
+            itemCount: itemCount,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossAxisCount,
               mainAxisSpacing: 10,
@@ -190,9 +206,11 @@ class _HomeVideoGrid extends StatelessWidget {
               childAspectRatio: tileWidth / tileHeight,
             ),
             itemBuilder: (context, index) {
-              final item = items[index];
+              final item = itemAt(index);
               return _HomeVideoCard(
+                key: ValueKey<String>('${item.bvid}-$index'),
                 item: item,
+                coverCacheWidth: coverCacheWidth,
                 onTap: () => onTap(item),
                 onCacheTap: () => onCacheTap(item),
               );
@@ -206,7 +224,9 @@ class _HomeVideoGrid extends StatelessWidget {
 
 class _HomeVideoCard extends StatelessWidget {
   const _HomeVideoCard({
+    super.key,
     required this.item,
+    required this.coverCacheWidth,
     required this.onTap,
     required this.onCacheTap,
   });
@@ -214,18 +234,13 @@ class _HomeVideoCard extends StatelessWidget {
   static const double infoHeight = 88;
 
   final _HomeVideoItem item;
+  final int coverCacheWidth;
   final VoidCallback onTap;
   final VoidCallback onCacheTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final imageCacheWidth =
-        ((MediaQuery.sizeOf(context).width / 2) *
-                MediaQuery.devicePixelRatioOf(context))
-            .round()
-            .clamp(240, 720)
-            .toInt();
     return Material(
       color: Colors.white,
       elevation: 4,
@@ -262,7 +277,7 @@ class _HomeVideoCard extends StatelessWidget {
                             : Image.network(
                                 item.coverUrl,
                                 fit: BoxFit.cover,
-                                cacheWidth: imageCacheWidth,
+                                cacheWidth: coverCacheWidth,
                                 errorBuilder: (_, _, _) => const Icon(
                                   Icons.broken_image_outlined,
                                   color: Color(0xFF8C929F),
