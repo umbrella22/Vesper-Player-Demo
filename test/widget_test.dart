@@ -2336,6 +2336,39 @@ void main() {
   );
 
   testWidgets(
+    'playback context tabs center labels and use a compact leading inset',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 640));
+
+      final tabBarFinder = find.byType(TabBar);
+      final introTabFinder = find.byKey(
+        const ValueKey<String>('playback-intro-tab'),
+      );
+      final commentsTabFinder = find.byKey(
+        const ValueKey<String>('playback-comments-tab'),
+      );
+      final tabBar = tester.widget<TabBar>(tabBarFinder);
+
+      expect(tabBar.tabAlignment, TabAlignment.start);
+      expect(tabBar.labelPadding, const EdgeInsets.symmetric(horizontal: 12));
+      expect(
+        tester.getCenter(find.text('简介')).dx,
+        closeTo(tester.getCenter(introTabFinder).dx, 0.5),
+      );
+      expect(
+        tester.getCenter(find.text('评论 78')).dx,
+        closeTo(tester.getCenter(commentsTabFinder).dx, 0.5),
+      );
+      expect(
+        tester.getTopLeft(introTabFinder).dx -
+            tester.getTopLeft(tabBarFinder).dx,
+        lessThan(24),
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback intro hides expand control for empty and fitting descriptions',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
@@ -2393,8 +2426,13 @@ void main() {
         of: expandFinder,
         matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
       );
+      final iconButtonFinder = find.descendant(
+        of: expandFinder,
+        matching: find.byType(IconButton),
+      );
       expect(expandFinder, findsOneWidget);
       expect(tester.widget<Text>(descriptionFinder).maxLines, 3);
+      expect(tester.getSize(iconButtonFinder), const Size(40, 40));
 
       final titleContext = tester.element(titleFinder);
       final titleStyle = tester.widget<Text>(titleFinder).style;
@@ -2412,8 +2450,12 @@ void main() {
         tester.getCenter(iconFinder).dy,
         closeTo(expectedIconCenterY, 0.5),
       );
+      expect(
+        tester.getCenter(iconButtonFinder).dy,
+        closeTo(expectedIconCenterY, 0.5),
+      );
 
-      await tester.tap(expandFinder);
+      await tester.tap(iconButtonFinder);
       await tester.pumpAndSettle();
 
       expect(tester.widget<Text>(descriptionFinder).maxLines, isNull);

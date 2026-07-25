@@ -133,13 +133,14 @@ class _PlaybackContextTabs extends StatelessWidget {
               child: TabBar(
                 controller: controller,
                 isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 dividerColor: Colors.transparent,
                 indicatorColor: const Color(0xFFFB7299),
                 indicatorSize: TabBarIndicatorSize.label,
                 indicatorWeight: 3,
                 labelColor: const Color(0xFFFB7299),
                 unselectedLabelColor: const Color(0xFF777D88),
-                labelPadding: const EdgeInsets.only(right: 28),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 12),
                 splashBorderRadius: BorderRadius.circular(8),
                 labelStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
@@ -148,8 +149,14 @@ class _PlaybackContextTabs extends StatelessWidget {
                 unselectedLabelStyle: Theme.of(context).textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w900, height: 1.1),
                 tabs: [
-                  _PlaybackTab(label: '简介'),
-                  _PlaybackTab(label: '评论 $replyCountLabel'),
+                  const _PlaybackTab(
+                    key: ValueKey<String>('playback-intro-tab'),
+                    label: '简介',
+                  ),
+                  _PlaybackTab(
+                    key: const ValueKey<String>('playback-comments-tab'),
+                    label: '评论 $replyCountLabel',
+                  ),
                 ],
               ),
             ),
@@ -162,17 +169,21 @@ class _PlaybackContextTabs extends StatelessWidget {
 }
 
 class _PlaybackTab extends StatelessWidget {
-  const _PlaybackTab({required this.label});
+  const _PlaybackTab({super.key, required this.label});
 
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 56,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      height: 40,
+      child: Center(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
@@ -1644,25 +1655,25 @@ class _IntroExpandButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onTap,
-      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-      padding: EdgeInsets.zero,
-      alignment: Alignment.topCenter,
-      icon: AnimatedRotation(
-        turns: expanded ? 0.5 : 0,
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
-        child: Transform.translate(
-          offset: Offset(0, (firstLineHeight - 28) / 2),
+    return Transform.translate(
+      offset: Offset(0, (firstLineHeight - 40) / 2),
+      child: IconButton(
+        onPressed: onTap,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        padding: EdgeInsets.zero,
+        alignment: Alignment.center,
+        icon: AnimatedRotation(
+          turns: expanded ? 0.5 : 0,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
           child: const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: Color(0xFF9AA0AA),
             size: 28,
           ),
         ),
+        tooltip: expanded ? '收起简介' : '展开简介',
       ),
-      tooltip: expanded ? '收起简介' : '展开简介',
     );
   }
 }
