@@ -6,14 +6,14 @@ extension BiliClientDownload on BiliClient {
     required BiliVideoPageEntry page,
   }) async {
     final pageBvid = page.bvid ?? detail.bvid;
-    final referer = 'https://www.bilibili.com/video/$pageBvid';
+    final referer = biliVideoReferer(pageBvid);
     final fallbackReasons = <String>[];
 
     for (final variant in biliDashRequestVariants) {
       try {
         final dashData = await _transport.getData(
-          host: 'api.bilibili.com',
-          path: '/x/player/wbi/playurl',
+          host: biliApiHost,
+          path: BiliApiPaths.playerWbiPlayUrl,
           params: _buildDashPlayUrlParams(
             detail: detail,
             page: page,

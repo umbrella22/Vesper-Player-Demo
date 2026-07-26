@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
@@ -38,10 +40,11 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasSession = _client.hasAuthenticatedSession;
-    return Scaffold(
-      backgroundColor: scaffoldBackground(context),
-      appBar: AppBar(
-        backgroundColor: scaffoldBackground(context),
+    return GlassScaffold(
+      backgroundColor: AppVisualTokens.mobileBackground,
+      extendBody: false,
+      appBar: GlassAppBar(
+        centerTitle: false,
         title: Text(
           '分区',
           style: theme.textTheme.titleLarge?.copyWith(
@@ -89,7 +92,7 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
             const Icon(
               Icons.lock_outline_rounded,
               size: 42,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
             const SizedBox(height: 12),
             Text(
@@ -144,7 +147,9 @@ class _RegionCard extends StatelessWidget {
       child: DecoratedBox(
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.all(Radius.circular(18)),
+          borderRadius: BorderRadius.all(
+            Radius.circular(AppVisualTokens.contentRadius),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),

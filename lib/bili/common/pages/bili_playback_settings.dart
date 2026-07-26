@@ -203,49 +203,19 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
   }
 
   Future<void> _showCacheSheet() {
-    return showModalBottomSheet<void>(
+    return showBiliGlassSheet<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: const Color(0xFFF4F4F8),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+      contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      builder: (_) => BiliCacheDownloadPanel(
+        detail: widget.detail,
+        currentPage: _selectedPage,
+        selectedQualityId: _selectedBiliQualityId,
+        codecPreference: _currentDownloadCodecPreference(),
+        controller: _offlineController,
+        onMessage: _showMessage,
+        client: widget.client,
+        historyStore: widget.historyStore,
       ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              bottom: 16 + MediaQuery.of(sheetContext).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: BiliCacheDownloadPanel(
-                    detail: widget.detail,
-                    currentPage: _selectedPage,
-                    selectedQualityId: _selectedBiliQualityId,
-                    codecPreference: _currentDownloadCodecPreference(),
-                    controller: _offlineController,
-                    onMessage: _showMessage,
-                    client: widget.client,
-                    historyStore: widget.historyStore,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }

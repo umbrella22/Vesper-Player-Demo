@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 
 import 'bili_api_core.dart';
+import 'bili_endpoints.dart';
 import 'bili_wbi.dart';
 
 const Duration _defaultBiliConnectionTimeout = Duration(seconds: 15);
@@ -80,7 +81,7 @@ class BiliTransport {
     required String path,
     Map<String, Object?> params = const <String, Object?>{},
     bool useWbi = false,
-    String referer = 'https://www.bilibili.com/',
+    String referer = biliDefaultReferer,
     bool ensureReady = true,
     Set<int> allowedCodes = const <int>{0},
   }) async {
@@ -105,7 +106,7 @@ class BiliTransport {
     required String path,
     Map<String, Object?> params = const <String, Object?>{},
     bool useWbi = false,
-    String referer = 'https://www.bilibili.com/',
+    String referer = biliDefaultReferer,
     bool ensureReady = true,
     Set<int> allowedCodes = const <int>{0},
   }) async {
@@ -161,7 +162,7 @@ class BiliTransport {
     required String host,
     required String path,
     Map<String, Object?> data = const <String, Object?>{},
-    String referer = 'https://www.bilibili.com/',
+    String referer = biliDefaultReferer,
     bool ensureReady = true,
   }) async {
     final responseData = await postApiData(
@@ -178,7 +179,7 @@ class BiliTransport {
     required String host,
     required String path,
     Map<String, Object?> data = const <String, Object?>{},
-    String referer = 'https://www.bilibili.com/',
+    String referer = biliDefaultReferer,
     bool ensureReady = true,
   }) async {
     if (ensureReady) {
@@ -272,13 +273,18 @@ class BiliTransport {
     final request = method == 'POST'
         ? await _httpClient.postUrl(uri)
         : await _httpClient.getUrl(uri);
-    request.headers.set(HttpHeaders.acceptHeader, acceptHeader);
-    request.headers.set(HttpHeaders.refererHeader, referer);
-    request.headers.set('Origin', originFromReferer(referer));
-    request.headers.set(HttpHeaders.acceptLanguageHeader, 'zh-CN,zh;q=0.9');
-    request.headers.set('Sec-Fetch-Dest', 'empty');
-    request.headers.set('Sec-Fetch-Mode', 'cors');
-    request.headers.set('Sec-Fetch-Site', 'same-site');
+    // Headers flow through the single helper shared with media requests so
+    // the two paths cannot drift. API requests always carry Sec-Fetch-* and
+    // rely on the HttpClient's global User-Agent; a Cookie header is emitted
+    // only when includeCookies is true and a session is present.
+    final headers = _buildBiliHeaders(
+      referer: referer,
+      acceptHeader: acceptHeader,
+      includeCookies: includeCookies,
+      includeSecFetch: true,
+      includeUserAgent: false,
+    );
+    headers.forEach((name, value) => request.headers.set(name, value));
     List<int>? payload;
     if (requestBody != null) {
       request.headers.contentType = ContentType(
@@ -288,16 +294,6 @@ class BiliTransport {
       );
       payload = utf8.encode(requestBody);
       request.contentLength = payload.length;
-    }
-
-    // A subtitle/media URL can be hosted on a CDN outside Bilibili's
-    // authenticated API domains. Callers must opt out when crossing that
-    // boundary so session cookies never leak to an arbitrary HTTPS host.
-    if (includeCookies && _cookies.isNotEmpty) {
-      request.headers.set(
-        HttpHeaders.cookieHeader,
-        buildCookieHeader(_cookies),
-      );
     }
     if (payload != null) {
       request.add(payload);
@@ -421,32 +417,68 @@ class BiliTransport {
   }
 
   Map<String, String> buildBiliMediaSourceHeaders() {
+    // 媒体/CDN 请求：Accept=*/*、显式 UA、不携带 Sec-Fetch-*、按需携带 Cookie。
+    return _buildBiliHeaders(
+      referer: biliMediaReferer,
+      acceptHeader: '*/*',
+      includeCookies: true,
+      includeSecFetch: false,
+      includeUserAgent: true,
+    );
+  }
+
+  /// 构造 Bilibili 请求头的唯一真相源，API 与媒体路径共用。
+  ///
+  /// 契约（由定向测试 bili_header_construction_test.dart 锁定）：
+  ///  - [includeCookies] == false 时绝不产生 Cookie 头（即使已登录），
+  ///    防止 session 泄漏到 CDN 等非受信 host。
+  ///  - Cookie 头仅在序列化结果非空时产生。注意这是一处协议层清理：
+  ///    旧 API 路径只要 cookie map 非空就写头（即便值全为空串，会发出
+  ///    `SESSDATA=` 这类畸形头）；现在与媒体路径统一，由 buildCookieHeader
+  ///    过滤空值后决定。持久化层（bili_session_store）可恢复空串值，
+  ///    因此"map 非空但序列化为空"是可达场景，新行为更合理。
+  ///  - [includeSecFetch] == false 时不产生 Sec-Fetch-*（媒体路径专属）。
+  ///  - [includeUserAgent] 仅媒体路径显式传 true；API 路径依赖 HttpClient
+  ///    全局 UA（构造器里已设置 biliUserAgent）。
+  Map<String, String> _buildBiliHeaders({
+    required String referer,
+    required String acceptHeader,
+    required bool includeCookies,
+    required bool includeSecFetch,
+    required bool includeUserAgent,
+  }) {
     final headers = <String, String>{
-      HttpHeaders.acceptHeader: '*/*',
-      HttpHeaders.userAgentHeader: biliUserAgent,
-      HttpHeaders.refererHeader: biliMediaReferer,
-      'Origin': originFromReferer(biliMediaReferer),
+      HttpHeaders.acceptHeader: acceptHeader,
+      HttpHeaders.refererHeader: referer,
+      'Origin': originFromReferer(referer),
       HttpHeaders.acceptLanguageHeader: 'zh-CN,zh;q=0.9',
     };
-    final cookieHeader = buildCookieHeader(_cookies);
-    if (cookieHeader.isNotEmpty) {
-      headers[HttpHeaders.cookieHeader] = cookieHeader;
+    if (includeUserAgent) {
+      headers[HttpHeaders.userAgentHeader] = biliUserAgent;
+    }
+    if (includeSecFetch) {
+      headers['Sec-Fetch-Dest'] = 'empty';
+      headers['Sec-Fetch-Mode'] = 'cors';
+      headers['Sec-Fetch-Site'] = 'same-site';
+    }
+    if (includeCookies) {
+      final cookieHeader = buildCookieHeader(_cookies);
+      if (cookieHeader.isNotEmpty) {
+        headers[HttpHeaders.cookieHeader] = cookieHeader;
+      }
     }
     return headers;
   }
 
   Future<void> _primeCookies() async {
-    await sendRequest(
-      Uri.https('www.bilibili.com', '/'),
-      referer: 'https://www.bilibili.com/',
-    );
+    await sendRequest(Uri.https(biliWebHost, '/'), referer: biliDefaultReferer);
   }
 
   Future<void> _refreshWbiKeys() async {
     final data = await getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/nav',
-      referer: 'https://www.bilibili.com/',
+      host: biliApiHost,
+      path: BiliApiPaths.nav,
+      referer: biliDefaultReferer,
       ensureReady: false,
       allowedCodes: const <int>{0, -101},
     );
@@ -470,8 +502,8 @@ class BiliTransport {
   Future<void> _refreshBuvidCookies() async {
     try {
       final response = await sendRequest(
-        Uri.https('api.bilibili.com', '/x/frontend/finger/spi'),
-        referer: 'https://www.bilibili.com/',
+        Uri.https(biliApiHost, BiliApiPaths.frontendFingerSpi),
+        referer: biliDefaultReferer,
       );
       final data = decodeApiData(response.body);
       if (data is! Map) {

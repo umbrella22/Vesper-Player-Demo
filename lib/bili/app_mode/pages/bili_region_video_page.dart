@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
@@ -10,6 +13,7 @@ import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_visuals.dart';
 
@@ -156,10 +160,11 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F6FB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF3F6FB),
+    return GlassScaffold(
+      backgroundColor: AppVisualTokens.mobileBackground,
+      extendBody: false,
+      appBar: GlassAppBar(
+        centerTitle: false,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -206,7 +211,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             const Icon(
               Icons.lock_outline_rounded,
               size: 42,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
             const SizedBox(height: 12),
             Text(
@@ -226,10 +231,10 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
+            AppGlassButton(
               onPressed: _loadPage,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重新检查登录状态'),
+              icon: Icons.refresh_rounded,
+              label: '重新检查登录状态',
             ),
           ],
         ),
@@ -252,7 +257,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton(onPressed: _loadPage, child: const Text('重试')),
+            AppGlassButton(label: '重试', onPressed: _loadPage),
           ],
         ),
       ),
@@ -368,34 +373,14 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     final detailFuture = _resolveVideoDetail(item);
 
     if (isPortrait) {
-      await showModalBottomSheet<void>(
+      await showBiliGlassSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: const Color(0xFFF4F4F8),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 22,
-              right: 22,
-              bottom: 22 + MediaQuery.of(sheetContext).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: _RegionCacheSurface(
-                detailFuture: detailFuture,
-                client: _client,
-                historyStore: _historyStore,
-                controller: _offlineController,
-                onMessage: _showMessage,
-              ),
-            ),
-          ),
+        builder: (_) => _RegionCacheSurface(
+          detailFuture: detailFuture,
+          client: _client,
+          historyStore: _historyStore,
+          controller: _offlineController,
+          onMessage: _showMessage,
         ),
       );
       return;
@@ -406,7 +391,10 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black.withValues(alpha: 0.40),
-      transitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: AppVisualTokens.motionDuration(
+        context,
+        AppVisualTokens.overlayDuration,
+      ),
       pageBuilder: (dialogContext, _, _) {
         final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
             .clamp(
@@ -416,25 +404,29 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             .toDouble();
         return Align(
           alignment: Alignment.centerLeft,
-          child: Material(
-            color: const Color(0xFFF4F4F8),
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(22),
+          child: GlassContainer(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            shape: const LiquidRoundedSuperellipse(
+              borderRadius: AppVisualTokens.sheetRadius,
             ),
             clipBehavior: Clip.antiAlias,
-            child: SafeArea(
-              right: false,
-              child: SizedBox(
-                width: drawerWidth,
-                height: double.infinity,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                  child: _RegionCacheSurface(
-                    detailFuture: detailFuture,
-                    client: _client,
-                    historyStore: _historyStore,
-                    controller: _offlineController,
-                    onMessage: _showMessage,
+            child: Material(
+              type: MaterialType.transparency,
+              child: SafeArea(
+                right: false,
+                child: SizedBox(
+                  width: drawerWidth,
+                  height: double.infinity,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                    child: _RegionCacheSurface(
+                      detailFuture: detailFuture,
+                      client: _client,
+                      historyStore: _historyStore,
+                      controller: _offlineController,
+                      onMessage: _showMessage,
+                    ),
                   ),
                 ),
               ),
@@ -505,43 +497,34 @@ class _RegionCacheSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: FutureBuilder<BiliVideoDetail>(
-          future: detailFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final error = snapshot.error;
-            if (error != null) {
-              return _RegionCacheError(message: error.toString());
-            }
-            final detail = snapshot.data;
-            if (detail == null || detail.pages.isEmpty) {
-              return const _RegionCacheError(message: '没有可缓存的分 P。');
-            }
-            return BiliCacheDownloadPanel(
-              detail: detail,
-              currentPage: detail.pages.first,
-              selectedQualityId: null,
-              codecPreference: BiliVideoCodecPreference.automatic,
-              controller: controller,
-              onMessage: onMessage,
-              client: client,
-              historyStore: historyStore,
-            );
-          },
-        ),
-      ),
+    return FutureBuilder<BiliVideoDetail>(
+      future: detailFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 36),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final error = snapshot.error;
+        if (error != null) {
+          return _RegionCacheError(message: error.toString());
+        }
+        final detail = snapshot.data;
+        if (detail == null || detail.pages.isEmpty) {
+          return const _RegionCacheError(message: '没有可缓存的分 P。');
+        }
+        return BiliCacheDownloadPanel(
+          detail: detail,
+          currentPage: detail.pages.first,
+          selectedQualityId: null,
+          codecPreference: BiliVideoCodecPreference.automatic,
+          controller: controller,
+          onMessage: onMessage,
+          client: client,
+          historyStore: historyStore,
+        );
+      },
     );
   }
 }
@@ -839,7 +822,7 @@ class _ScoreBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFB7299).withValues(alpha: 0.88),
+        color: AppVisualTokens.primaryBlue.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Padding(

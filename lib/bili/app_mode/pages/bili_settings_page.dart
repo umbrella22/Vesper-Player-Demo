@@ -1,15 +1,19 @@
 import 'dart:async';
 
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
 import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_logout_service.dart';
 import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/app/home_page.dart';
 import 'package:bilibili_player/main.dart';
@@ -132,24 +136,14 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     if (_loggingOut.value || !_hasAuthenticatedSession.value) {
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showBiliGlassDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('将清除本地 cookie 和登录态，并暂停当前离线缓存任务。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('退出'),
-            ),
-          ],
-        );
-      },
+      title: '退出登录',
+      message: '将清除本地 cookie 和登录态，并暂停当前离线缓存任务。',
+      actions: const [
+        BiliGlassDialogAction(label: '取消', value: false),
+        BiliGlassDialogAction(label: '退出', value: true, isDestructive: true),
+      ],
     );
     if (confirmed != true || !mounted) {
       return;
@@ -211,10 +205,13 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GlassScaffold(
       backgroundColor: const Color(0xFFF3F6FB),
-      appBar: AppBar(
-        title: const Text(
+      statusBarStyle: GlassStatusBarStyle.auto,
+      extendBody: false,
+      appBar: const GlassAppBar(
+        centerTitle: false,
+        title: Text(
           '设置',
           style: TextStyle(
             color: Color(0xFF20232B),
@@ -255,12 +252,15 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         SignalBuilder(builder: _buildAccountCard),
         const SizedBox(height: 28),
         _buildSectionLabel('关于'),
-        Card(
-          margin: EdgeInsets.zero,
+        GlassCard(
+          useOwnLayer: true,
+          quality: GlassQuality.minimal,
+          padding: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: const Icon(
               Icons.info_outline_rounded,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
             title: const Text(
               'bilibili_player',
@@ -279,14 +279,17 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   Widget _buildAccountCard(BuildContext context) {
     final loggedIn = _hasAuthenticatedSession.value;
     final loggingOut = _loggingOut.value;
-    return Card(
-      margin: EdgeInsets.zero,
+    return GlassCard(
+      useOwnLayer: true,
+      quality: GlassQuality.minimal,
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
         leading: Icon(
           loggedIn
               ? Icons.account_circle_rounded
               : Icons.account_circle_outlined,
-          color: const Color(0xFFFB7299),
+          color: AppVisualTokens.biliSourcePink,
         ),
         title: const Text(
           'Bilibili 账号',
@@ -314,10 +317,16 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   Widget _buildDisplayModeCard(BuildContext context) {
     final forceTvMode = _forceTvMode.value;
-    return Card(
-      margin: EdgeInsets.zero,
+    return GlassCard(
+      useOwnLayer: true,
+      quality: GlassQuality.minimal,
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: SwitchListTile(
-        secondary: const Icon(Icons.tv_rounded, color: Color(0xFFFB7299)),
+        secondary: const Icon(
+          Icons.tv_rounded,
+          color: AppVisualTokens.primaryBlue,
+        ),
         title: const Text(
           '强制 TV 模式',
           style: TextStyle(
@@ -331,7 +340,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         ),
         value: forceTvMode,
         onChanged: _toggleForceTvMode,
-        activeThumbColor: const Color(0xFFFB7299),
+        activeThumbColor: AppVisualTokens.primaryBlue,
       ),
     );
   }
@@ -343,10 +352,10 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Center(
-        child: FilledButton.icon(
+        child: AppGlassButton(
           onPressed: _switchHome,
-          icon: const Icon(Icons.home_rounded, size: 20),
-          label: const Text('返回首页并切换'),
+          icon: Icons.home_rounded,
+          label: '返回首页并切换',
         ),
       ),
     );

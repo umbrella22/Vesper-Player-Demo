@@ -8,6 +8,7 @@ import '../models/bili_models.dart';
 import '../models/bili_region_models.dart';
 import 'bili_api_core.dart';
 import 'bili_dash_manifest_builder.dart';
+import 'bili_endpoints.dart';
 import 'bili_text.dart';
 import 'bili_transport.dart';
 import 'bili_wbi.dart';
@@ -79,8 +80,8 @@ class BiliClient {
     await _transport.ensureReady();
 
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/wbi/search/type',
+      host: biliApiHost,
+      path: BiliApiPaths.searchType,
       params: <String, Object?>{
         'keyword': keyword,
         'page': page,
@@ -115,8 +116,8 @@ class BiliClient {
 
   Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/view',
+      host: biliApiHost,
+      path: BiliApiPaths.videoView,
       params: <String, Object?>{'bvid': bvid},
     );
 
@@ -130,8 +131,8 @@ class BiliClient {
       throw const BiliApiException('缺少有效的视频 AV 号。');
     }
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/view',
+      host: biliApiHost,
+      path: BiliApiPaths.videoView,
       params: <String, Object?>{'aid': aid},
     );
 
@@ -185,9 +186,9 @@ class BiliClient {
   Future<BiliUserProfile> fetchCurrentUserProfile() async {
     await _transport.ensureReady();
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/nav',
-      referer: 'https://www.bilibili.com/',
+      host: biliApiHost,
+      path: BiliApiPaths.nav,
+      referer: biliDefaultReferer,
       ensureReady: false,
       allowedCodes: const <int>{0, -101},
     );
@@ -229,9 +230,9 @@ class BiliClient {
   Future<Map<String, Object?>> _fetchCurrentUserNavStat() async {
     try {
       return await _transport.getData(
-        host: 'api.bilibili.com',
-        path: '/x/web-interface/nav/stat',
-        referer: 'https://www.bilibili.com/',
+        host: biliApiHost,
+        path: BiliApiPaths.navStat,
+        referer: biliDefaultReferer,
         ensureReady: false,
       );
     } catch (_) {
@@ -242,11 +243,8 @@ class BiliClient {
   Future<BiliQrLoginTicket> generateQrLoginTicket() async {
     await _transport.ensureReady();
     final response = await _transport.sendRequest(
-      Uri.https(
-        'passport.bilibili.com',
-        '/x/passport-login/web/qrcode/generate',
-      ),
-      referer: 'https://www.bilibili.com/',
+      Uri.https(biliPassportHost, BiliApiPaths.qrcodeGenerate),
+      referer: biliDefaultReferer,
     );
     final decoded = jsonDecode(response.body);
     if (decoded is! Map) {
@@ -274,12 +272,10 @@ class BiliClient {
 
   Future<BiliQrLoginPollResult> pollQrLogin(String qrcodeKey) async {
     final response = await _transport.sendRequest(
-      Uri.https(
-        'passport.bilibili.com',
-        '/x/passport-login/web/qrcode/poll',
-        <String, String>{'qrcode_key': qrcodeKey},
-      ),
-      referer: 'https://www.bilibili.com/',
+      Uri.https(biliPassportHost, BiliApiPaths.qrcodePoll, <String, String>{
+        'qrcode_key': qrcodeKey,
+      }),
+      referer: biliDefaultReferer,
     );
     final decoded = jsonDecode(response.body);
     if (decoded is! Map) {
@@ -316,8 +312,8 @@ class BiliClient {
     await _transport.ensureReady();
     final normalizedPage = page < 1 ? 1 : page;
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/index/top/feed/rcmd',
+      host: biliApiHost,
+      path: BiliApiPaths.feedRcmd,
       params: <String, Object?>{
         'fresh_type': 4,
         'feed_version': 'V8',
@@ -348,11 +344,11 @@ class BiliClient {
 
     await _transport.ensureReady();
     final response = await _transport.sendRequest(
-      Uri.https('api.bilibili.com', '/x/web-interface/archive/related', {
+      Uri.https(biliApiHost, BiliApiPaths.archiveRelated, {
         'aid': '${detail.aid}',
         'bvid': detail.bvid,
       }),
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     final decoded = _transport.decodeApiData(response.body);
     final rawItems = switch (decoded) {
@@ -402,8 +398,8 @@ class BiliClient {
     final normalizedPageSize = pageSize.clamp(1, 49).toInt();
     await _transport.ensureReady();
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/reply',
+      host: biliApiHost,
+      path: BiliApiPaths.replyList,
       params: <String, Object?>{
         'type': 1,
         'oid': detail.aid,
@@ -412,7 +408,7 @@ class BiliClient {
         'pn': normalizedPage,
         'ps': normalizedPageSize,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
 
     final seenIds = <int>{};
@@ -471,8 +467,8 @@ class BiliClient {
 
     await _transport.ensureReady();
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/reply/reply',
+      host: biliApiHost,
+      path: BiliApiPaths.replyReply,
       params: <String, Object?>{
         'type': 1,
         'oid': detail.aid,
@@ -480,7 +476,7 @@ class BiliClient {
         'pn': normalizedPage,
         'ps': normalizedPageSize,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
 
     final seenIds = <int>{};
@@ -516,10 +512,10 @@ class BiliClient {
   }) async {
     await _transport.ensureReady();
     final response = await _transport.sendRequest(
-      Uri.https('api.bilibili.com', '/x/v1/dm/list.so', <String, String>{
+      Uri.https(biliApiHost, BiliApiPaths.danmakuList, <String, String>{
         'oid': '$cid',
       }),
-      referer: 'https://www.bilibili.com/video/$bvid',
+      referer: biliVideoReferer(bvid),
       acceptHeader: 'text/xml, */*',
     );
     return response.body;
@@ -534,10 +530,10 @@ class BiliClient {
     }
 
     final relation = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/archive/relation',
+      host: biliApiHost,
+      path: BiliApiPaths.archiveRelation,
       params: <String, Object?>{'aid': detail.aid, 'bvid': detail.bvid},
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
 
     final folders = await _tryFetchFavoriteFolders(detail);
@@ -565,14 +561,14 @@ class BiliClient {
   }) async {
     final base = current ?? await fetchVideoEngagement(detail);
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/archive/like',
+      host: biliApiHost,
+      path: BiliApiPaths.archiveLike,
       data: <String, Object?>{
         'aid': detail.aid,
         'bvid': detail.bvid,
         'like': liked ? 1 : 2,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     return _refreshEngagementAfterMutation(
       detail: detail,
@@ -582,10 +578,10 @@ class BiliClient {
 
   Future<int> fetchVideoCoinCount(BiliVideoDetail detail) async {
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/archive/coins',
+      host: biliApiHost,
+      path: BiliApiPaths.archiveCoins,
       params: <String, Object?>{'aid': detail.aid, 'bvid': detail.bvid},
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     return readInt(data['multiply']) ??
         readInt(data['coins']) ??
@@ -600,15 +596,15 @@ class BiliClient {
   }) async {
     final normalizedMultiply = multiply.clamp(1, 2).toInt();
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/coin/add',
+      host: biliApiHost,
+      path: BiliApiPaths.coinAdd,
       data: <String, Object?>{
         'aid': detail.aid,
         'bvid': detail.bvid,
         'multiply': normalizedMultiply,
         'select_like': selectLike ? 1 : 0,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     try {
       return await fetchVideoCoinCount(detail);
@@ -627,15 +623,15 @@ class BiliClient {
     }
 
     final data = await _transport.postApiData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/reply/add',
+      host: biliApiHost,
+      path: BiliApiPaths.replyAdd,
       data: <String, Object?>{
         'type': 1,
         'oid': detail.aid,
         'message': normalizedMessage,
         'plat': 1,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     final map = readObjectMap(data);
     final reply = readObjectMap(map['reply']);
@@ -677,15 +673,15 @@ class BiliClient {
     }
 
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/v3/fav/resource/deal',
+      host: biliApiHost,
+      path: BiliApiPaths.favResourceDeal,
       data: <String, Object?>{
         'rid': detail.aid,
         'type': biliVideoFavoriteType,
         'add_media_ids': joinIntList(addIds),
         'del_media_ids': joinIntList(delIds),
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
 
     return _refreshEngagementAfterMutation(
@@ -714,14 +710,14 @@ class BiliClient {
 
     final base = current ?? await fetchVideoEngagement(detail);
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/relation/modify',
+      host: biliApiHost,
+      path: BiliApiPaths.relationModify,
       data: <String, Object?>{
         'fid': detail.ownerMid,
         'act': following ? 1 : 2,
         're_src': 14,
       },
-      referer: 'https://space.bilibili.com/${detail.ownerMid}',
+      referer: biliSpaceReferer(detail.ownerMid),
     );
     return _refreshEngagementAfterMutation(
       detail: detail,
@@ -734,10 +730,10 @@ class BiliClient {
 
   Future<int?> recordVideoShare({required BiliVideoDetail detail}) async {
     final data = await _transport.postApiData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/share/add',
+      host: biliApiHost,
+      path: BiliApiPaths.shareAdd,
       data: <String, Object?>{'aid': detail.aid, 'bvid': detail.bvid},
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
     final map = readObjectMap(data);
     if (map.isNotEmpty) {
@@ -822,14 +818,14 @@ class BiliClient {
       throw const BiliApiException('缺少当前用户 UID，无法查询收藏夹。');
     }
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/v3/fav/folder/created/list-all',
+      host: biliApiHost,
+      path: BiliApiPaths.favFolderListAll,
       params: <String, Object?>{
         'rid': detail.aid,
         'up_mid': currentMid,
         'type': biliVideoFavoriteType,
       },
-      referer: 'https://www.bilibili.com/video/${detail.bvid}',
+      referer: biliVideoReferer(detail.bvid),
     );
 
     final rawFolders = readObjectList(data['list']);
@@ -892,9 +888,9 @@ class BiliClient {
     }
 
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/nav',
-      referer: 'https://www.bilibili.com/',
+      host: biliApiHost,
+      path: BiliApiPaths.nav,
+      referer: biliDefaultReferer,
       ensureReady: false,
       allowedCodes: const <int>{0, -101},
     );

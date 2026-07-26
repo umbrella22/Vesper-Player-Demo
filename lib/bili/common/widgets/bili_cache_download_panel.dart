@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/download/download.dart';
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
@@ -318,7 +319,9 @@ class _CacheQualityButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFFFB7299) : const Color(0xFF162033);
+    final color = selected
+        ? AppVisualTokens.primaryBlue
+        : const Color(0xFF162033);
     return Material(
       color: selected ? const Color(0xFFFFEDF3) : const Color(0xFFF7F8FA),
       borderRadius: BorderRadius.circular(8),
@@ -381,7 +384,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                   'P${page.pageNumber}',
                   style: TextStyle(
                     color: selected
-                        ? const Color(0xFFFB7299)
+                        ? AppVisualTokens.primaryBlue
                         : const Color(0xFF687084),
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
@@ -424,7 +427,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                     : const Icon(
                         Icons.download_rounded,
                         size: 21,
-                        color: Color(0xFFFB7299),
+                        color: AppVisualTokens.primaryBlue,
                       ),
               ),
             ],
@@ -455,7 +458,7 @@ class _CacheInlineError extends StatelessWidget {
             const Icon(
               Icons.error_outline_rounded,
               size: 19,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
             const SizedBox(width: 8),
             Expanded(

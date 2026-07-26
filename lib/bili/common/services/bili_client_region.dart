@@ -18,8 +18,8 @@ extension BiliClientRegion on BiliClient {
     int page = 1,
   }) async {
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/pgc/season/index/result',
+      host: biliApiHost,
+      path: BiliApiPaths.pgcSeasonResult,
       params: <String, Object?>{
         'season_version': -1,
         'area': -1,
@@ -37,7 +37,7 @@ extension BiliClientRegion on BiliClient {
         'pagesize': 20,
         'type': 1,
       },
-      referer: 'https://www.bilibili.com/',
+      referer: biliDefaultReferer,
       ensureReady: false,
     );
 
@@ -49,10 +49,10 @@ extension BiliClientRegion on BiliClient {
     int page = 1,
   }) async {
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/ranking/v2',
+      host: biliApiHost,
+      path: BiliApiPaths.rankingV2,
       params: <String, Object?>{'rid': section.rid ?? 0, 'type': 'all'},
-      referer: 'https://www.bilibili.com/',
+      referer: biliDefaultReferer,
       ensureReady: false,
     );
 
@@ -136,10 +136,10 @@ extension BiliClientRegion on BiliClient {
     Map<String, Object?> params,
   ) async {
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/pgc/view/web/season',
+      host: biliApiHost,
+      path: BiliApiPaths.pgcViewSeason,
       params: params,
-      referer: 'https://www.bilibili.com/',
+      referer: biliDefaultReferer,
     );
 
     final episodes = readObjectList(data['episodes'])
@@ -244,7 +244,7 @@ extension BiliClientRegion on BiliClient {
       url:
           readString(value['short_link_v2']) ??
           readString(value['short_link']) ??
-          'https://www.bilibili.com/video/$bvid',
+          biliVideoUrl(bvid),
       aid: aid,
       bvid: bvid,
       cid: readInt(value['cid']),

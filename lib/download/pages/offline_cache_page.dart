@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import '../../bili/common/pages/bili_playback_page.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_history_store.dart';
@@ -51,12 +54,12 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '离线缓存',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
+    return GlassScaffold(
+      backgroundColor: AppVisualTokens.mobileBackground,
+      extendBody: false,
+      appBar: const GlassAppBar(
+        centerTitle: false,
+        title: Text('离线缓存', style: TextStyle(fontWeight: FontWeight.w900)),
       ),
       body: Column(
         children: [
@@ -217,10 +220,9 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   Future<void> _showEntryActions(BiliOfflineDownloadEntry entry) async {
     final canExport = entry.isCompleted && !entry.isUnplayable;
-    final action = await showModalBottomSheet<_OfflineEntryAction>(
+    final action = await showBiliGlassSheet<_OfflineEntryAction>(
       context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
+      maxContentHeightFactor: 0.5,
       builder: (context) {
         return SafeArea(
           child: Padding(
@@ -270,24 +272,14 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     BiliOfflineDownloadEntry entry, {
     String? reason,
   }) async {
-    final shouldDelete = await showDialog<bool>(
+    final shouldDelete = await showBiliGlassDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('缓存无法播放'),
-          content: Text('${reason ?? entry.unplayableReason}\n\n是否清理这条失效缓存？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('保留'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('清理'),
-            ),
-          ],
-        );
-      },
+      title: '缓存无法播放',
+      message: '${reason ?? entry.unplayableReason}\n\n是否清理这条失效缓存？',
+      actions: const [
+        BiliGlassDialogAction(label: '保留', value: false),
+        BiliGlassDialogAction(label: '清理', value: true, isDestructive: true),
+      ],
     );
     if (shouldDelete == true && mounted) {
       await _deleteEntry(entry);
@@ -299,24 +291,18 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     if (count == 0) {
       return;
     }
-    final shouldDelete = await showDialog<bool>(
+    final shouldDelete = await showBiliGlassDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('清理失效缓存？'),
-          content: Text('发现 $count 条缓存的视频信息已丢失，这些缓存无法播放。清理后不可恢复。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('清理失效缓存'),
-            ),
-          ],
-        );
-      },
+      title: '清理失效缓存？',
+      message: '发现 $count 条缓存的视频信息已丢失，这些缓存无法播放。清理后不可恢复。',
+      actions: const [
+        BiliGlassDialogAction(label: '取消', value: false),
+        BiliGlassDialogAction(
+          label: '清理失效缓存',
+          value: true,
+          isDestructive: true,
+        ),
+      ],
     );
     if (shouldDelete != true || !mounted) {
       return;

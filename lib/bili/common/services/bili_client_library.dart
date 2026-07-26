@@ -18,8 +18,8 @@ extension BiliClientLibrary on BiliClient {
     final normalizedPage = page < 1 ? 1 : page;
     final normalizedPageSize = pageSize.clamp(1, 50).toInt();
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/relation/followings',
+      host: biliApiHost,
+      path: BiliApiPaths.relationFollowings,
       params: <String, Object?>{
         'vmid': resolvedMid,
         'pn': normalizedPage,
@@ -28,7 +28,7 @@ extension BiliClientLibrary on BiliClient {
         'order_type': 'attention',
         'jsonp': 'jsonp',
       },
-      referer: 'https://space.bilibili.com/$resolvedMid/fans/follow',
+      referer: biliFansFollowReferer(resolvedMid),
     );
 
     final rawUsers = _firstList(data, const <String>['list', 'items']);
@@ -91,15 +91,15 @@ extension BiliClientLibrary on BiliClient {
     }
 
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/web-interface/history/cursor',
+      host: biliApiHost,
+      path: BiliApiPaths.historyCursor,
       params: <String, Object?>{
         'max': max,
         'view_at': viewAtMs <= 0 ? 0 : viewAtMs ~/ 1000,
         'business': 'all',
         'ps': normalizedPageSize,
       },
-      referer: 'https://www.bilibili.com/account/history',
+      referer: biliHistoryReferer,
     );
     final entries = _parseRemoteHistoryList(data);
     final cursor = readObjectMap(data['cursor']);
@@ -134,13 +134,13 @@ extension BiliClientLibrary on BiliClient {
       return legacy;
     }
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/history/toview/web',
+      host: biliApiHost,
+      path: BiliApiPaths.historyToviewWeb,
       params: <String, Object?>{
         'pn': normalizedPage,
         'ps': pageSize.clamp(1, 30).toInt(),
       },
-      referer: 'https://www.bilibili.com/watchlater/list',
+      referer: biliWatchlaterReferer,
     );
 
     return _parseWatchLaterList(data);
@@ -152,14 +152,14 @@ extension BiliClientLibrary on BiliClient {
   }) async {
     try {
       final data = await _transport.getApiData(
-        host: 'api.bilibili.com',
-        path: '/x/v2/history',
+        host: biliApiHost,
+        path: BiliApiPaths.historyV2,
         params: <String, Object?>{
           'pn': page < 1 ? 1 : page,
           'ps': pageSize.clamp(1, 30).toInt(),
           'business': 'all',
         },
-        referer: 'https://www.bilibili.com/account/history',
+        referer: biliHistoryReferer,
         ensureReady: false,
       );
       return _parseRemoteHistoryValue(data);
@@ -183,13 +183,13 @@ extension BiliClientLibrary on BiliClient {
   }) async {
     try {
       final data = await _transport.getApiData(
-        host: 'api.bilibili.com',
-        path: '/x/v2/history/toview',
+        host: biliApiHost,
+        path: BiliApiPaths.historyToview,
         params: <String, Object?>{
           'pn': page,
           'ps': pageSize.clamp(1, 30).toInt(),
         },
-        referer: 'https://www.bilibili.com/watchlater/list',
+        referer: biliWatchlaterReferer,
         ensureReady: false,
       );
       return _parseWatchLaterValue(data);
@@ -261,13 +261,13 @@ extension BiliClientLibrary on BiliClient {
       throw const BiliApiException('缺少视频 ID，无法加入稍后再看。');
     }
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/history/toview/add',
+      host: biliApiHost,
+      path: BiliApiPaths.historyToviewAdd,
       data: <String, Object?>{
         if (normalizedBvid.isNotEmpty) 'bvid': normalizedBvid,
         if (aid != null && aid > 0) 'aid': aid,
       },
-      referer: 'https://www.bilibili.com/',
+      referer: biliDefaultReferer,
     );
   }
 
@@ -277,13 +277,13 @@ extension BiliClientLibrary on BiliClient {
       throw const BiliApiException('缺少视频 ID，无法移出稍后再看。');
     }
     await _transport.postData(
-      host: 'api.bilibili.com',
-      path: '/x/v2/history/toview/del',
+      host: biliApiHost,
+      path: BiliApiPaths.historyToviewDel,
       data: <String, Object?>{
         if (normalizedBvid.isNotEmpty) 'bvid': normalizedBvid,
         if (aid != null && aid > 0) 'aid': aid,
       },
-      referer: 'https://www.bilibili.com/watchlater/list',
+      referer: biliWatchlaterReferer,
     );
   }
 
@@ -331,10 +331,10 @@ extension BiliClientLibrary on BiliClient {
     List<BiliSubtitleTrack> current = const <BiliSubtitleTrack>[];
     try {
       final data = await _transport.getData(
-        host: 'api.bilibili.com',
-        path: '/x/player/v2',
+        host: biliApiHost,
+        path: BiliApiPaths.playerV2,
         params: params,
-        referer: 'https://www.bilibili.com/video/$bvid',
+        referer: biliVideoReferer(bvid),
       );
       current = _parseSubtitleTracks(data);
     } on BiliApiException {
@@ -349,11 +349,11 @@ extension BiliClientLibrary on BiliClient {
     }
 
     final data = await _transport.getData(
-      host: 'api.bilibili.com',
-      path: '/x/player/wbi/v2',
+      host: biliApiHost,
+      path: BiliApiPaths.playerWbiV2,
       params: params,
       useWbi: true,
-      referer: 'https://www.bilibili.com/video/$bvid',
+      referer: biliVideoReferer(bvid),
     );
     return _parseSubtitleTracks(data);
   }
@@ -797,7 +797,7 @@ extension BiliClientLibrary on BiliClient {
     // against the API origin before enforcing the remote HTTP(S) contract.
     final uri = parsed.hasScheme
         ? parsed
-        : Uri.parse('https://api.bilibili.com/').resolve(value);
+        : Uri.parse(biliApiBaseUrl).resolve(value);
     final scheme = uri.scheme.toLowerCase();
     if (uri.host.isEmpty || (scheme != 'http' && scheme != 'https')) {
       return null;
@@ -812,7 +812,7 @@ extension BiliClientLibrary on BiliClient {
   }) async {
     final response = await _transport.sendRequest(
       Uri.parse(track.url),
-      referer: 'https://www.bilibili.com/video/$bvid',
+      referer: biliVideoReferer(bvid),
       acceptHeader: 'application/json, text/vtt, */*',
       includeCookies: false,
     );

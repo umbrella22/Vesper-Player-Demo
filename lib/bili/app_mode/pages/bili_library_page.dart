@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
@@ -488,26 +491,97 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   Widget _buildPhonePage(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F8),
-      appBar: AppBar(
-        title: const Text('我的内容'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF20232B),
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: const Color(0xFFFB7299),
-          unselectedLabelColor: const Color(0xFF858A94),
-          indicatorColor: const Color(0xFFFB7299),
-          tabs: const [
-            Tab(icon: Icon(Icons.people_alt_outlined), text: '关注'),
-            Tab(icon: Icon(Icons.history_rounded), text: '历史播放'),
-            Tab(icon: Icon(Icons.watch_later_outlined), text: '稍后再看'),
+    final topPadding = MediaQuery.paddingOf(context).top;
+    const appBarContentHeight = 110.0;
+    final appBarSurfaceHeight = topPadding + appBarContentHeight;
+    return GlassScaffold(
+      backgroundColor: AppVisualTokens.mobileBackground,
+      extendBody: false,
+      appBarHeight: appBarContentHeight,
+      appBar: SizedBox(
+        height: appBarSurfaceHeight,
+        child: Column(
+          children: [
+            if (topPadding > 0) SizedBox(height: topPadding),
+            SizedBox(
+              height: 44,
+              child: GlassContainer(
+                key: const ValueKey<String>('bili-library-phone-toolbar'),
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.zero,
+                shape: const LiquidRoundedSuperellipse(
+                  borderRadius: AppVisualTokens.controlRadius,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: '返回',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        '我的内容',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: AppGlassSectionTabs.height,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) {
+                    return AppGlassSectionTabs(
+                      selectedIndex: _tabController.index,
+                      onSelected: (index) {
+                        if (_tabController.index == index) {
+                          return;
+                        }
+                        _tabController.animateTo(
+                          index,
+                          duration: AppVisualTokens.motionDuration(
+                            context,
+                            AppVisualTokens.tvFocusDuration,
+                          ),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      items: const [
+                        AppGlassNavigationItem(
+                          icon: Icons.people_alt_outlined,
+                          activeIcon: Icons.people_alt_rounded,
+                          label: '关注',
+                        ),
+                        AppGlassNavigationItem(
+                          icon: Icons.history_rounded,
+                          label: '历史播放',
+                        ),
+                        AppGlassNavigationItem(
+                          icon: Icons.watch_later_outlined,
+                          activeIcon: Icons.watch_later_rounded,
+                          label: '稍后再看',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
           ],
         ),
       ),
       body: TabBarView(
+        key: const ValueKey<String>('bili-library-phone-content'),
         controller: _tabController,
         children: BiliLibrarySection.values
             .map((section) => _buildSection(context, section))
@@ -1025,7 +1099,7 @@ class _FollowingTile extends StatelessWidget {
           child: user.avatarUrl.isEmpty
               ? const Icon(
                   Icons.person_outline_rounded,
-                  color: Color(0xFFFB7299),
+                  color: AppVisualTokens.primaryBlue,
                 )
               : null,
         ),
@@ -1104,7 +1178,7 @@ class _LibraryVideoTile extends StatelessWidget {
                             backgroundColor: Colors.black.withValues(
                               alpha: 0.25,
                             ),
-                            color: const Color(0xFFFB7299),
+                            color: AppVisualTokens.primaryBlue,
                           ),
                         ),
                     ],
@@ -1163,7 +1237,7 @@ class _LibraryErrorView extends StatelessWidget {
         const Icon(
           Icons.lock_outline_rounded,
           size: 44,
-          color: Color(0xFFFB7299),
+          color: AppVisualTokens.primaryBlue,
         ),
         const SizedBox(height: 14),
         Text(message, textAlign: TextAlign.center),
@@ -1258,7 +1332,7 @@ class _TvLibraryHeaderButton extends StatelessWidget {
                         height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Color(0xFFFB7299),
+                          color: AppVisualTokens.primaryBlue,
                         ),
                       )
                     : Icon(icon, color: Colors.white, size: 24),
@@ -1290,58 +1364,58 @@ class _TvLibraryTab extends StatelessWidget {
     return SizedBox(
       width: 146,
       height: 48,
-      child: TvFocusableSurface(
-        useOverlayLift: false,
-        focusPadding: 0,
+      child: TvGlassSelectable(
+        selected: selected,
+        useOwnLayer: true,
         scale: 1.04,
         borderRadius: 12,
         focusArea: TvFocusArea.content,
         debugLabel: 'tv_library_tab_$label',
         onTap: onTap,
-        builder: (context, focused) {
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        builder: (context, state) {
+          final focused =
+              state == TvGlassSelectableState.focused ||
+              state == TvGlassSelectableState.pressed;
           final foreground = selected || focused
               ? Colors.white
               : const Color(0x99FFFFFF);
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            decoration: BoxDecoration(
-              color: focused
-                  ? Colors.white.withValues(alpha: 0.20)
-                  : selected
-                  ? const Color(0xFFFB7299).withValues(alpha: 0.86)
-                  : Colors.white.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: focused
-                    ? Colors.white.withValues(alpha: 0.82)
-                    : selected
-                    ? const Color(0x44FFFFFF)
-                    : const Color(0x14FFFFFF),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: foreground, size: 21),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 15,
-                      fontWeight: selected || focused
-                          ? FontWeight.w800
-                          : FontWeight.w600,
-                    ),
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: foreground, size: 21),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 15,
+                    fontWeight: selected || focused
+                        ? FontWeight.w800
+                        : FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedContainer(
+                key: ValueKey<String>('bili-tv-library-tab-marker-$label'),
+                duration: AppVisualTokens.motionDuration(
+                  context,
+                  AppVisualTokens.tvFocusDuration,
+                ),
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppVisualTokens.primaryBlue
+                      : Colors.transparent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -1363,7 +1437,7 @@ class _TvLibraryLoadingView extends StatelessWidget {
             height: 34,
             child: CircularProgressIndicator(
               strokeWidth: 2.6,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
           ),
           SizedBox(height: 18),
@@ -1504,7 +1578,7 @@ class _TvLibraryActionButton extends StatelessWidget {
               color: focused
                   ? Colors.white.withValues(alpha: 0.22)
                   : primary
-                  ? const Color(0xFFFB7299)
+                  ? AppVisualTokens.primaryBlue
                   : Colors.white.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
@@ -1577,7 +1651,7 @@ class _TvFollowingCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: focused
-                  ? const Color(0xFFFB7299)
+                  ? AppVisualTokens.primaryBlue
                   : const Color(0x18FFFFFF),
               width: focused ? 2 : 1,
             ),
@@ -1705,7 +1779,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: focused
-                                  ? const Color(0xFFFB7299)
+                                  ? AppVisualTokens.primaryBlue
                                   : const Color(0x1AFFFFFF),
                               width: focused ? 2 : 1,
                             ),
@@ -1747,7 +1821,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                       backgroundColor: Colors.black.withValues(
                                         alpha: 0.42,
                                       ),
-                                      color: const Color(0xFFFB7299),
+                                      color: AppVisualTokens.primaryBlue,
                                     ),
                                   ),
                               ],
@@ -1827,7 +1901,7 @@ class _TvLibraryRemoveButton extends StatelessWidget {
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 color: focused
-                    ? const Color(0xFFFB7299)
+                    ? AppVisualTokens.primaryBlue
                     : Colors.black.withValues(alpha: 0.74),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
@@ -1894,7 +1968,7 @@ class _TvLibraryLoadMoreTile extends StatelessWidget {
                     height: 28,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.4,
-                      color: Color(0xFFFB7299),
+                      color: AppVisualTokens.primaryBlue,
                     ),
                   )
                 else

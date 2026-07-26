@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
 
 final class BiliRegionVisual {
@@ -17,7 +18,7 @@ BiliRegionVisual biliRegionVisualFor(BiliRegionSection section) {
     ),
     'guochuang' => const BiliRegionVisual(
       icon: Icons.auto_awesome_motion_outlined,
-      color: Color(0xFFFB7299),
+      color: AppVisualTokens.primaryBlue,
     ),
     'movie' => const BiliRegionVisual(
       icon: Icons.movie_outlined,

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:bilibili_player/bili/bili.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -17,7 +20,24 @@ Future<void> main() async {
 
   _resolvedUiMode = await _modeResolver.resolveEffectiveUiMode();
 
-  runApp(const BilibiliPlayerApp());
+  const appSettings = BiliAppSettings();
+  final savedGlassQuality = await appSettings.getGlassQuality();
+
+  await LiquidGlassWidgets.initialize();
+
+  runApp(
+    LiquidGlassWidgets.wrap(
+      adaptiveQuality: true,
+      // ignore: experimental_member_use
+      adaptiveConfig: GlassAdaptiveScopeConfig(
+        initialQuality: savedGlassQuality,
+        onQualityChanged: (_, quality) {
+          unawaited(appSettings.setGlassQuality(quality));
+        },
+      ),
+      child: const BilibiliPlayerApp(),
+    ),
+  );
 }
 
 Future<BiliUiMode> refreshUiMode() async {

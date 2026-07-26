@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
@@ -11,6 +13,7 @@ import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 void main() {
@@ -83,6 +86,51 @@ void main() {
     );
   });
 
+  testWidgets('phone library aligns its selected glass tabs with content', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(padding: EdgeInsets.only(top: 24)),
+          child: BiliLibraryPage(client: client),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(AppGlassSectionTabs), findsOneWidget);
+    final tabs = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    expect(tabs.quality, GlassQuality.premium);
+    expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
+    expect(tabs.selectedLabelColor, AppVisualTokens.textPrimary);
+
+    final toolbarRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-library-phone-toolbar')),
+    );
+    final sectionTabsRect = tester.getRect(find.byType(AppGlassSectionTabs));
+    final contentRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-library-phone-content')),
+    );
+    expect(toolbarRect.top, 24);
+    expect(sectionTabsRect.top - toolbarRect.bottom, 12);
+    expect(contentRect.top - sectionTabsRect.bottom, 2);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('following list clears account data after logout', (
     WidgetTester tester,
   ) async {
@@ -102,9 +150,9 @@ void main() {
     expect(find.text('测试 UP'), findsOneWidget);
 
     client.clearSession();
-    await tester.tap(find.text('历史播放'));
+    await tester.tap(find.text('历史播放').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('关注'));
+    await tester.tap(find.text('关注').first);
     await tester.pumpAndSettle();
 
     expect(find.text('测试 UP'), findsNothing);
@@ -167,6 +215,20 @@ void main() {
       findsNothing,
     );
     expect(find.text('关注'), findsNothing);
+
+    final selectedSurface = tester.widget<AnimatedContainer>(
+      find.byKey(
+        const ValueKey<String>('tv-glass-selectable-state-tv_library_tab_历史播放'),
+      ),
+    );
+    final selectedDecoration = selectedSurface.decoration! as BoxDecoration;
+    expect(selectedDecoration.color!.a, 0);
+
+    final marker = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey<String>('bili-tv-library-tab-marker-历史播放')),
+    );
+    final markerDecoration = marker.decoration! as BoxDecoration;
+    expect(markerDecoration.color, AppVisualTokens.primaryBlue);
   });
 
   testWidgets('tv watch later library exposes a focusable remove control', (

@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
@@ -39,6 +43,11 @@ class BiliHubPage extends StatefulWidget {
 }
 
 class _BiliHubPageState extends State<BiliHubPage> {
+  static const double _homeAppBarHeight = 44;
+  static const ValueKey<String> _homeTopClearanceKey = ValueKey<String>(
+    'bili-home-top-clearance',
+  );
+
   late final TextEditingController _queryController;
   late final ScrollController _homeScrollController;
   late final BiliHubViewModel _viewModel;
@@ -146,43 +155,14 @@ class _BiliHubPageState extends State<BiliHubPage> {
     final isPortrait =
         MediaQuery.sizeOf(context).height >= MediaQuery.sizeOf(context).width;
     if (isPortrait) {
-      await showModalBottomSheet<void>(
+      await showBiliGlassSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: const Color(0xFFF4F4F8),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 22,
-              right: 22,
-              bottom: 22 + MediaQuery.of(sheetContext).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: _HomeCacheSurface(
-                    client: _viewModel.client,
-                    historyStore: _viewModel.historyStore,
-                    bvid: item.bvid,
-                    controller: _viewModel.offlineController,
-                    onMessage: _showMessage,
-                  ),
-                ),
-              ),
-            ),
-          ),
+        builder: (_) => _HomeCacheSurface(
+          client: _viewModel.client,
+          historyStore: _viewModel.historyStore,
+          bvid: item.bvid,
+          controller: _viewModel.offlineController,
+          onMessage: _showMessage,
         ),
       );
       return;
@@ -193,7 +173,10 @@ class _BiliHubPageState extends State<BiliHubPage> {
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black.withValues(alpha: 0.40),
-      transitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: AppVisualTokens.motionDuration(
+        context,
+        AppVisualTokens.overlayDuration,
+      ),
       pageBuilder: (dialogContext, _, _) {
         final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
             .clamp(
@@ -203,25 +186,29 @@ class _BiliHubPageState extends State<BiliHubPage> {
             .toDouble();
         return Align(
           alignment: Alignment.centerLeft,
-          child: Material(
-            color: const Color(0xFFF4F4F8),
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(22),
+          child: GlassContainer(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            shape: const LiquidRoundedSuperellipse(
+              borderRadius: AppVisualTokens.sheetRadius,
             ),
             clipBehavior: Clip.antiAlias,
-            child: SafeArea(
-              right: false,
-              child: SizedBox(
-                width: drawerWidth,
-                height: double.infinity,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                  child: _HomeCacheSurface(
-                    client: _viewModel.client,
-                    historyStore: _viewModel.historyStore,
-                    bvid: item.bvid,
-                    controller: _viewModel.offlineController,
-                    onMessage: _showMessage,
+            child: Material(
+              type: MaterialType.transparency,
+              child: SafeArea(
+                right: false,
+                child: SizedBox(
+                  width: drawerWidth,
+                  height: double.infinity,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                    child: _HomeCacheSurface(
+                      client: _viewModel.client,
+                      historyStore: _viewModel.historyStore,
+                      bvid: item.bvid,
+                      controller: _viewModel.offlineController,
+                      onMessage: _showMessage,
+                    ),
                   ),
                 ),
               ),
@@ -286,22 +273,14 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Future<bool?> _confirmRegionLogin() {
-    return showDialog<bool>(
+    return showBiliGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('需要登录'),
-        content: const Text('分区内容需要登录后才能观看，请先登录 Bilibili 账号。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('登录'),
-          ),
-        ],
-      ),
+      title: '需要登录',
+      message: '分区内容需要登录后才能观看，请先登录 Bilibili 账号。',
+      actions: const [
+        BiliGlassDialogAction(label: '取消', value: false),
+        BiliGlassDialogAction(label: '登录', value: true, isPrimary: true),
+      ],
     );
   }
 
@@ -322,14 +301,10 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Future<void> _openQrLogin() async {
-    final profile = await showModalBottomSheet<BiliUserProfile>(
+    final profile = await showBiliQrLoginSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BiliQrLoginSheet(
-        client: _viewModel.client,
-        sessionStore: _viewModel.sessionStore,
-      ),
+      client: _viewModel.client,
+      sessionStore: _viewModel.sessionStore,
     );
     if (profile == null || !mounted) {
       return;
@@ -370,8 +345,35 @@ class _BiliHubPageState extends State<BiliHubPage> {
     return SignalBuilder(
       builder: (context) {
         final selectedTab = _viewModel.selectedTab.value;
-        return Scaffold(
-          backgroundColor: Colors.white,
+        return GlassScaffold(
+          backgroundColor: const Color(0xFFF3F6FB),
+          statusBarStyle: GlassStatusBarStyle.auto,
+          extendBody: true,
+          appBarHeight: _homeAppBarHeight,
+          bottomBarHeight: AppGlassBottomNavigation.extent,
+          appBar: selectedTab == BiliHubTab.home
+              ? AppFrostedScrollAppBar(
+                  scrollController: _homeScrollController,
+                  child: GlassAppBar(
+                    centerTitle: false,
+                    padding: const EdgeInsets.only(left: 2, right: 10),
+                    title: SignalBuilder(
+                      builder: (context) {
+                        return _HomeHeader(
+                          profile: _viewModel.profile.value,
+                          controller: _queryController,
+                          isSearching: _viewModel.isSearching.value,
+                          onAccountTap: _handleAccountEntry,
+                          onRegionTap: _openRegionHub,
+                          onChanged: () => _viewModel.updateQuery(_query),
+                          onSubmit: _runSearch,
+                          onClear: _query.isEmpty ? null : _clearSearch,
+                        );
+                      },
+                    ),
+                  ),
+                )
+              : null,
           body: switch (selectedTab) {
             BiliHubTab.home => _buildHomeTab(),
             BiliHubTab.mine => _MineTab(
@@ -394,7 +396,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
               onRefresh: _viewModel.refreshMine,
             ),
           },
-          bottomNavigationBar: _HubNavigationBar(
+          bottomBar: _HubNavigationBar(
             selectedTab: selectedTab,
             onSelected: _viewModel.selectTab,
           ),
@@ -404,35 +406,25 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Widget _buildHomeTab() {
-    final topPadding = MediaQuery.paddingOf(context).top;
-
     return RefreshIndicator(
       onRefresh: _viewModel.refreshAll,
       child: CustomScrollView(
         controller: _homeScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _HomeSearchHeaderDelegate(
-              topPadding: topPadding,
-              child: SignalBuilder(
-                builder: (context) {
-                  return _HomeHeader(
-                    profile: _viewModel.profile.value,
-                    controller: _queryController,
-                    isSearching: _viewModel.isSearching.value,
-                    onAccountTap: _handleAccountEntry,
-                    onRegionTap: _openRegionHub,
-                    onChanged: () => _viewModel.updateQuery(_query),
-                    onSubmit: _runSearch,
-                    onClear: _query.isEmpty ? null : _clearSearch,
-                  );
-                },
-              ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              key: _homeTopClearanceKey,
+              height: MediaQuery.paddingOf(context).top + _homeAppBarHeight,
             ),
           ),
           SignalBuilder(builder: _buildHomeBody),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              key: AppGlassBottomNavigation.contentClearanceKey,
+              height: AppGlassBottomNavigation.contentClearance(context),
+            ),
+          ),
         ],
       ),
     );

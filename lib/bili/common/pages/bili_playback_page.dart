@@ -9,6 +9,7 @@ import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/services/bili_client.dart';
@@ -20,6 +21,7 @@ import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_external_playback_manager.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_playback_view_model.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:bilibili_player/download/services/offline_download_controller.dart';
 
 part 'bili_playback_panels.dart';
@@ -580,10 +582,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     }
     final isPgc =
         widget.detail.ownerMid <= 0 && widget.detail.ownerName == '番剧';
-    await showModalBottomSheet<void>(
+    await showBiliGlassSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      maxContentHeightFactor: 0.82,
+      contentPadding: EdgeInsets.zero,
       builder: (context) {
         return _PlaybackBottomSheetScaffold(
           title: isPgc
@@ -851,25 +853,19 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     bool retry = false;
     try {
       retry =
-          await showDialog<bool>(
+          await showBiliGlassDialog<bool>(
             context: context,
             barrierDismissible: false,
-            builder: (dialogContext) {
-              return AlertDialog(
-                title: Text(notice.title),
-                content: Text(notice.message),
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('知道了'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('重新解析'),
-                  ),
-                ],
-              );
-            },
+            title: notice.title,
+            message: notice.message,
+            actions: const [
+              BiliGlassDialogAction(label: '知道了', value: false),
+              BiliGlassDialogAction(
+                label: '重新解析',
+                value: true,
+                isPrimary: true,
+              ),
+            ],
           ) ??
           false;
     } finally {
@@ -2226,14 +2222,14 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
               color: focused
                   ? Colors.white.withValues(alpha: 0.24)
                   : selected
-                  ? const Color(0xFFFB7299)
+                  ? AppVisualTokens.primaryBlue
                   : const Color(0x14FFFFFF),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: focused
                     ? const Color(0xF2F8FBFF)
                     : selected
-                    ? const Color(0xCCFB7299)
+                    ? AppVisualTokens.primaryBlue80
                     : const Color(0x16FFFFFF),
                 width: focused ? 1.6 : 1,
               ),

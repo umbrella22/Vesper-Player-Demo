@@ -39,7 +39,9 @@ class _MineTab extends StatelessWidget {
         onRefresh: onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 28),
+          padding: EdgeInsets.only(
+            bottom: AppGlassBottomNavigation.contentClearance(context),
+          ),
           children: [
             _MineProfileHeader(
               profile: profile,
@@ -64,47 +66,67 @@ class _MineTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _MineShortcut(
-                          icon: Icons.download_for_offline_outlined,
-                          label: '离线缓存',
-                          onTap: onCacheTap,
-                        ),
-                      ),
-                      Expanded(
-                        child: _MineShortcut(
-                          icon: Icons.history_rounded,
-                          label: historyCount == 0 ? '历史记录' : '历史记录',
-                          onTap: onHistoryTap,
-                        ),
-                      ),
-                      Expanded(
-                        child: _MineShortcut(
-                          icon: Icons.people_alt_outlined,
-                          label: '关注列表',
-                          onTap: onFollowingTap,
-                        ),
-                      ),
-                      Expanded(
-                        child: _MineShortcut(
-                          icon: Icons.play_circle_outline_rounded,
-                          label: '稍后再看',
-                          onTap: onWatchLaterTap,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    '常用功能',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppVisualTokens.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 26),
+                  const SizedBox(height: 12),
+                  GlassContainer(
+                    key: const ValueKey<String>('bili-mine-shortcuts-glass'),
+                    useOwnLayer: true,
+                    quality: GlassQuality.standard,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 10,
+                    ),
+                    shape: const LiquidRoundedSuperellipse(
+                      borderRadius: AppVisualTokens.controlRadius,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _MineShortcut(
+                            icon: Icons.download_for_offline_outlined,
+                            label: '离线缓存',
+                            onTap: onCacheTap,
+                          ),
+                        ),
+                        Expanded(
+                          child: _MineShortcut(
+                            icon: Icons.history_rounded,
+                            label: '历史记录',
+                            onTap: onHistoryTap,
+                          ),
+                        ),
+                        Expanded(
+                          child: _MineShortcut(
+                            icon: Icons.people_alt_outlined,
+                            label: '关注列表',
+                            onTap: onFollowingTap,
+                          ),
+                        ),
+                        Expanded(
+                          child: _MineShortcut(
+                            icon: Icons.play_circle_outline_rounded,
+                            label: '稍后再看',
+                            onTap: onWatchLaterTap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   Text(
                     '更多服务',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF20232B),
-                      fontWeight: FontWeight.w900,
+                      color: AppVisualTokens.textPrimary,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   _MineServiceRow(
                     icon: Icons.settings_outlined,
                     label: '设置',
@@ -137,9 +159,8 @@ class _MineProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: Colors.white,
+    return Padding(
+      key: const ValueKey<String>('bili-mine-profile-header'),
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
       child: Column(
         children: [
@@ -163,9 +184,7 @@ class _MineProfileHeader extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(
-                                    color: profile.isLoggedIn
-                                        ? const Color(0xFFFB7299)
-                                        : const Color(0xFF20232B),
+                                    color: AppVisualTokens.textPrimary,
                                     fontWeight: FontWeight.w900,
                                   ),
                             ),
@@ -245,7 +264,7 @@ class _MineAvatar extends StatelessWidget {
                     profile.isLoggedIn
                         ? Icons.person_rounded
                         : Icons.qr_code_2_rounded,
-                    color: const Color(0xFFFB7299),
+                    color: AppVisualTokens.biliSourcePink,
                     size: 27,
                   )
                 : null,
@@ -259,7 +278,7 @@ class _MineAvatar extends StatelessWidget {
                 height: 21,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFB7299),
+                  color: AppVisualTokens.primaryBlue,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
@@ -289,7 +308,7 @@ class _MineLevelBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
       decoration: BoxDecoration(
-        color: const Color(0xFFFF5D79),
+        color: AppVisualTokens.biliSourcePink,
         borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
@@ -323,7 +342,7 @@ class _MineVipPill extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: const Color(0xFFFB7299),
+          color: AppVisualTokens.biliSourcePink,
           fontWeight: FontWeight.w900,
           fontSize: 10,
           height: 1,
@@ -518,25 +537,29 @@ class _MineShortcut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          children: [
-            Icon(icon, color: const Color(0xFF28A9DF), size: 29),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: const Color(0xFF4A4E57),
-                fontWeight: FontWeight.w800,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppVisualTokens.controlRadius),
+        onTap: onTap,
+        child: SizedBox(
+          height: 74,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: AppVisualTokens.textPrimary, size: 26),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppVisualTokens.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -556,23 +579,37 @@ class _MineServiceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      minLeadingWidth: 28,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      leading: Icon(icon, color: const Color(0xFFFB7299), size: 27),
-      title: Text(
-        label,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: const Color(0xFF4A4E57),
-          fontWeight: FontWeight.w900,
+    return Material(
+      key: const ValueKey<String>('bili-mine-settings-surface'),
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: AppVisualTokens.textPrimary, size: 23),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: AppVisualTokens.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFFADB2BB),
+                size: 24,
+              ),
+            ],
+          ),
         ),
       ),
-      trailing: const Icon(
-        Icons.chevron_right_rounded,
-        color: Color(0xFFADB2BB),
-        size: 28,
-      ),
-      onTap: onTap,
     );
   }
 }

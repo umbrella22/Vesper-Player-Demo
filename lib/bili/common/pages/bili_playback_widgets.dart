@@ -17,7 +17,7 @@ class _TuningOptionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = enabled
         ? selected
-              ? const Color(0xFFFB7299)
+              ? AppVisualTokens.primaryBlue
               : const Color(0xFF162033)
         : const Color(0xFF9AA3B2);
     return Material(
@@ -65,7 +65,7 @@ class _CacheEntryButton extends StatelessWidget {
               const Icon(
                 Icons.download_for_offline_outlined,
                 size: 20,
-                color: Color(0xFFFB7299),
+                color: AppVisualTokens.primaryBlue,
               ),
               const SizedBox(width: 9),
               Expanded(
@@ -135,10 +135,10 @@ class _PlaybackContextTabs extends StatelessWidget {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 dividerColor: Colors.transparent,
-                indicatorColor: const Color(0xFFFB7299),
+                indicatorColor: AppVisualTokens.primaryBlue,
                 indicatorSize: TabBarIndicatorSize.label,
                 indicatorWeight: 3,
-                labelColor: const Color(0xFFFB7299),
+                labelColor: AppVisualTokens.primaryBlue,
                 unselectedLabelColor: const Color(0xFF777D88),
                 labelPadding: const EdgeInsets.symmetric(horizontal: 12),
                 splashBorderRadius: BorderRadius.circular(8),
@@ -392,7 +392,7 @@ class _CommentThreadList extends StatelessWidget {
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('加载更多失败，点此重试'),
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFFB7299),
+                  foregroundColor: AppVisualTokens.primaryBlue,
                   textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),
@@ -547,7 +547,7 @@ class _CommentLevelBadge extends StatelessWidget {
         child: Text(
           label,
           style: const TextStyle(
-            color: Color(0xFFFB7299),
+            color: AppVisualTokens.primaryBlue,
             fontSize: 10,
             fontWeight: FontWeight.w900,
             height: 1.15,
@@ -884,7 +884,9 @@ class _CommentPassiveAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFFFB7299) : const Color(0xFF6D7480);
+    final color = selected
+        ? AppVisualTokens.primaryBlue
+        : const Color(0xFF6D7480);
     return SizedBox(
       height: 40,
       child: Row(
@@ -1074,7 +1076,10 @@ class _CommentComposerBar extends StatelessWidget {
                     ? null
                     : () => onSubmitted(controller.text),
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: const Icon(Icons.send_rounded, color: Color(0xFFFB7299)),
+                icon: const Icon(
+                  Icons.send_rounded,
+                  color: AppVisualTokens.primaryBlue,
+                ),
               ),
             ],
           ),
@@ -1096,64 +1101,51 @@ class _PlaybackBottomSheetScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.sizeOf(context).height * 0.82;
-    return SafeArea(
-      top: false,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: SizedBox(
-          height: height,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-            ),
-            child: Column(
+    return SizedBox(
+      height: height,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 54,
+            child: Row(
               children: [
-                SizedBox(
-                  height: 54,
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 18),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: const Color(0xFF171923),
-                                fontWeight: FontWeight.w900,
-                              ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          minHeight: 48,
-                        ),
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          size: 30,
-                          color: Color(0xFF9AA0AA),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Color(0xFFE8EAF0)),
+                const SizedBox(width: 18),
                 Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-                    child: child,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: const Color(0xFF171923),
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  constraints: const BoxConstraints(
+                    minWidth: 48,
+                    minHeight: 48,
+                  ),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 30,
+                    color: Color(0xFF9AA0AA),
+                  ),
+                ),
+                const SizedBox(width: 4),
               ],
             ),
           ),
-        ),
+          const Divider(height: 1, color: Color(0xFFE8EAF0)),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+              child: child,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2043,7 +2035,7 @@ class _WatchLaterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = selected
-        ? const Color(0xFFFB7299)
+        ? AppVisualTokens.primaryBlue
         : const Color(0xFF343A46);
     return SizedBox(
       width: double.infinity,
@@ -2068,7 +2060,9 @@ class _WatchLaterButton extends StatelessWidget {
           foregroundColor: foreground,
           minimumSize: const Size.fromHeight(42),
           side: BorderSide(
-            color: selected ? const Color(0x66FB7299) : const Color(0x22343A46),
+            color: selected
+                ? AppVisualTokens.primaryBlue40
+                : const Color(0x22343A46),
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -2097,7 +2091,7 @@ class _ActionStatButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = selected
-        ? const Color(0xFFFB7299)
+        ? AppVisualTokens.primaryBlue
         : const Color(0xFF343A46);
     return Material(
       color: Colors.transparent,
@@ -2205,7 +2199,7 @@ class _EpisodePreviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final titleColor = selected
-        ? const Color(0xFFFB7299)
+        ? AppVisualTokens.primaryBlue
         : const Color(0xFF171923);
     final label = isPgc ? '第 ${page.pageNumber} 话' : 'P${page.pageNumber}';
     return Material(

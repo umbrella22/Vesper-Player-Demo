@@ -7,15 +7,15 @@ extension BiliClientPlayback on BiliClient {
     required TargetPlatform platform,
   }) async {
     final pageBvid = page.bvid ?? detail.bvid;
-    final referer = 'https://www.bilibili.com/video/$pageBvid';
+    final referer = biliVideoReferer(pageBvid);
     final dashFallbackReasons = <String>[];
 
     if (_supportsDashPlaybackPlatform(platform)) {
       for (final variant in biliDashRequestVariants) {
         try {
           final dashData = await _transport.getData(
-            host: 'api.bilibili.com',
-            path: '/x/player/wbi/playurl',
+            host: biliApiHost,
+            path: BiliApiPaths.playerWbiPlayUrl,
             params: _buildDashPlayUrlParams(
               detail: detail,
               page: page,
@@ -392,8 +392,8 @@ extension BiliClientPlayback on BiliClient {
   }) async {
     for (final quality in const <int>[64, 32, 16, 6]) {
       final data = await _transport.getData(
-        host: 'api.bilibili.com',
-        path: '/x/player/wbi/playurl',
+        host: biliApiHost,
+        path: BiliApiPaths.playerWbiPlayUrl,
         params: <String, Object?>{
           'avid': page.aid ?? detail.aid,
           'bvid': page.bvid ?? detail.bvid,

@@ -112,7 +112,7 @@ extension _BiliPlaybackPanels on _BiliPlaybackPageState {
                 style: TextButton.styleFrom(
                   minimumSize: const Size(58, 40),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
-                  foregroundColor: const Color(0xFFFB7299),
+                  foregroundColor: AppVisualTokens.primaryBlue,
                   textStyle: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),

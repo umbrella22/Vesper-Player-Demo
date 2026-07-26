@@ -16,7 +16,7 @@ extension _BiliPlaybackDlna on _BiliPlaybackPageState {
       return vesper_ui.VesperAirPlayRouteIconButton(
         controller: controller,
         tintColor: Colors.white,
-        activeTintColor: const Color(0xFFFB7299),
+        activeTintColor: AppVisualTokens.primaryBlue,
         size: 38,
       );
     }
@@ -32,14 +32,9 @@ extension _BiliPlaybackDlna on _BiliPlaybackPageState {
     _setCastingSurfaceOpen(true);
     _ProjectionTarget? target;
     try {
-      target = await showModalBottomSheet<_ProjectionTarget>(
+      target = await showBiliGlassSheet<_ProjectionTarget>(
         context: context,
-        isScrollControlled: false,
-        showDragHandle: true,
-        backgroundColor: const Color(0xFFF4F4F8),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
+        maxContentHeightFactor: 0.5,
         builder: (sheetContext) {
           return _ProjectionPickerContent(
             onDlna: () =>
@@ -80,17 +75,9 @@ extension _BiliPlaybackDlna on _BiliPlaybackPageState {
     if (!context.mounted) return;
     _setDlnaPickerOpen(true);
     try {
-      await showModalBottomSheet<void>(
+      await showBiliGlassSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: const Color(0xFFF4F4F8),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
+        maxContentHeightFactor: 0.7,
         builder: (sheetContext) {
           return _DlnaPickerContent(
             manager: _dlnaManager,
@@ -226,7 +213,7 @@ class _ProjectionOptionCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 34, color: const Color(0xFFFB7299)),
+          Icon(icon, size: 34, color: AppVisualTokens.primaryBlue),
           const SizedBox(height: 20),
           Text(
             label,
@@ -518,7 +505,7 @@ class _DlnaRouteTile extends StatelessWidget {
                 const Icon(
                   Icons.tv_rounded,
                   size: 24,
-                  color: Color(0xFFFB7299),
+                  color: AppVisualTokens.primaryBlue,
                 ),
                 const SizedBox(width: 12),
                 Expanded(

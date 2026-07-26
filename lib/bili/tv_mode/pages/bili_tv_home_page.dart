@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
@@ -21,6 +22,7 @@ import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
+import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:bilibili_player/app/home_page.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/main.dart';
@@ -118,7 +120,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   final ScrollController _contentScrollController = ScrollController();
 
   _TvNavItem _selectedNav = _TvNavItem.recommend;
-  _TvNavItem? _focusedNav;
   bool _forceTvMode = false;
   bool _initialForceTvMode = false;
   bool _feedLoadMoreQueued = false;
@@ -540,37 +541,43 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
-          unawaited(_confirmExitApp());
-        }
-      },
-      child: TvDirectionalFocusScope(
-        debugLabel: 'tv_home',
-        onBack: () => unawaited(_confirmExitApp()),
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          backgroundColor: const Color(0xFF0A0A0E),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final railWidth = constraints.maxWidth < 900 ? 184.0 : 216.0;
-              return Row(
-                children: [
-                  TvFocusAreaScope(
-                    area: TvFocusArea.rail,
-                    child: _buildLeftRail(railWidth),
-                  ),
-                  Expanded(
-                    child: TvFocusAreaScope(
-                      area: TvFocusArea.content,
-                      child: _buildContentArea(),
-                    ),
-                  ),
-                ],
-              );
-            },
+    return Theme(
+      data: AppVisualTokens.darkTheme(),
+      child: TvGlassQualityScope(
+        maxQuality: GlassQuality.standard,
+        child: PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) {
+              unawaited(_confirmExitApp());
+            }
+          },
+          child: TvDirectionalFocusScope(
+            debugLabel: 'tv_home',
+            onBack: () => unawaited(_confirmExitApp()),
+            child: Scaffold(
+              resizeToAvoidBottomInset: false,
+              backgroundColor: AppVisualTokens.tvBackground,
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final railWidth = constraints.maxWidth < 900 ? 184.0 : 216.0;
+                  return Row(
+                    children: [
+                      TvFocusAreaScope(
+                        area: TvFocusArea.rail,
+                        child: _buildLeftRail(railWidth),
+                      ),
+                      Expanded(
+                        child: TvFocusAreaScope(
+                          area: TvFocusArea.content,
+                          child: _buildContentArea(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),
@@ -581,35 +588,14 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     if (!mounted) {
       return;
     }
-    final shouldExit = await showDialog<bool>(
+    final shouldExit = await showBiliGlassDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF202027),
-          titleTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-          contentTextStyle: const TextStyle(
-            color: Color(0xCCFFFFFF),
-            fontSize: 15,
-            height: 1.45,
-          ),
-          title: const Text('退出应用'),
-          content: const Text('确定要退出 bilibili_player 吗？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('退出'),
-            ),
-          ],
-        );
-      },
+      title: '退出应用',
+      message: '确定要退出 bilibili_player 吗？',
+      actions: const [
+        BiliGlassDialogAction(label: '取消', value: false),
+        BiliGlassDialogAction(label: '退出', value: true, isDestructive: true),
+      ],
     );
     if (shouldExit == true) {
       await SystemNavigator.pop();
@@ -617,40 +603,40 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Widget _buildLeftRail(double width) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          key: const ValueKey<String>('bili-tv-left-rail'),
-          width: width,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x33000000), Color(0x88000000)],
-            ),
-            border: Border(
-              right: BorderSide(color: Color(0x11FFFFFF), width: 0.5),
-            ),
+    return AdaptiveLiquidGlassLayer(
+      quality: TvGlassQualityScope.of(context),
+      settings: const LiquidGlassSettings(
+        blur: 9,
+        thickness: 18,
+        glassColor: Color(0x16000000),
+        saturation: 1.12,
+      ),
+      child: Container(
+        key: const ValueKey<String>('bili-tv-left-rail'),
+        width: width,
+        decoration: const BoxDecoration(
+          color: Color(0x660A0A0E),
+          border: Border(
+            right: BorderSide(color: Color(0x22409EFF), width: 0.5),
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compactHeight = constraints.maxHeight < 360;
-              return ListView(
-                padding: EdgeInsets.only(
-                  top: compactHeight ? 20 : 32,
-                  bottom: compactHeight ? 10 : 18,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compactHeight = constraints.maxHeight < 360;
+            return ListView(
+              padding: EdgeInsets.only(
+                top: compactHeight ? 20 : 32,
+                bottom: compactHeight ? 10 : 18,
+              ),
+              children: [
+                _buildRailProfile(compact: compactHeight),
+                SizedBox(height: compactHeight ? 12 : 18),
+                ..._TvNavItem.values.map(
+                  (item) => _buildRailItem(item, compact: compactHeight),
                 ),
-                children: [
-                  _buildRailProfile(compact: compactHeight),
-                  SizedBox(height: compactHeight ? 12 : 18),
-                  ..._TvNavItem.values.map(
-                    (item) => _buildRailItem(item, compact: compactHeight),
-                  ),
-                ],
-              );
-            },
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -702,92 +688,71 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   Widget _buildRailItem(_TvNavItem item, {bool compact = false}) {
     final selected = _selectedNav == item;
-    final focused = _focusedNav == item;
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 7 : 8,
         vertical: compact ? 1 : 2,
       ),
-      child: TvFocusable(
+      child: TvGlassSelectable(
         autofocus: item == _TvNavItem.recommend,
+        selected: selected,
+        useOwnLayer: false,
         scale: 1.035,
-        focusElevation: 0,
-        focusCornerRadius: 10,
-        baseCornerRadius: 10,
-        showGlow: false,
+        borderRadius: 10,
         focusArea: TvFocusArea.rail,
         debugLabel: 'nav_${item.name}',
-        onFocusChange: (value) {
-          setState(() {
-            _focusedNav = value
-                ? item
-                : _focusedNav == item
-                ? null
-                : _focusedNav;
-          });
-        },
         onTap: () => unawaited(_handleNavTap(item)),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          decoration: BoxDecoration(
-            color: focused
-                ? Colors.white.withValues(alpha: 0.22)
-                : selected
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: focused
-                  ? const Color(0x99FFFFFF)
-                  : const Color(0x00FFFFFF),
-              width: 1,
+        builder: (context, state) {
+          final focused =
+              state == TvGlassSelectableState.focused ||
+              state == TvGlassSelectableState.pressed;
+          return Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 10 : 12,
+              vertical: compact ? 8 : 10,
             ),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 10 : 12,
-            vertical: compact ? 8 : 10,
-          ),
-          child: Row(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 3,
-                height: compact ? 22 : 26,
-                decoration: BoxDecoration(
-                  color: focused || selected
-                      ? const Color(0xFFFB7299)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              SizedBox(width: compact ? 8 : 10),
-              Icon(
-                item.icon(),
-                color: focused || selected
-                    ? Colors.white
-                    : const Color(0x99FFFFFF),
-                size: focused ? (compact ? 21 : 22) : (compact ? 19 : 20),
-              ),
-              SizedBox(width: compact ? 8 : 10),
-              Expanded(
-                child: Text(
-                  item.label(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: compact ? 14 : 15,
-                    fontWeight: focused || selected
-                        ? FontWeight.w800
-                        : FontWeight.w500,
-                    color: focused || selected
-                        ? Colors.white
-                        : const Color(0x88FFFFFF),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 3,
+                  height: compact ? 22 : 26,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppVisualTokens.primaryBlue
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
+                SizedBox(width: compact ? 8 : 10),
+                Icon(
+                  item.icon(),
+                  color: focused || selected
+                      ? Colors.white
+                      : const Color(0x99FFFFFF),
+                  size: focused ? (compact ? 21 : 22) : (compact ? 19 : 20),
+                ),
+                SizedBox(width: compact ? 8 : 10),
+                Expanded(
+                  child: Text(
+                    item.label(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: compact ? 14 : 15,
+                      fontWeight: focused || selected
+                          ? FontWeight.w800
+                          : FontWeight.w500,
+                      color: focused || selected
+                          ? Colors.white
+                          : const Color(0x88FFFFFF),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -889,25 +854,20 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
-                  TvFocusable(
+                  TvGlassSelectable(
                     autofocus: true,
+                    borderRadius: 12,
                     onTap: () => _viewModel.loadFeed(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        '重新加载',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    builder: (context, state) => const Text(
+                      '重新加载',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -1034,25 +994,20 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              TvFocusable(
+              TvGlassSelectable(
                 autofocus: true,
+                borderRadius: 12,
                 onTap: () => unawaited(_loadRegion()),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    '重新加载',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                builder: (context, state) => const Text(
+                  '重新加载',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -1126,53 +1081,64 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         children: [
           SizedBox(
             height: 48,
-            child: SignalBuilder(
-              builder: (context) {
-                return TextField(
-                  controller: _searchController,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '搜索视频、BV 号或链接',
-                    hintStyle: const TextStyle(
-                      color: Color(0x66FFFFFF),
-                      fontWeight: FontWeight.w400,
+            child: GlassContainer(
+              useOwnLayer: true,
+              quality: TvGlassQualityScope.of(context),
+              shape: const LiquidRoundedSuperellipse(
+                borderRadius: AppVisualTokens.controlRadius,
+              ),
+              settings: const LiquidGlassSettings(
+                blur: 8,
+                thickness: 18,
+                glassColor: Color(0x18409EFF),
+              ),
+              child: SignalBuilder(
+                builder: (context) {
+                  return TextField(
+                    controller: _searchController,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
                     ),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.08),
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      color: Color(0x88FFFFFF),
-                      size: 22,
+                    decoration: InputDecoration(
+                      hintText: '搜索视频、BV 号或链接',
+                      hintStyle: const TextStyle(
+                        color: Color(0x66FFFFFF),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      filled: true,
+                      fillColor: Colors.transparent,
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: Color(0xAA409EFF),
+                        size: 22,
+                      ),
+                      suffixIcon: _TvSearchSuffixIcon(
+                        loading: _viewModel.isSearching.value,
+                        visible: _searchController.text.isNotEmpty,
+                        onClear: () {
+                          _searchController.clear();
+                          _viewModel.clearSearch();
+                        },
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
                     ),
-                    suffixIcon: _TvSearchSuffixIcon(
-                      loading: _viewModel.isSearching.value,
-                      visible: _searchController.text.isNotEmpty,
-                      onClear: () {
-                        _searchController.clear();
-                        _viewModel.clearSearch();
-                      },
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                  ),
-                  textInputAction: TextInputAction.search,
-                  onChanged: (_) {
-                    setState(() {});
-                    _viewModel.updateQuery(_searchController.text);
-                  },
-                  onSubmitted: (_) => _runSearch(),
-                );
-              },
+                    textInputAction: TextInputAction.search,
+                    onChanged: (_) {
+                      setState(() {});
+                      _viewModel.updateQuery(_searchController.text);
+                    },
+                    onSubmitted: (_) => _runSearch(),
+                  );
+                },
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -1586,12 +1552,13 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             ),
           ),
           SizedBox(height: compact ? 14 : 24),
-          Container(
+          GlassContainer(
             width: double.infinity,
             padding: EdgeInsets.all(compact ? 18 : 24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
+            useOwnLayer: true,
+            quality: TvGlassQualityScope.of(context),
+            shape: const LiquidRoundedSuperellipse(
+              borderRadius: AppVisualTokens.controlRadius,
             ),
             child: TvFocusable(
               autofocus: true,
@@ -1630,8 +1597,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                     child: Switch(
                       value: _forceTvMode,
                       onChanged: _toggleForceTvMode,
-                      activeThumbColor: const Color(0xFFFB7299),
-                      activeTrackColor: const Color(0x66FB7299),
+                      activeThumbColor: AppVisualTokens.primaryBlue,
+                      activeTrackColor: const Color(0x66409EFF),
                       inactiveThumbColor: const Color(0xDDFFFFFF),
                       inactiveTrackColor: const Color(0x22FFFFFF),
                     ),
@@ -1641,13 +1608,14 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             ),
           ),
           SizedBox(height: compact ? 12 : 20),
-          Container(
+          GlassContainer(
             key: const ValueKey<String>('bili-tv-settings-about-card'),
             width: double.infinity,
             padding: EdgeInsets.all(compact ? 18 : 24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
+            useOwnLayer: true,
+            quality: GlassQuality.minimal,
+            shape: const LiquidRoundedSuperellipse(
+              borderRadius: AppVisualTokens.controlRadius,
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1717,7 +1685,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                     vertical: 14,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFB7299),
+                    color: AppVisualTokens.primaryBlue,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Text(
@@ -1748,14 +1716,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _openQrLogin() async {
-    final profile = await showModalBottomSheet<BiliUserProfile>(
+    final profile = await showBiliQrLoginSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BiliQrLoginSheet(
-        client: _viewModel.client,
-        sessionStore: _viewModel.sessionStore,
-      ),
+      client: _viewModel.client,
+      sessionStore: _viewModel.sessionStore,
     );
     if (profile == null || !mounted) {
       return;
@@ -1766,33 +1730,14 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<bool?> _confirmRegionLogin() {
-    return showDialog<bool>(
+    return showBiliGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF202027),
-        titleTextStyle: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-        ),
-        contentTextStyle: const TextStyle(
-          color: Color(0xCCFFFFFF),
-          fontSize: 15,
-          height: 1.45,
-        ),
-        title: const Text('需要登录'),
-        content: const Text('分区内容需要登录后才能观看，请先登录 Bilibili 账号。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('登录'),
-          ),
-        ],
-      ),
+      title: '需要登录',
+      message: '分区内容需要登录后才能观看，请先登录 Bilibili 账号。',
+      actions: const [
+        BiliGlassDialogAction(label: '取消', value: false),
+        BiliGlassDialogAction(label: '登录', value: true, isPrimary: true),
+      ],
     );
   }
 }
@@ -1987,61 +1932,50 @@ class _TvRegionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
+    return TvGlassSelectable(
       autofocus: autofocus,
+      selected: selected,
       scale: 1.06,
-      showGlow: false,
-      focusCornerRadius: 14,
-      baseCornerRadius: 14,
+      borderRadius: AppVisualTokens.controlRadius,
       focusArea: TvFocusArea.content,
       debugLabel: 'region_${section.id}',
       onTap: onTap,
-      child: Builder(
-        builder: (context) {
-          final focused = Focus.of(context).hasFocus;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.all(2),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: BoxDecoration(
-              color: focused
-                  ? Colors.white.withValues(alpha: 0.22)
-                  : selected
-                  ? const Color(0x33FB7299)
-                  : Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: focused
-                    ? const Color(0xCCFFFFFF)
-                    : selected
-                    ? const Color(0x99FB7299)
-                    : const Color(0x16FFFFFF),
-                width: 1,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      builder: (context, state) {
+        final focused =
+            state == TvGlassSelectableState.focused ||
+            state == TvGlassSelectableState.pressed;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(section.icon, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            Text(
+              section.name,
+              style: TextStyle(
+                color: focused || selected
+                    ? Colors.white
+                    : const Color(0xAAFFFFFF),
+                fontSize: 15,
+                fontWeight: focused || selected
+                    ? FontWeight.w800
+                    : FontWeight.w600,
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(section.icon, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 8),
-                Text(
-                  section.name,
-                  style: TextStyle(
-                    color: focused || selected
-                        ? Colors.white
-                        : const Color(0xAAFFFFFF),
-                    fontSize: 15,
-                    fontWeight: focused || selected
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                  ),
+            if (selected) ...[
+              const SizedBox(width: 8),
+              Container(
+                width: 5,
+                height: 5,
+                decoration: const BoxDecoration(
+                  color: AppVisualTokens.primaryBlue,
+                  shape: BoxShape.circle,
                 ),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -2282,7 +2216,7 @@ class _TvHistoryCard extends StatelessWidget {
                             value: progress.clamp(0.0, 1.0),
                             backgroundColor: const Color(0x33000000),
                             valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFFFB7299),
+                              AppVisualTokens.primaryBlue,
                             ),
                             minHeight: 3,
                           ),
@@ -2353,44 +2287,30 @@ class _TvLibraryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
+    return TvGlassSelectable(
       scale: 1.045,
-      focusElevation: 8,
-      focusCornerRadius: 12,
-      baseCornerRadius: 12,
-      showGlow: false,
+      borderRadius: 12,
       focusArea: TvFocusArea.content,
       debugLabel: 'mine_library_$label',
       onTap: onTap,
-      child: SizedBox(
+      builder: (context, state) => SizedBox(
         width: double.infinity,
         height: compact ? 68 : 104,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0x22FFFFFF)),
-          ),
-          child: Flex(
-            direction: compact ? Axis.horizontal : Axis.vertical,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: const Color(0xCCFFFFFF),
-                size: compact ? 22 : 30,
+        child: Flex(
+          direction: compact ? Axis.horizontal : Axis.vertical,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: const Color(0xCCFFFFFF), size: compact ? 22 : 30),
+            SizedBox(width: compact ? 9 : 0, height: compact ? 0 : 10),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xDDFFFFFF),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
               ),
-              SizedBox(width: compact ? 9 : 0, height: compact ? 0 : 10),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xDDFFFFFF),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2415,50 +2335,35 @@ class _TvMineCommand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
+    return TvGlassSelectable(
       autofocus: autofocus,
       scale: 1.045,
-      focusElevation: 8,
-      focusCornerRadius: 12,
-      baseCornerRadius: 12,
-      showGlow: false,
+      borderRadius: 12,
+      selected: primary,
       focusArea: TvFocusArea.content,
       debugLabel: 'mine_command_$label',
       onTap: onTap,
-      child: SizedBox(
+      builder: (context, state) => SizedBox(
         width: double.infinity,
         height: 48,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: primary
-                ? const Color(0xFFFB7299)
-                : Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: primary
-                  ? const Color(0x66FFFFFF)
-                  : const Color(0x22FFFFFF),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: 19),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 19),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

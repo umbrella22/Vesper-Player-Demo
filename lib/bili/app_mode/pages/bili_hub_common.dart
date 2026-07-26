@@ -11,37 +11,21 @@ class _HubNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE8EAF0))),
-      ),
-      child: SafeArea(
-        top: false,
-        child: BottomNavigationBar(
-          currentIndex: selectedTab.index,
-          onTap: (index) => onSelected(BiliHubTab.values[index]),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color(0xFFFB7299),
-          unselectedItemColor: const Color(0xFF5C6069),
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w900),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w800),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_rounded),
-              label: '首页',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.live_tv_outlined),
-              activeIcon: Icon(Icons.live_tv_rounded),
-              label: '我的',
-            ),
-          ],
+    return AppGlassBottomNavigation(
+      selectedIndex: selectedTab.index,
+      onSelected: (index) => onSelected(BiliHubTab.values[index]),
+      items: const [
+        AppGlassNavigationItem(
+          icon: Icons.home_outlined,
+          activeIcon: Icons.home_rounded,
+          label: '首页',
         ),
-      ),
+        AppGlassNavigationItem(
+          icon: Icons.live_tv_outlined,
+          activeIcon: Icons.live_tv_rounded,
+          label: '我的',
+        ),
+      ],
     );
   }
 }
@@ -62,7 +46,7 @@ class _InlineErrorBanner extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFFFF1F4),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -100,7 +84,7 @@ class _EmptyPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -153,7 +137,7 @@ class _AvatarButton extends StatelessWidget {
             ? Text(
                 (name.isEmpty ? 'B' : name.characters.first).toUpperCase(),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFFFB7299),
+                  color: AppVisualTokens.biliSourcePink,
                   fontWeight: FontWeight.w900,
                 ),
               )

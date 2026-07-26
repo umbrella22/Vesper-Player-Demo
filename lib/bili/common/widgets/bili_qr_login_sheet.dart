@@ -7,6 +7,21 @@ import 'package:signals/signals_flutter.dart';
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
+import 'bili_glass_sheet.dart';
+
+Future<BiliUserProfile?> showBiliQrLoginSheet({
+  required BuildContext context,
+  required BiliClient client,
+  required BiliSessionStore sessionStore,
+}) {
+  return showBiliGlassSheet<BiliUserProfile>(
+    context: context,
+    maxContentHeightFactor: 0.86,
+    contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+    builder: (_) =>
+        BiliQrLoginSheet(client: client, sessionStore: sessionStore),
+  );
+}
 
 class BiliQrLoginSheet extends StatefulWidget {
   const BiliQrLoginSheet({
@@ -139,85 +154,63 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final qrSize = (MediaQuery.sizeOf(context).height * 0.30)
+        .clamp(200.0, 240.0)
+        .toDouble();
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        12 + MediaQuery.of(context).padding.bottom,
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFD),
-          borderRadius: BorderRadius.circular(32),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '扫码登录哔哩哔哩',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF142237),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '关闭',
+            ),
+          ],
         ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '扫码登录哔哩哔哩',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF142237),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '登录后的 cookie 会带入搜索、详情、推荐流与播放解析。当前实现按 Web 端二维码登录流程走。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(
-                          color: Color(0x120A1628),
-                          blurRadius: 32,
-                          offset: Offset(0, 16),
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: SizedBox(
-                        width: 240,
-                        height: 240,
-                        child: SignalBuilder(builder: _buildQrContent),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SignalBuilder(builder: _buildStatusMessage),
-                const SizedBox(height: 20),
-                SignalBuilder(builder: _buildActions),
-              ],
+        const SizedBox(height: 8),
+        Text(
+          '登录后的 cookie 会带入搜索、详情、推荐流与播放解析。当前实现按 Web 端二维码登录流程走。',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0x1A142237)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: SizedBox(
+                width: qrSize,
+                height: qrSize,
+                child: SignalBuilder(builder: _buildQrContent),
+              ),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 18),
+        SignalBuilder(builder: _buildStatusMessage),
+        const SizedBox(height: 20),
+        SignalBuilder(builder: _buildActions),
+      ],
     );
   }
 

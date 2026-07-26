@@ -1,5 +1,5 @@
 name: bilibili_player
-description: "Bilibili-style Flutter preview app backed by Vesper Player."
+description: "A Flutter media client powered by Vesper Player."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -46,6 +46,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   flutter_secure_storage: ^10.3.1
+  liquid_glass_widgets: ^0.23.0
 
 dev_dependencies:
   flutter_test:

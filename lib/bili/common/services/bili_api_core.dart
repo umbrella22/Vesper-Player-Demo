@@ -1,15 +1,17 @@
 import 'dart:io';
 
 import '../models/bili_models.dart';
+import 'bili_endpoints.dart';
 import 'bili_text.dart';
+
+// biliMediaReferer 与 biliBackupMediaHost 已迁移至 bili_endpoints.dart。
+// 此处重新导出，兼容直接 import 本文件的现有调用方。
+export 'bili_endpoints.dart' show biliMediaReferer, biliBackupMediaHost;
 
 const String biliUserAgent =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
     'AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/136.0.0.0 Safari/537.36';
-
-const String biliMediaReferer = 'https://www.bilibili.com';
-const String biliBackupMediaHost = 'upos-sz-mirrorcoso1.bilivideo.com';
 
 const int biliRiskControlCode = -352;
 const int biliVideoFavoriteType = 2;
@@ -315,7 +317,7 @@ bool isStaleMediaStatus(int statusCode) {
 String originFromReferer(String referer) {
   final uri = Uri.tryParse(referer);
   if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-    return 'https://www.bilibili.com';
+    return biliMediaReferer;
   }
   return uri.hasPort
       ? '${uri.scheme}://${uri.host}:${uri.port}'

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_player/vesper_player.dart';
 
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 
@@ -53,7 +54,7 @@ class OfflineStorageSummary extends StatelessWidget {
                 const Icon(
                   Icons.storage_rounded,
                   size: 18,
-                  color: Color(0xFFFB7299),
+                  color: AppVisualTokens.primaryBlue,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -80,7 +81,7 @@ class OfflineStorageSummary extends StatelessWidget {
                     child: OfflineStorageStat(
                       label: '缓存占用',
                       value: biliFormatDownloadBytes(usage.cacheBytes),
-                      valueColor: const Color(0xFFFB7299),
+                      valueColor: AppVisualTokens.primaryBlue,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -108,7 +109,9 @@ class OfflineStorageSummary extends StatelessWidget {
                             .clamp(0.0, 1.0)
                             .toDouble(),
                         child: const DecoratedBox(
-                          decoration: BoxDecoration(color: Color(0xFFFB7299)),
+                          decoration: BoxDecoration(
+                            color: AppVisualTokens.primaryBlue,
+                          ),
                         ),
                       ),
                     ),
@@ -122,7 +125,7 @@ class OfflineStorageSummary extends StatelessWidget {
                   borderRadius: BorderRadius.all(Radius.circular(999)),
                   child: LinearProgressIndicator(
                     minHeight: 10,
-                    color: Color(0xFFFB7299),
+                    color: AppVisualTokens.primaryBlue,
                     backgroundColor: Color(0xFFF0F2F6),
                   ),
                 ),
@@ -445,7 +448,7 @@ class OfflineCacheTile extends StatelessWidget {
                   child: LinearProgressIndicator(
                     minHeight: 3,
                     value: progress,
-                    color: const Color(0xFFFB7299),
+                    color: AppVisualTokens.primaryBlue,
                     backgroundColor: const Color(0xFFF0F2F6),
                   ),
                 ),
@@ -549,10 +552,10 @@ class OfflineTaskAction extends StatelessWidget {
                       'offline-task-action-pending-${task.taskId}',
                     ),
                     strokeWidth: 2,
-                    color: Color(0xFFFB7299),
+                    color: AppVisualTokens.primaryBlue,
                   ),
                 )
-              : Icon(icon, color: const Color(0xFFFB7299), size: 22),
+              : Icon(icon, color: AppVisualTokens.primaryBlue, size: 22),
         ),
       ),
     );
@@ -612,7 +615,7 @@ class OfflineInlineError extends StatelessWidget {
             const Icon(
               Icons.error_outline_rounded,
               size: 19,
-              color: Color(0xFFFB7299),
+              color: AppVisualTokens.primaryBlue,
             ),
             const SizedBox(width: 8),
             Expanded(

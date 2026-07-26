@@ -47,108 +47,49 @@ class _HomeHeader extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: SizedBox(
-            height: 32,
-            child: TextField(
-              controller: controller,
-              textInputAction: TextInputAction.search,
-              onChanged: (_) => onChanged(),
-              onSubmitted: (_) => onSubmit(),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF2D3038),
-                fontWeight: FontWeight.w700,
-              ),
-              decoration: InputDecoration(
-                hintText: '搜索视频、BV 号或链接',
-                isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded, size: 19),
-                prefixIconConstraints: const BoxConstraints(
-                  minWidth: 32,
-                  minHeight: 32,
+          child: Stack(
+            alignment: Alignment.centerRight,
+            children: [
+              GlassSearchBar(
+                controller: controller,
+                placeholder: '搜索视频、BV 号或链接',
+                onChanged: (value) {
+                  onChanged();
+                  if (value.trim().isEmpty && onClear != null) {
+                    onClear!();
+                  }
+                },
+                onSubmitted: (_) => onSubmit(),
+                height: 36,
+                quality: GlassQuality.standard,
+                textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF2D3038),
+                  fontWeight: FontWeight.w700,
                 ),
-                suffixIcon: isSearching
-                    ? const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : onClear == null
-                    ? null
-                    : IconButton(
-                        onPressed: onClear,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                        icon: const Icon(Icons.close_rounded),
-                        iconSize: 18,
-                        tooltip: '清除',
-                      ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 7),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF9EA2AA),
-                    width: 1.1,
+                placeholderStyle: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(
+                      color: const Color(0xFF858A94),
+                      fontWeight: FontWeight.w600,
+                    ),
+                searchIconColor: const Color(0xFF5C6069),
+                clearIconColor: const Color(0xFF5C6069),
+              ),
+              if (isSearching)
+                const Padding(
+                  padding: EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFFB7299),
-                    width: 1.2,
-                  ),
-                ),
-              ),
-            ),
+            ],
           ),
         ),
         const SizedBox(width: 4),
         _RegionMenuButton(onTap: onRegionTap),
       ],
     );
-  }
-}
-
-class _HomeSearchHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _HomeSearchHeaderDelegate({
-    required this.child,
-    required this.topPadding,
-  });
-
-  final Widget child;
-  final double topPadding;
-
-  static const double _contentHeight = 42;
-
-  @override
-  double get minExtent => topPadding + _contentHeight;
-
-  @override
-  double get maxExtent => topPadding + _contentHeight;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Material(
-      color: Colors.white,
-      elevation: overlapsContent ? 1 : 0,
-      shadowColor: const Color(0x1A000000),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(10, topPadding + 5, 10, 5),
-        child: child,
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _HomeSearchHeaderDelegate oldDelegate) {
-    return child != oldDelegate.child || topPadding != oldDelegate.topPadding;
   }
 }
 

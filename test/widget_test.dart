@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:bilibili_player/app/app.dart';
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/models/bili_models.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
 import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
@@ -23,6 +25,7 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
@@ -1611,8 +1614,95 @@ void main() {
     await tester.pump();
 
     expect(find.text('搜索视频、BV 号或链接'), findsOneWidget);
-    expect(find.text('首页'), findsOneWidget);
-    expect(find.text('我的'), findsOneWidget);
+    expect(find.byType(GlassTabBar), findsOneWidget);
+    expect(find.text('首页'), findsWidgets);
+    expect(find.text('我的'), findsWidgets);
+  });
+
+  testWidgets('mobile shell keeps content and liquid tabs inside safe areas', (
+    WidgetTester tester,
+  ) async {
+    tester.view
+      ..devicePixelRatio = 1
+      ..physicalSize = const Size(390, 844)
+      ..padding = const FakeViewPadding(top: 44, bottom: 24);
+    addTearDown(() {
+      tester.view
+        ..resetDevicePixelRatio()
+        ..resetPhysicalSize()
+        ..resetPadding();
+    });
+
+    await tester.pumpWidget(const BilibiliPlayerApp());
+    await tester.pump();
+
+    final contentRect = tester.getRect(find.byType(CustomScrollView).first);
+    final bottomBarRect = tester.getRect(find.byType(GlassTabBar));
+    final bottomBar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    final scrollView = tester.widget<CustomScrollView>(
+      find.byType(CustomScrollView).first,
+    );
+    final clearanceSliver = scrollView.slivers.last as SliverToBoxAdapter;
+    final clearance = clearanceSliver.child as SizedBox;
+    final topClearanceSliver = scrollView.slivers.first as SliverToBoxAdapter;
+    final topClearance = topClearanceSliver.child as SizedBox;
+
+    expect(contentRect.top, 0);
+    expect(contentRect.bottom, greaterThan(bottomBarRect.top));
+    expect(topClearance.height, 44 + 44);
+    expect(bottomBar.quality, GlassQuality.premium);
+    expect(bottomBar.settings, isNull);
+    expect(bottomBar.indicatorSettings, isNull);
+    expect(bottomBar.indicatorColor, AppVisualTokens.neutralSelection);
+    expect(bottomBar.selectedIconColor, AppVisualTokens.textPrimary);
+    expect(bottomBar.selectedLabelColor, AppVisualTokens.textPrimary);
+    expect(bottomBar.interactionGlowColor, const Color(0x1FFFFFFF));
+    expect(bottomBarRect.height, AppGlassBottomNavigation.extent);
+    expect(bottomBarRect.bottom, lessThanOrEqualTo(844 - 24));
+    expect(
+      clearance.height,
+      AppGlassBottomNavigation.extent +
+          24 +
+          AppGlassBottomNavigation.contentSpacing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('app-glass-bottom-navigation')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('mobile mine uses neutral glass shortcuts and solid settings', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const BilibiliPlayerApp());
+    await tester.pump();
+
+    await tester.tapAt(tester.getCenter(find.text('我的').last));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 180));
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-mine-profile-header')),
+      findsOneWidget,
+    );
+    final shortcuts = find.byKey(
+      const ValueKey<String>('bili-mine-shortcuts-glass'),
+    );
+    expect(shortcuts, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('bili-mine-settings-surface')),
+      findsOneWidget,
+    );
+    final shortcutIcons = tester
+        .widgetList<Icon>(
+          find.descendant(of: shortcuts, matching: find.byType(Icon)),
+        )
+        .toList(growable: false);
+    expect(shortcutIcons, hasLength(4));
+    expect(
+      shortcutIcons.every((icon) => icon.color == AppVisualTokens.textPrimary),
+      isTrue,
+    );
   });
 
   testWidgets('tv focusable responds to touch taps', (
@@ -1917,7 +2007,7 @@ void main() {
     );
   });
 
-  testWidgets('tv rail focused item has stronger visual state', (
+  testWidgets('tv rail separates neutral focus lens from selection marker', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
@@ -1930,16 +2020,29 @@ void main() {
         .ancestor(of: find.text('为你推荐'), matching: find.byType(TvFocusable))
         .last;
     final focusedContainer = tester.widget<AnimatedContainer>(
-      find
-          .descendant(of: focusedItem, matching: find.byType(AnimatedContainer))
-          .at(1),
+      find.byKey(
+        const ValueKey<String>('tv-glass-selectable-state-nav_recommend'),
+      ),
     );
     final decoration = focusedContainer.decoration! as BoxDecoration;
     final borderColor = decoration.border?.top.color;
     final fillColor = decoration.color;
 
     expect(borderColor?.a, greaterThan(0));
-    expect(fillColor?.a, greaterThan(0));
+    expect(fillColor?.a, 0);
+    expect(
+      find.descendant(
+        of: focusedItem,
+        matching: find.byWidgetPredicate((widget) {
+          final markerDecoration = widget is AnimatedContainer
+              ? widget.decoration
+              : null;
+          return markerDecoration is BoxDecoration &&
+              markerDecoration.color == AppVisualTokens.primaryBlue;
+        }),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tv home grid keeps vertical focus inside content area', (
@@ -2114,7 +2217,7 @@ void main() {
       expect(find.text('知道了'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(GlassDialog),
           matching: find.text('重新解析'),
         ),
         findsOneWidget,
@@ -4022,13 +4125,10 @@ void main() {
     await tester.tap(find.text('退出登录'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 240));
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(GlassDialog), findsOneWidget);
 
     await tester.tap(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.widgetWithText(FilledButton, '退出'),
-      ),
+      find.descendant(of: find.byType(GlassDialog), matching: find.text('退出')),
     );
     await _pumpUntil(tester, () => offlineController.pauseAllActiveCalls == 1);
     await _pumpUntilFound(tester, find.text('当前未保存本地登录 cookie'));
@@ -4075,13 +4175,10 @@ void main() {
             return Scaffold(
               body: FilledButton(
                 onPressed: () async {
-                  await showModalBottomSheet<BiliUserProfile>(
+                  await showBiliQrLoginSheet(
                     context: context,
-                    isScrollControlled: true,
-                    builder: (_) => BiliQrLoginSheet(
-                      client: client,
-                      sessionStore: BiliSessionStore(baseDirectory: root),
-                    ),
+                    client: client,
+                    sessionStore: BiliSessionStore(baseDirectory: root),
                   );
                 },
                 child: const Text('登录'),
@@ -4147,13 +4244,10 @@ void main() {
             return Scaffold(
               body: FilledButton(
                 onPressed: () async {
-                  poppedProfile = await showModalBottomSheet<BiliUserProfile>(
+                  poppedProfile = await showBiliQrLoginSheet(
                     context: context,
-                    isScrollControlled: true,
-                    builder: (_) => BiliQrLoginSheet(
-                      client: client,
-                      sessionStore: BiliSessionStore(baseDirectory: root),
-                    ),
+                    client: client,
+                    sessionStore: BiliSessionStore(baseDirectory: root),
                   );
                 },
                 child: const Text('登录'),

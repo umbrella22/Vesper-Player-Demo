@@ -3,11 +3,42 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+import 'package:bilibili_player/app/design/app_visual_theme.dart';
 
 const _tvWhiteRamp = Color(0xFFFFFFFF);
 const _tvBlackRamp = Color(0xFF000000);
 
 enum TvFocusArea { rail, content, playbackControls, playbackPanel }
+
+class TvGlassQualityScope extends InheritedWidget {
+  const TvGlassQualityScope({
+    super.key,
+    this.maxQuality = GlassQuality.standard,
+    required super.child,
+  });
+
+  final GlassQuality maxQuality;
+
+  static GlassQuality of(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<TvGlassQualityScope>();
+    final maximum = scope?.maxQuality ?? GlassQuality.standard;
+    final adaptive = GlassAdaptiveScopeData.maybeOf(context)?.effectiveQuality;
+    if (adaptive == null ||
+        adaptive == GlassQuality.minimal ||
+        maximum == GlassQuality.minimal) {
+      return GlassQuality.minimal;
+    }
+    return GlassQuality.standard;
+  }
+
+  @override
+  bool updateShouldNotify(TvGlassQualityScope oldWidget) {
+    return oldWidget.maxQuality != maxQuality;
+  }
+}
 
 class TvFocusAreaScope extends InheritedWidget {
   const TvFocusAreaScope({super.key, required this.area, required super.child});
@@ -35,7 +66,7 @@ class TvFocusable extends StatefulWidget {
     this.focusElevation = 12.0,
     this.focusCornerRadius = 12.0,
     this.baseCornerRadius = 8.0,
-    this.duration = const Duration(milliseconds: 200),
+    this.duration = AppVisualTokens.tvFocusDuration,
     this.showGlow = true,
     this.onFocusChange,
     this.debugLabel,
@@ -64,6 +95,7 @@ class _TvFocusableState extends State<TvFocusable> {
   late final FocusNode _internalNode;
   FocusNode get _node => widget.focusNode ?? _internalNode;
   bool _hasFocus = false;
+  bool _pressed = false;
   TvFocusArea? _lastFocusArea;
 
   @override
@@ -137,11 +169,19 @@ class _TvFocusableState extends State<TvFocusable> {
       if (event.logicalKey == LogicalKeyboardKey.select ||
           event.logicalKey == LogicalKeyboardKey.enter ||
           event.logicalKey == LogicalKeyboardKey.space) {
+        _setPressed(true);
         widget.onTap();
+        WidgetsBinding.instance.addPostFrameCallback((_) => _setPressed(false));
         return KeyEventResult.handled;
       }
     }
     return KeyEventResult.ignored;
+  }
+
+  void _setPressed(bool value) {
+    if (mounted && _pressed != value) {
+      setState(() => _pressed = value);
+    }
   }
 
   KeyEventResult _moveFocus(TraversalDirection direction) {
@@ -164,20 +204,35 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   Widget build(BuildContext context) {
+    final duration = AppVisualTokens.motionDuration(context, widget.duration);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _node.requestFocus(),
+      onTapDown: (_) {
+        _node.requestFocus();
+        _setPressed(true);
+      },
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
       onTap: widget.onTap,
       child: Focus(
         focusNode: _node,
         autofocus: widget.autofocus,
         onKeyEvent: _handleKeyEvent,
         child: AnimatedScale(
-          scale: _hasFocus ? widget.scale : 1.0,
-          duration: widget.duration,
+          scale: _pressed
+              ? AppVisualTokens.pressedScale
+              : _hasFocus
+              ? widget.scale
+              : 1.0,
+          duration: _pressed
+              ? AppVisualTokens.motionDuration(
+                  context,
+                  AppVisualTokens.buttonPressDuration,
+                )
+              : duration,
           curve: Curves.easeOutCubic,
           child: AnimatedContainer(
-            duration: widget.duration,
+            duration: duration,
             curve: Curves.easeOutCubic,
             decoration: _hasFocus && widget.showGlow
                 ? BoxDecoration(
@@ -206,6 +261,155 @@ class _TvFocusableState extends State<TvFocusable> {
             child: widget.child,
           ),
         ),
+      ),
+    );
+  }
+}
+
+enum TvGlassSelectableState { idle, selected, focused, pressed }
+
+typedef TvGlassSelectableBuilder =
+    Widget Function(BuildContext context, TvGlassSelectableState state);
+
+class TvGlassSelectable extends StatefulWidget {
+  const TvGlassSelectable({
+    super.key,
+    required this.builder,
+    required this.onTap,
+    this.selected = false,
+    this.focusNode,
+    this.autofocus = false,
+    this.debugLabel,
+    this.focusArea,
+    this.borderRadius = AppVisualTokens.controlRadius,
+    this.scale = 1.035,
+    this.padding = EdgeInsets.zero,
+    this.onFocusChange,
+    this.useOwnLayer = true,
+  });
+
+  final TvGlassSelectableBuilder builder;
+  final VoidCallback onTap;
+  final bool selected;
+  final FocusNode? focusNode;
+  final bool autofocus;
+  final String? debugLabel;
+  final TvFocusArea? focusArea;
+  final double borderRadius;
+  final double scale;
+  final EdgeInsetsGeometry padding;
+  final ValueChanged<bool>? onFocusChange;
+  final bool useOwnLayer;
+
+  @override
+  State<TvGlassSelectable> createState() => _TvGlassSelectableState();
+}
+
+class _TvGlassSelectableState extends State<TvGlassSelectable> {
+  bool _focused = false;
+  bool _pressed = false;
+
+  TvGlassSelectableState get _state {
+    if (_pressed) {
+      return TvGlassSelectableState.pressed;
+    }
+    if (_focused) {
+      return TvGlassSelectableState.focused;
+    }
+    if (widget.selected) {
+      return TvGlassSelectableState.selected;
+    }
+    return TvGlassSelectableState.idle;
+  }
+
+  void _handleFocusChange(bool focused) {
+    if (_focused != focused) {
+      setState(() => _focused = focused);
+      widget.onFocusChange?.call(focused);
+    }
+  }
+
+  void _setPressed(bool pressed) {
+    if (_pressed != pressed) {
+      setState(() => _pressed = pressed);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _state;
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.tvFocusDuration,
+    );
+    final radius = BorderRadius.circular(widget.borderRadius);
+    final content = AnimatedContainer(
+      key: ValueKey<String>(
+        'tv-glass-selectable-state-${widget.debugLabel ?? 'selectable'}',
+      ),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      padding: widget.padding,
+      decoration: BoxDecoration(
+        color: switch (state) {
+          TvGlassSelectableState.focused => const Color(0x00FFFFFF),
+          TvGlassSelectableState.pressed => const Color(0x14FFFFFF),
+          TvGlassSelectableState.selected => const Color(0x00FFFFFF),
+          TvGlassSelectableState.idle => const Color(0x00000000),
+        },
+        borderRadius: radius,
+        border: Border.all(
+          color: switch (state) {
+            TvGlassSelectableState.focused => const Color(0x66FFFFFF),
+            TvGlassSelectableState.pressed => const Color(0x88FFFFFF),
+            TvGlassSelectableState.selected => const Color(0x00FFFFFF),
+            TvGlassSelectableState.idle => const Color(0x00000000),
+          },
+        ),
+      ),
+      child: widget.builder(context, state),
+    );
+
+    return TvFocusable(
+      focusNode: widget.focusNode,
+      autofocus: widget.autofocus,
+      scale: widget.scale,
+      showGlow: false,
+      focusCornerRadius: widget.borderRadius,
+      baseCornerRadius: widget.borderRadius,
+      duration: duration,
+      focusArea: widget.focusArea,
+      debugLabel: widget.debugLabel,
+      onFocusChange: _handleFocusChange,
+      onTap: widget.onTap,
+      child: Listener(
+        onPointerDown: (_) => _setPressed(true),
+        onPointerUp: (_) => _setPressed(false),
+        onPointerCancel: (_) => _setPressed(false),
+        child: _focused
+            ? GlassContainer(
+                key: ValueKey<String>(
+                  'tv-glass-focus-${widget.debugLabel ?? 'selectable'}',
+                ),
+                useOwnLayer: widget.useOwnLayer,
+                quality: widget.useOwnLayer
+                    ? TvGlassQualityScope.of(context)
+                    : null,
+                shape: LiquidRoundedSuperellipse(
+                  borderRadius: widget.borderRadius,
+                ),
+                settings: widget.useOwnLayer
+                    ? const LiquidGlassSettings(
+                        blur: 7,
+                        thickness: 18,
+                        glassColor: Color(0x00FFFFFF),
+                        lightIntensity: 0.72,
+                        saturation: 1.18,
+                      )
+                    : null,
+                child: content,
+              )
+            : content,
       ),
     );
   }
@@ -309,6 +513,10 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
 
   @override
   Widget build(BuildContext context) {
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.tvFocusDuration,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final targetSize =
@@ -355,7 +563,7 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
                     padding: EdgeInsets.all(widget.focusPadding),
                     child: TweenAnimationBuilder<double>(
                       tween: Tween<double>(begin: 0, end: _focused ? 1 : 0),
-                      duration: const Duration(milliseconds: 180),
+                      duration: duration,
                       curve: Curves.easeOutCubic,
                       builder: (context, value, child) {
                         return Transform.translate(
@@ -427,11 +635,15 @@ class _TvFocusableSurfaceLift extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.tvFocusDuration,
+    );
     return SizedBox.fromSize(
       size: Size(size.width + padding * 2, size.height + padding * 2),
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 1, end: scale),
-        duration: const Duration(milliseconds: 180),
+        duration: duration,
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
           return Transform.scale(
@@ -487,8 +699,12 @@ class _TvFocusableSurfaceBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.tvFocusDuration,
+    );
     final body = AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+      duration: duration,
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         borderRadius: radius,
@@ -519,22 +735,21 @@ class _TvFocusableSurfaceBody extends StatelessWidget {
             if (focused)
               Positioned.fill(
                 child: IgnorePointer(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: radius,
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0x24FFFFFF),
-                            Color(0x08FFFFFF),
-                            Color(0x18000000),
-                          ],
-                        ),
-                      ),
+                  child: GlassContainer(
+                    key: const ValueKey<String>('tv-content-glass-overlay'),
+                    useOwnLayer: true,
+                    quality: TvGlassQualityScope.of(context),
+                    shape: LiquidRoundedSuperellipse(
+                      borderRadius: borderRadius,
                     ),
+                    settings: const LiquidGlassSettings(
+                      blur: 8,
+                      thickness: 20,
+                      glassColor: Color(0x00FFFFFF),
+                      lightIntensity: 0.72,
+                      saturation: 1.18,
+                    ),
+                    child: SizedBox.expand(),
                   ),
                 ),
               ),
