@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'package:bilibili_player/app/design/app_glass_controls.dart';
@@ -494,7 +494,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     final topPadding = MediaQuery.paddingOf(context).top;
     const appBarContentHeight = 110.0;
     final appBarSurfaceHeight = topPadding + appBarContentHeight;
-    return GlassScaffold(
+    return AppGlassScaffold(
       backgroundColor: AppVisualTokens.mobileBackground,
       extendBody: false,
       appBarHeight: appBarContentHeight,

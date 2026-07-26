@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
 import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
 import '../../bili/common/pages/bili_playback_page.dart';
@@ -54,7 +55,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   @override
   Widget build(BuildContext context) {
-    return GlassScaffold(
+    return AppGlassScaffold(
       backgroundColor: AppVisualTokens.mobileBackground,
       extendBody: false,
       appBar: const GlassAppBar(

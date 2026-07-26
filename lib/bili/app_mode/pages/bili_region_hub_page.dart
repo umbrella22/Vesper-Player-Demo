@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'package:bilibili_player/app/design/app_glass_controls.dart';
 import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
@@ -40,7 +41,7 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasSession = _client.hasAuthenticatedSession;
-    return GlassScaffold(
+    return AppGlassScaffold(
       backgroundColor: AppVisualTokens.mobileBackground,
       extendBody: false,
       appBar: GlassAppBar(

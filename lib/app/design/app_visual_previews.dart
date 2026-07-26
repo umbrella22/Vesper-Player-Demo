@@ -63,7 +63,7 @@ class _MobileGlassPreviewState extends State<_MobileGlassPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return GlassScaffold(
+    return AppGlassScaffold(
       backgroundColor: AppVisualTokens.mobileBackground,
       extendBody: true,
       bottomBarHeight: AppGlassBottomNavigation.extent,

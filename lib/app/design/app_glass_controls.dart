@@ -5,6 +5,65 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app_visual_theme.dart';
 
+/// Keeps App-owned Material widgets on the split `material_ui` tree while
+/// `liquid_glass_widgets` still builds its scaffold with Flutter's legacy
+/// Material library. Remove this adapter once the package migrates.
+class AppGlassScaffold extends StatelessWidget {
+  const AppGlassScaffold({
+    super.key,
+    required this.body,
+    this.appBar,
+    this.bottomBar,
+    this.backgroundColor,
+    this.statusBarStyle = GlassStatusBarStyle.none,
+    this.extendBody = true,
+    this.appBarHeight = 44,
+    this.bottomBarHeight,
+  });
+
+  final Widget body;
+  final Widget? appBar;
+  final Widget? bottomBar;
+  final Color? backgroundColor;
+  final GlassStatusBarStyle statusBarStyle;
+  final bool extendBody;
+  final double appBarHeight;
+  final double? bottomBarHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
+      body: GlassScaffold(
+        body: _materialSurface(body),
+        appBar: appBar == null ? null : _materialAppBarSurface(appBar!),
+        bottomBar: bottomBar == null ? null : _materialSurface(bottomBar!),
+        backgroundColor: backgroundColor,
+        statusBarStyle: statusBarStyle,
+        extendBody: extendBody,
+        appBarHeight: appBarHeight,
+        bottomBarHeight: bottomBarHeight,
+      ),
+    );
+  }
+
+  static Widget _materialSurface(Widget child) {
+    return Material(type: MaterialType.transparency, child: child);
+  }
+
+  static Widget _materialAppBarSurface(Widget child) {
+    final surface = _materialSurface(child);
+    return switch (child) {
+      final PreferredSizeWidget preferred => PreferredSize(
+        preferredSize: preferred.preferredSize,
+        child: surface,
+      ),
+      _ => surface,
+    };
+  }
+}
+
 class AppGlassButton extends StatelessWidget {
   const AppGlassButton({
     super.key,

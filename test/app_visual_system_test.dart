@@ -139,6 +139,46 @@ void main() {
     expect(result, 'done');
   });
 
+  testWidgets('glass scaffold bridges split Material descendants', (
+    tester,
+  ) async {
+    var tapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppGlassScaffold(
+          backgroundColor: AppVisualTokens.mobileBackground,
+          body: Center(
+            child: Builder(
+              builder: (context) => InkWell(
+                key: const ValueKey<String>('split-material-ink-well'),
+                onTap: () {
+                  tapped = true;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('完成')));
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('打开'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('split-material-ink-well')),
+    );
+    await tester.pump();
+
+    expect(tapped, isTrue);
+    expect(find.text('完成'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reduced motion resolves shared transitions to zero', (
     tester,
   ) async {

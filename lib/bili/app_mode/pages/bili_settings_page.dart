@@ -205,7 +205,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return GlassScaffold(
+    return AppGlassScaffold(
       backgroundColor: const Color(0xFFF3F6FB),
       statusBarStyle: GlassStatusBarStyle.auto,
       extendBody: false,

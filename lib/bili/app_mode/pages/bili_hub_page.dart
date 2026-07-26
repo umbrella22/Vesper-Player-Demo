@@ -345,7 +345,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
     return SignalBuilder(
       builder: (context) {
         final selectedTab = _viewModel.selectedTab.value;
-        return GlassScaffold(
+        return AppGlassScaffold(
           backgroundColor: const Color(0xFFF3F6FB),
           statusBarStyle: GlassStatusBarStyle.auto,
           extendBody: true,
