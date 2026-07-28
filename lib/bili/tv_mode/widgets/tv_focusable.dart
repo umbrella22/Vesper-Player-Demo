@@ -187,17 +187,7 @@ class _TvFocusableState extends State<TvFocusable> {
   KeyEventResult _moveFocus(TraversalDirection direction) {
     final moved = moveTvFocusSpatially(_node, direction);
     if (moved) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final focusedContext = FocusManager.instance.primaryFocus?.context;
-        if (focusedContext != null) {
-          Scrollable.ensureVisible(
-            focusedContext,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          );
-        }
-      });
+      revealFocusedTvControl(direction);
     }
     return moved ? KeyEventResult.handled : KeyEventResult.ignored;
   }
@@ -910,4 +900,33 @@ Rect? tvGlobalRectFor(FocusNode node) {
     return null;
   }
   return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+}
+
+ScrollPositionAlignmentPolicy tvFocusScrollAlignmentPolicy(
+  TraversalDirection direction,
+) {
+  return switch (direction) {
+    TraversalDirection.up ||
+    TraversalDirection.left => ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+    TraversalDirection.down ||
+    TraversalDirection.right => ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+  };
+}
+
+void revealFocusedTvControl(TraversalDirection direction) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      focusedContext,
+      duration: AppVisualTokens.motionDuration(
+        focusedContext,
+        const Duration(milliseconds: 160),
+      ),
+      curve: Curves.easeOutCubic,
+      alignmentPolicy: tvFocusScrollAlignmentPolicy(direction),
+    );
+  });
 }

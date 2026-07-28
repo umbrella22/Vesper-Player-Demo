@@ -17,6 +17,7 @@ import 'package:bilibili_player/bili/common/services/bili_device_controls.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/common/services/bili_text.dart';
 import 'package:bilibili_player/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_external_playback_manager.dart';
 import 'package:bilibili_player/bili/common/view_models/bili_playback_view_model.dart';
@@ -97,11 +98,18 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   TvPlaybackPanelType? _lastOpenedTvPanel;
   bool _tvPlaybackInitialFocusRequested = false;
   bool _playbackRecoveryDialogVisible = false;
+  bool _tvBackDispatchPending = false;
 
   bool get _isTvMode =>
       widget.presentationMode == BiliPlaybackPresentationMode.tv;
 
   bool get _tvPanelOpen => _tvPanel != TvPlaybackPanelType.none;
+
+  bool get _playbackModalRouteOpen =>
+      _settingsSurfaceOpen ||
+      _castingSurfaceOpen ||
+      _dlnaPickerOpen ||
+      _playbackRecoveryDialogVisible;
 
   @override
   void initState() {
@@ -174,18 +182,24 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     if (!_isTvMode || event is! KeyDownEvent || !mounted) {
       return false;
     }
-    final route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) {
+    final key = event.logicalKey;
+    final isBackKey =
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.escape;
+    if (!isBackKey) {
       return false;
     }
-    final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.escape) {
-      _handleTvBack();
-      return true;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      if (_playbackModalRouteOpen) {
+        _handleTvBack();
+        return true;
+      }
+      return false;
     }
-    return false;
+    _handleTvBack();
+    return true;
   }
 
   BiliVideoPageEntry get _selectedPage => _viewModel.selectedPage;
@@ -699,19 +713,25 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       return;
     }
     await _applySystemPresentation(
-      orientations: biliAppDefaultOrientations,
+      useAppOrientationPolicy: true,
       systemUiMode: SystemUiMode.edgeToEdge,
       overlayStyle: biliAppSystemUiStyle,
     );
   }
 
   Future<void> _applySystemPresentation({
-    required List<DeviceOrientation> orientations,
+    List<DeviceOrientation>? orientations,
+    bool useAppOrientationPolicy = false,
     required SystemUiMode systemUiMode,
     required SystemUiOverlayStyle overlayStyle,
   }) async {
+    assert(useAppOrientationPolicy != (orientations != null));
     final generation = ++_presentationGeneration;
-    await setBiliPreferredOrientations(orientations);
+    if (useAppOrientationPolicy) {
+      await setBiliAppPreferredOrientations();
+    } else {
+      await setBiliPreferredOrientations(orientations!);
+    }
     if (generation != _presentationGeneration) {
       return;
     }
@@ -852,22 +872,41 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     _playbackRecoveryDialogVisible = true;
     bool retry = false;
     try {
-      retry =
-          await showBiliGlassDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            title: notice.title,
-            message: notice.message,
-            actions: const [
-              BiliGlassDialogAction(label: '知道了', value: false),
-              BiliGlassDialogAction(
-                label: '重新解析',
-                value: true,
-                isPrimary: true,
-              ),
-            ],
-          ) ??
-          false;
+      final result = _isTvMode
+          ? await showBiliTvGlassDialog<bool>(
+              context: context,
+              title: notice.title,
+              message: notice.message,
+              icon: Icons.sync_problem_rounded,
+              actions: const [
+                BiliTvDialogAction(
+                  label: '知道了',
+                  value: false,
+                  icon: Icons.close_rounded,
+                  autofocus: true,
+                ),
+                BiliTvDialogAction(
+                  label: '重新解析',
+                  value: true,
+                  icon: Icons.refresh_rounded,
+                ),
+              ],
+            )
+          : await showBiliGlassDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              title: notice.title,
+              message: notice.message,
+              actions: const [
+                BiliGlassDialogAction(label: '知道了', value: false),
+                BiliGlassDialogAction(
+                  label: '重新解析',
+                  value: true,
+                  isPrimary: true,
+                ),
+              ],
+            );
+      retry = result ?? false;
     } finally {
       _playbackRecoveryDialogVisible = false;
     }
@@ -1145,10 +1184,6 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
           SingleActivator(LogicalKeyboardKey.arrowUp): _TvPlaybackUpIntent(),
           SingleActivator(LogicalKeyboardKey.arrowDown):
               _TvPlaybackDownIntent(),
-          SingleActivator(LogicalKeyboardKey.goBack): _TvPlaybackBackIntent(),
-          SingleActivator(LogicalKeyboardKey.browserBack):
-              _TvPlaybackBackIntent(),
-          SingleActivator(LogicalKeyboardKey.escape): _TvPlaybackBackIntent(),
         },
         child: Actions(
           actions: <Type, Action<Intent>>{
@@ -1217,17 +1252,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                 return null;
               },
             ),
-            _TvPlaybackBackIntent: CallbackAction<_TvPlaybackBackIntent>(
-              onInvoke: (_) {
-                _handleTvBack();
-                return null;
-              },
-            ),
           },
           child: Focus(
             focusNode: _tvPlaybackFocusNode,
             autofocus: true,
-            onKeyEvent: _handleTvPlaybackKeyEvent,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _handleTvStageTap,
@@ -1278,20 +1306,6 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     );
   }
 
-  KeyEventResult _handleTvPlaybackKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) {
-      return KeyEventResult.ignored;
-    }
-    final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.escape) {
-      _handleTvBack();
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
-  }
-
   void _handleTvStageTap() {
     _tvPlaybackFocusNode.requestFocus();
     _handleTvSelect();
@@ -1316,6 +1330,20 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   }
 
   void _handleTvBack() {
+    if (_tvBackDispatchPending) {
+      return;
+    }
+    _tvBackDispatchPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tvBackDispatchPending = false;
+    });
+    if (_playbackModalRouteOpen) {
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) {
+        unawaited(Navigator.of(context, rootNavigator: true).maybePop());
+      }
+      return;
+    }
     if (_tvPanelOpen) {
       _closeTvPanelAndRestoreFocus();
       return;
@@ -1376,17 +1404,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
         ? false
         : moveTvFocusSpatially(primaryFocus, direction);
     if (moved) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final focusedContext = FocusManager.instance.primaryFocus?.context;
-        if (focusedContext != null) {
-          Scrollable.ensureVisible(
-            focusedContext,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          );
-        }
-      });
+      revealFocusedTvControl(direction);
     }
     return moved;
   }
@@ -1401,17 +1419,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
             allowedAreas: {TvFocusArea.playbackPanel},
           );
     if (moved) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final focusedContext = FocusManager.instance.primaryFocus?.context;
-        if (focusedContext != null) {
-          Scrollable.ensureVisible(
-            focusedContext,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          );
-        }
-      });
+      revealFocusedTvControl(direction);
     }
     return moved;
   }
@@ -2110,12 +2118,20 @@ class _TvPanelOptionList extends StatefulWidget {
 
 class _TvPanelOptionListState extends State<_TvPanelOptionList> {
   late final ScrollController _controller;
+  bool _autofocusSelected = true;
 
   @override
   void initState() {
     super.initState();
     _controller = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusSelectedOption());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusSelectedOption();
+      if (mounted) {
+        setState(() {
+          _autofocusSelected = false;
+        });
+      }
+    });
   }
 
   @override
@@ -2166,7 +2182,7 @@ class _TvPanelOptionListState extends State<_TvPanelOptionList> {
         final option = widget.options[index];
         return _TvPanelOptionTile(
           option: option,
-          autofocus: index == selectedIndex,
+          autofocus: _autofocusSelected && index == selectedIndex,
         );
       },
     );
@@ -2361,8 +2377,4 @@ class _TvPlaybackUpIntent extends Intent {
 
 class _TvPlaybackDownIntent extends Intent {
   const _TvPlaybackDownIntent();
-}
-
-class _TvPlaybackBackIntent extends Intent {
-  const _TvPlaybackBackIntent();
 }

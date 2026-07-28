@@ -12,6 +12,7 @@ import 'package:bilibili_player/bili/common/services/bili_client.dart';
 import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:bilibili_player/download/download.dart';
 
 enum BiliLibrarySection { following, history, watchLater }
@@ -461,6 +462,31 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   Future<void> _removeWatchLater(BiliWatchLaterEntry entry) async {
+    if (_isTv) {
+      final confirmed = await showBiliTvGlassDialog<bool>(
+        context: context,
+        title: '移出稍后再看？',
+        message: '“${entry.title}”会从稍后再看列表中移除。',
+        icon: Icons.playlist_remove_rounded,
+        actions: const [
+          BiliTvDialogAction(
+            label: '取消',
+            value: false,
+            icon: Icons.close_rounded,
+            autofocus: true,
+          ),
+          BiliTvDialogAction(
+            label: '移出',
+            value: true,
+            icon: Icons.delete_outline_rounded,
+            isDestructive: true,
+          ),
+        ],
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
     try {
       await widget.client.removeFromWatchLater(
         bvid: entry.bvid,

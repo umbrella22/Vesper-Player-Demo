@@ -231,7 +231,7 @@ void main() {
     expect(markerDecoration.color, AppVisualTokens.primaryBlue);
   });
 
-  testWidgets('tv watch later library exposes a focusable remove control', (
+  testWidgets('tv watch later removal requires confirmation', (
     WidgetTester tester,
   ) async {
     final httpClient = _LibraryHttpClient(emptyWatchLaterCovers: true);
@@ -273,6 +273,29 @@ void main() {
     expect(
       find.descendant(of: remove, matching: find.byType(TvFocusableSurface)),
       findsOneWidget,
+    );
+
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    expect(find.text('移出稍后再看？'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_取消');
+    expect(httpClient.posts, isEmpty);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('移出稍后再看？'), findsNothing);
+    expect(httpClient.posts, isEmpty);
+
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('移出'));
+    await tester.pumpAndSettle();
+
+    expect(
+      httpClient.posts.where(
+        (request) => request.uri.path == '/x/v2/history/toview/del',
+      ),
+      hasLength(1),
     );
   });
 

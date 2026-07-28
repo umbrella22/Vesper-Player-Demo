@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'package:bilibili_player/bili/common/services/bili_platform_info.dart';
+
 const biliAppDefaultOrientations = <DeviceOrientation>[];
 
 const biliPortraitOrientations = <DeviceOrientation>[
@@ -40,7 +42,18 @@ const biliDarkSurfaceSystemUiStyle = SystemUiOverlayStyle(
 
 const biliTvSystemUiStyle = biliDarkSurfaceSystemUiStyle;
 
+int _preferredOrientationGeneration = 0;
+bool _usesAppOrientationPolicy = true;
+
 Future<void> setBiliPreferredOrientations(
+  List<DeviceOrientation> orientations,
+) async {
+  _usesAppOrientationPolicy = false;
+  _preferredOrientationGeneration += 1;
+  await _applyBiliPreferredOrientations(orientations);
+}
+
+Future<void> _applyBiliPreferredOrientations(
   List<DeviceOrientation> orientations,
 ) async {
   if (kIsWeb ||
@@ -49,6 +62,58 @@ Future<void> setBiliPreferredOrientations(
     return;
   }
   await SystemChrome.setPreferredOrientations(orientations);
+}
+
+typedef BiliAutoRotateReader = Future<bool> Function();
+
+@visibleForTesting
+Future<List<DeviceOrientation>> resolveBiliAppPreferredOrientations({
+  BiliAutoRotateReader? readAutoRotateEnabled,
+}) async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    return biliAppDefaultOrientations;
+  }
+
+  final autoRotateEnabled =
+      await (readAutoRotateEnabled ??
+          BiliPlatformInfo.instance.isAutoRotateEnabled)();
+  return autoRotateEnabled
+      ? biliAppDefaultOrientations
+      : biliPortraitOrientations;
+}
+
+Future<void> setBiliAppPreferredOrientations({
+  BiliAutoRotateReader? readAutoRotateEnabled,
+}) async {
+  _usesAppOrientationPolicy = true;
+  await _refreshBiliAppPreferredOrientations(
+    readAutoRotateEnabled: readAutoRotateEnabled,
+  );
+}
+
+Future<void> refreshBiliAppPreferredOrientationsIfActive({
+  BiliAutoRotateReader? readAutoRotateEnabled,
+}) async {
+  if (!_usesAppOrientationPolicy) {
+    return;
+  }
+  await _refreshBiliAppPreferredOrientations(
+    readAutoRotateEnabled: readAutoRotateEnabled,
+  );
+}
+
+Future<void> _refreshBiliAppPreferredOrientations({
+  BiliAutoRotateReader? readAutoRotateEnabled,
+}) async {
+  final generation = ++_preferredOrientationGeneration;
+  final orientations = await resolveBiliAppPreferredOrientations(
+    readAutoRotateEnabled: readAutoRotateEnabled,
+  );
+  if (generation != _preferredOrientationGeneration ||
+      !_usesAppOrientationPolicy) {
+    return;
+  }
+  await _applyBiliPreferredOrientations(orientations);
 }
 
 Future<void> setBiliSystemUiMode(SystemUiMode systemUiMode) async {

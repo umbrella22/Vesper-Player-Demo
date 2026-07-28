@@ -189,10 +189,11 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _applyPresentationFor(BiliUiMode mode) async {
-    final orientations = mode == BiliUiMode.tv
-        ? biliLandscapeOrientations
-        : biliAppDefaultOrientations;
-    await setBiliPreferredOrientations(orientations);
+    if (mode == BiliUiMode.tv) {
+      await setBiliPreferredOrientations(biliLandscapeOrientations);
+    } else {
+      await setBiliAppPreferredOrientations();
+    }
     await setBiliSystemUiMode(
       mode == BiliUiMode.tv
           ? SystemUiMode.immersiveSticky

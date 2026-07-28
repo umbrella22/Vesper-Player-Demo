@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bilibili_player/app/home_page.dart';
 import 'package:bilibili_player/app/system_presentation.dart';
 import 'package:material_ui/material_ui.dart';
@@ -5,8 +7,34 @@ import 'package:flutter/services.dart';
 
 import 'design/app_visual_theme.dart';
 
-class BilibiliPlayerApp extends StatelessWidget {
+class BilibiliPlayerApp extends StatefulWidget {
   const BilibiliPlayerApp({super.key});
+
+  @override
+  State<BilibiliPlayerApp> createState() => _BilibiliPlayerAppState();
+}
+
+class _BilibiliPlayerAppState extends State<BilibiliPlayerApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(refreshBiliAppPreferredOrientationsIfActive());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(refreshBiliAppPreferredOrientationsIfActive());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

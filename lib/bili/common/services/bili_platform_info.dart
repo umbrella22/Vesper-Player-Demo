@@ -26,4 +26,14 @@ final class BiliPlatformInfo {
       return false;
     }
   }
+
+  Future<bool> isAutoRotateEnabled() async {
+    try {
+      return await _channel.invokeMethod<bool>('isAutoRotateEnabled') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

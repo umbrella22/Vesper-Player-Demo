@@ -30,6 +30,7 @@ class MainActivity : FlutterFragmentActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isTv" -> result.success(isTvDevice())
+                "isAutoRotateEnabled" -> result.success(isAutoRotateEnabled())
                 else -> result.notImplemented()
             }
         }
@@ -288,5 +289,17 @@ class MainActivity : FlutterFragmentActivity() {
             return true
         }
         return false
+    }
+
+    private fun isAutoRotateEnabled(): Boolean {
+        return try {
+            Settings.System.getInt(
+                contentResolver,
+                Settings.System.ACCELEROMETER_ROTATION,
+                0,
+            ) == 1
+        } catch (_: SecurityException) {
+            false
+        }
     }
 }

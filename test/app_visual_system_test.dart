@@ -4,6 +4,7 @@ import 'package:bilibili_player/app/design/app_glass_controls.dart';
 import 'package:bilibili_player/app/design/app_visual_theme.dart';
 import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:flutter/services.dart';
@@ -87,6 +88,60 @@ void main() {
     await tester.tap(
       find.descendant(of: find.byType(GlassDialog), matching: find.text('继续')),
     );
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(result, isTrue);
+  });
+
+  testWidgets('TV dialog defaults focus to the safe action', (tester) async {
+    bool? result;
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.darkTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () async {
+              result = await showBiliTvGlassDialog<bool>(
+                context: context,
+                title: '确认操作',
+                message: '请选择接下来要执行的操作。',
+                icon: Icons.warning_amber_rounded,
+                actions: const [
+                  BiliTvDialogAction(
+                    label: '删除',
+                    value: true,
+                    icon: Icons.delete_outline_rounded,
+                    isDestructive: true,
+                  ),
+                  BiliTvDialogAction(
+                    label: '保留',
+                    value: false,
+                    icon: Icons.close_rounded,
+                  ),
+                ],
+              );
+            },
+            child: const Text('打开 TV 弹窗'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开 TV 弹窗'));
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-dialog-surface')),
+      findsOneWidget,
+    );
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_保留');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_删除');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 240));
 
     expect(result, isTrue);
@@ -307,6 +362,79 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(activations, 1);
+  });
+
+  testWidgets('TV focus reveal scrolls toward both ends of a list', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final nodes = List<FocusNode>.generate(
+      8,
+      (index) => FocusNode(debugLabel: 'scroll-item-$index'),
+    );
+    addTearDown(controller.dispose);
+    addTearDown(() {
+      for (final node in nodes) {
+        node.dispose();
+      }
+    });
+    await tester.binding.setSurfaceSize(const Size(320, 220));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.darkTheme(),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              height: 180,
+              child: TvDirectionalFocusScope(
+                child: SingleChildScrollView(
+                  controller: controller,
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < nodes.length; index++)
+                        TvFocusable(
+                          focusNode: nodes[index],
+                          autofocus: index == 0,
+                          scale: 1,
+                          showGlow: false,
+                          onTap: () {},
+                          child: SizedBox(
+                            height: 72,
+                            child: Center(child: Text('item $index')),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    Future<void> move(LogicalKeyboardKey key, int count) async {
+      for (var index = 0; index < count; index++) {
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 180));
+        await tester.pump(const Duration(milliseconds: 180));
+      }
+    }
+
+    await move(LogicalKeyboardKey.arrowDown, 5);
+    final downwardOffset = controller.offset;
+    expect(nodes[5].hasFocus, isTrue);
+    expect(downwardOffset, greaterThan(0));
+
+    await move(LogicalKeyboardKey.arrowUp, 5);
+    expect(nodes.first.hasFocus, isTrue);
+    expect(controller.offset, lessThan(downwardOffset));
+    expect(controller.offset, closeTo(0, 0.1));
   });
 
   testWidgets('top bar frosts the whole surface after scrolling', (

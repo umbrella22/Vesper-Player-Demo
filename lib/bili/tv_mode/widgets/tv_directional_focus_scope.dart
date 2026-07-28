@@ -8,6 +8,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
     super.key,
     required this.child,
     this.autofocus = true,
+    this.handleGoBackKey = true,
     this.onBack,
     this.onMenu,
     this.debugLabel,
@@ -15,6 +16,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
 
   final Widget child;
   final bool autofocus;
+  final bool handleGoBackKey;
   final VoidCallback? onBack;
   final VoidCallback? onMenu;
   final String? debugLabel;
@@ -22,15 +24,24 @@ class TvDirectionalFocusScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.arrowUp): _TvFocusUpIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowDown): _TvFocusDownIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowLeft): _TvFocusLeftIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowRight): _TvFocusRightIntent(),
-        SingleActivator(LogicalKeyboardKey.goBack): _TvFocusBackIntent(),
-        SingleActivator(LogicalKeyboardKey.browserBack): _TvFocusBackIntent(),
-        SingleActivator(LogicalKeyboardKey.escape): _TvFocusBackIntent(),
-        SingleActivator(LogicalKeyboardKey.contextMenu): _TvFocusMenuIntent(),
+      shortcuts: <ShortcutActivator, Intent>{
+        const SingleActivator(LogicalKeyboardKey.arrowUp):
+            const _TvFocusUpIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowDown):
+            const _TvFocusDownIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft):
+            const _TvFocusLeftIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight):
+            const _TvFocusRightIntent(),
+        if (handleGoBackKey)
+          const SingleActivator(LogicalKeyboardKey.goBack):
+              const _TvFocusBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.browserBack):
+            const _TvFocusBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape):
+            const _TvFocusBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.contextMenu):
+            const _TvFocusMenuIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -95,7 +106,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
     if (key == LogicalKeyboardKey.arrowRight) {
       return _moveFocus(TraversalDirection.right);
     }
-    if (key == LogicalKeyboardKey.goBack ||
+    if ((handleGoBackKey && key == LogicalKeyboardKey.goBack) ||
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape) {
       if (onBack != null) {
@@ -118,17 +129,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
         ? false
         : moveTvFocusSpatially(primaryFocus, direction);
     if (moved) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final focusedContext = FocusManager.instance.primaryFocus?.context;
-        if (focusedContext != null) {
-          Scrollable.ensureVisible(
-            focusedContext,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          );
-        }
-      });
+      revealFocusedTvControl(direction);
     }
     return moved ? KeyEventResult.handled : KeyEventResult.ignored;
   }

@@ -21,8 +21,8 @@ import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
 import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:bilibili_player/app/home_page.dart';
 import 'package:bilibili_player/download/download.dart';
 import 'package:bilibili_player/main.dart';
@@ -135,6 +135,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   bool _hasMoreRegion = true;
   String? _regionErrorMessage;
   bool _restorePresentationOnDispose = true;
+  bool _exitDialogVisible = false;
 
   @override
   void initState() {
@@ -177,7 +178,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   Future<void> _restoreAppPresentation() async {
     await _applySystemPresentation(
-      orientations: biliAppDefaultOrientations,
+      useAppOrientationPolicy: true,
       systemUiMode: SystemUiMode.edgeToEdge,
       overlayStyle: biliAppSystemUiStyle,
     );
@@ -190,12 +191,18 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _applySystemPresentation({
-    required List<DeviceOrientation> orientations,
+    List<DeviceOrientation>? orientations,
+    bool useAppOrientationPolicy = false,
     required SystemUiMode systemUiMode,
     required SystemUiOverlayStyle overlayStyle,
   }) async {
+    assert(useAppOrientationPolicy != (orientations != null));
     final generation = ++_presentationGeneration;
-    await setBiliPreferredOrientations(orientations);
+    if (useAppOrientationPolicy) {
+      await setBiliAppPreferredOrientations();
+    } else {
+      await setBiliPreferredOrientations(orientations!);
+    }
     if (generation != _presentationGeneration) {
       return;
     }
@@ -585,18 +592,35 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _confirmExitApp() async {
-    if (!mounted) {
+    if (!mounted || _exitDialogVisible) {
       return;
     }
-    final shouldExit = await showBiliGlassDialog<bool>(
-      context: context,
-      title: '退出应用',
-      message: '确定要退出 bilibili_player 吗？',
-      actions: const [
-        BiliGlassDialogAction(label: '取消', value: false),
-        BiliGlassDialogAction(label: '退出', value: true, isDestructive: true),
-      ],
-    );
+    _exitDialogVisible = true;
+    bool? shouldExit;
+    try {
+      shouldExit = await showBiliTvGlassDialog<bool>(
+        context: context,
+        title: '退出应用？',
+        message: '将结束当前会话并返回系统桌面。',
+        icon: Icons.power_settings_new_rounded,
+        actions: const [
+          BiliTvDialogAction(
+            label: '继续使用',
+            value: false,
+            icon: Icons.play_arrow_rounded,
+            autofocus: true,
+          ),
+          BiliTvDialogAction(
+            label: '退出',
+            value: true,
+            icon: Icons.power_settings_new_rounded,
+            isDestructive: true,
+          ),
+        ],
+      );
+    } finally {
+      _exitDialogVisible = false;
+    }
     if (shouldExit == true) {
       await SystemNavigator.pop();
     }
@@ -1446,13 +1470,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                   autofocus: true,
                   icon: Icons.logout_rounded,
                   label: '退出登录',
-                  onTap: () async {
-                    await _viewModel.logout();
-                    await _loadHistory();
-                    if (mounted) {
-                      setState(() {});
-                    }
-                  },
+                  onTap: () => unawaited(_confirmLogout()),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1716,7 +1734,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Future<void> _openQrLogin() async {
-    final profile = await showBiliQrLoginSheet(
+    final profile = await showBiliTvQrLoginDialog(
       context: context,
       client: _viewModel.client,
       sessionStore: _viewModel.sessionStore,
@@ -1729,14 +1747,57 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     setState(() {});
   }
 
+  Future<void> _confirmLogout() async {
+    final confirmed = await showBiliTvGlassDialog<bool>(
+      context: context,
+      title: '退出登录？',
+      message: '本机保存的登录状态会被清除，正在进行的离线缓存也会暂停。',
+      icon: Icons.logout_rounded,
+      actions: const [
+        BiliTvDialogAction(
+          label: '取消',
+          value: false,
+          icon: Icons.close_rounded,
+          autofocus: true,
+        ),
+        BiliTvDialogAction(
+          label: '退出登录',
+          value: true,
+          icon: Icons.logout_rounded,
+          isDestructive: true,
+        ),
+      ],
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    try {
+      await _viewModel.logout();
+      await _loadHistory();
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage('退出登录失败：$error');
+      }
+    }
+  }
+
   Future<bool?> _confirmRegionLogin() {
-    return showBiliGlassDialog<bool>(
+    return showBiliTvGlassDialog<bool>(
       context: context,
       title: '需要登录',
       message: '分区内容需要登录后才能观看，请先登录 Bilibili 账号。',
+      icon: Icons.lock_outline_rounded,
       actions: const [
-        BiliGlassDialogAction(label: '取消', value: false),
-        BiliGlassDialogAction(label: '登录', value: true, isPrimary: true),
+        BiliTvDialogAction(
+          label: '取消',
+          value: false,
+          icon: Icons.close_rounded,
+          autofocus: true,
+        ),
+        BiliTvDialogAction(label: '登录', value: true, icon: Icons.login_rounded),
       ],
     );
   }

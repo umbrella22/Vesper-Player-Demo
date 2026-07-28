@@ -18,6 +18,7 @@ import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
 import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:bilibili_player/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:bilibili_player/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:bilibili_player/download/download.dart';
@@ -1160,6 +1161,7 @@ final class _FakeTvHomeClient extends BiliClient {
   final List<BiliRegionSection> requestedSections = <BiliRegionSection>[];
   Completer<List<BiliSearchResult>>? searchCompleter;
   bool loggedIn = false;
+  int generatedQrTickets = 0;
 
   @override
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
@@ -1173,6 +1175,23 @@ final class _FakeTvHomeClient extends BiliClient {
       name: loggedIn ? '测试用户' : '未登录',
       avatarUrl: '',
       mid: loggedIn ? 42 : null,
+    );
+  }
+
+  @override
+  Future<BiliQrLoginTicket> generateQrLoginTicket() async {
+    generatedQrTickets += 1;
+    return BiliQrLoginTicket(
+      url: 'https://example.test/tv-qr/$generatedQrTickets',
+      qrcodeKey: 'tv-key-$generatedQrTickets',
+    );
+  }
+
+  @override
+  Future<BiliQrLoginPollResult> pollQrLogin(String qrcodeKey) async {
+    return const BiliQrLoginPollResult(
+      status: BiliQrLoginStatus.waitingForScan,
+      message: '等待扫码',
     );
   }
 
@@ -2045,12 +2064,13 @@ void main() {
     );
   });
 
-  testWidgets('tv home grid keeps vertical focus inside content area', (
+  testWidgets('tv home grid scrolls focus in both vertical directions', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
       tester,
-      initialFeedItems: _tvFeedItems(),
+      surfaceSize: const Size(900, 520),
+      initialFeedItems: _tvFeedItems(60),
       skipBootstrap: true,
     );
 
@@ -2058,8 +2078,20 @@ void main() {
     await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 0');
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
+    Future<void> move(LogicalKeyboardKey key, int count) async {
+      for (var index = 0; index < count; index++) {
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 180));
+        await tester.pump(const Duration(milliseconds: 180));
+      }
+    }
+
+    final scrollView = tester.widget<CustomScrollView>(
+      find.byType(CustomScrollView),
+    );
+    await move(LogicalKeyboardKey.arrowDown, 5);
+    final downwardOffset = scrollView.controller!.offset;
 
     expect(
       FocusManager.instance.primaryFocus?.debugLabel?.startsWith('video_'),
@@ -2069,6 +2101,12 @@ void main() {
       FocusManager.instance.primaryFocus?.debugLabel?.startsWith('nav_'),
       isFalse,
     );
+    expect(downwardOffset, greaterThan(0));
+
+    await move(LogicalKeyboardKey.arrowUp, 5);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 0');
+    expect(scrollView.controller!.offset, lessThan(downwardOffset));
+    expect(scrollView.controller!.offset, lessThan(60));
   });
 
   testWidgets('tv home regions nav loads section videos', (
@@ -2121,9 +2159,135 @@ void main() {
 
     expect(find.text('需要登录'), findsOneWidget);
     expect(harness.client.requestedSections, isEmpty);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-dialog-surface')),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassDialog), findsNothing);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_取消');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_登录');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 240));
+    await _flushRealAsync(tester);
+    await tester.pump(const Duration(milliseconds: 240));
+
     expect(find.text('需要登录'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-qr-login-surface')),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassSheet), findsNothing);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_qr_login_close');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 240));
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-qr-login-surface')),
+      findsNothing,
+    );
+    expect(harness.client.generatedQrTickets, 1);
+  });
+
+  testWidgets('tv logout asks for confirmation before clearing the account', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      loggedIn: true,
+    );
+    await _pumpUntil(tester, () => find.text('测试用户').evaluate().isNotEmpty);
+
+    await tester.tap(find.text('我的'));
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.tap(find.text('退出登录'));
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(find.text('退出登录？'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_取消');
+
+    // Android TV sends KEYCODE_BACK through the key channel before asking the
+    // current route to pop. The key phase must not dismiss the dialog early,
+    // otherwise the route pop would reach the TV home page and open Exit App.
+    await tester.sendKeyEvent(
+      LogicalKeyboardKey.goBack,
+      physicalKey: PhysicalKeyboardKey.escape,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('退出登录？'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('退出登录？'), findsNothing);
+    expect(find.text('退出应用？'), findsNothing);
+    expect(find.text('退出登录'), findsOneWidget);
+
+    await tester.tap(find.text('退出登录'));
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_退出登录');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 240));
+    await _pumpUntilFound(tester, find.text('扫码登录'));
+
+    expect(find.text('退出登录？'), findsNothing);
+    expect(find.text('扫码登录'), findsOneWidget);
+  });
+
+  testWidgets('tv QR login keeps its default action visible at compact height', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(640, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = Directory(
+      '${Directory.systemTemp.path}/bili-tv-qr-compact-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() async {
+        if (await root.exists()) {
+          await root.delete(recursive: true);
+        }
+      });
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.darkTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () => showBiliTvQrLoginDialog(
+              context: context,
+              client: _FakeQrLoginClient(),
+              sessionStore: BiliSessionStore(baseDirectory: root),
+            ),
+            child: const Text('打开 TV 登录'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开 TV 登录'));
+    await tester.pump();
+    await _flushRealAsync(tester);
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_qr_login_close');
+    final closeRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-tv-dialog-action-关闭')),
+    );
+    expect(closeRect.top, greaterThanOrEqualTo(0));
+    expect(closeRect.bottom, lessThanOrEqualTo(360));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
@@ -2171,12 +2335,23 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('退出应用'), findsOneWidget);
+    expect(find.text('退出应用？'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('bili-tv-dialog-surface')),
+      findsOneWidget,
+    );
+    final exitSurface = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('bili-tv-dialog-surface')),
+    );
+    final exitDecoration = exitSurface.decoration as BoxDecoration;
+    expect(exitDecoration.color, const Color(0xF01A1C22));
+    expect(tester.widget<Text>(find.text('退出应用？')).style?.color, Colors.white);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_继续使用');
 
-    await tester.tap(find.text('取消'));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
-    expect(find.text('退出应用'), findsNothing);
+    expect(find.text('退出应用？'), findsNothing);
     expect(
       platformCalls.where((call) => call.method == 'SystemNavigator.pop'),
       isEmpty,
@@ -2184,7 +2359,10 @@ void main() {
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('退出'));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_退出');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
     expect(
@@ -3685,6 +3863,68 @@ void main() {
             .last,
       );
       await tester.pumpAndSettle();
+      final panelList = tester.widget<ListView>(
+        find.byKey(const PageStorageKey<String>('tv-panel-list-pages')),
+      );
+
+      Future<void> movePanel(LogicalKeyboardKey key, int count) async {
+        for (var index = 0; index < count; index++) {
+          await tester.sendKeyEvent(key);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 180));
+          await tester.pump(const Duration(milliseconds: 180));
+        }
+      }
+
+      panelList.controller!.jumpTo(
+        700.0
+            .clamp(0.0, panelList.controller!.position.maxScrollExtent)
+            .toDouble(),
+      );
+      await tester.pump();
+      final downwardOffset = panelList.controller!.offset;
+      expect(downwardOffset, greaterThan(0));
+      final panelListRect = tester.getRect(
+        find.byKey(const PageStorageKey<String>('tv-panel-list-pages')),
+      );
+      var focusedPageNumber = pages.length;
+      while (focusedPageNumber > 1) {
+        final label = find.text('第 $focusedPageNumber 集');
+        if (label.evaluate().isNotEmpty &&
+            tester.getRect(label).overlaps(panelListRect)) {
+          break;
+        }
+        focusedPageNumber -= 1;
+      }
+      expect(focusedPageNumber, greaterThan(3));
+      final focusedPage = find
+          .ancestor(
+            of: find.text('第 $focusedPageNumber 集'),
+            matching: find.byType(TvFocusable),
+          )
+          .last;
+      tester
+          .widget<Focus>(
+            find
+                .descendant(of: focusedPage, matching: find.byType(Focus))
+                .first,
+          )
+          .focusNode
+          ?.requestFocus();
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'tv_panel_第 $focusedPageNumber 集',
+      );
+
+      await movePanel(LogicalKeyboardKey.arrowUp, focusedPageNumber - 1);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_第 1 集');
+      expect(panelList.controller!.offset, lessThan(downwardOffset));
+      expect(
+        tester.getRect(find.text('第 1 集')).overlaps(panelListRect),
+        isTrue,
+      );
+
       await tester.drag(find.byType(Scrollable).last, const Offset(0, -520));
       await tester.pumpAndSettle();
 
@@ -3700,6 +3940,84 @@ void main() {
 
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_1.0x');
       expect(find.text('1.0x'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv playback back closes panel then controls before leaving the page',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+
+      await tester.tapAt(const Offset(600, 450));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .ancestor(
+              of: find.text('倍速').last,
+              matching: find.byType(TvFocusable),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1.25x'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('1.25x'), findsNothing);
+      expect(find.byType(BiliPlaybackPage), findsOneWidget);
+      expect(find.byType(BiliTvHomePage), findsNothing);
+      expect(find.text('退出应用？'), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('倍速'), findsNothing);
+      expect(find.byType(BiliPlaybackPage), findsOneWidget);
+      expect(find.byType(BiliTvHomePage), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv playback back dismisses a modal notice without leaving playback',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+      harness.platform.failSelectedSourcesRemaining = 3;
+      harness.platform.emitPlaybackError(_expiredPlaybackAddressError);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+      expect(find.text('播放地址刷新失败'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('bili-tv-dialog-surface')),
+        findsOneWidget,
+      );
+      expect(find.byType(GlassDialog), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_知道了');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(find.text('播放地址刷新失败'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('播放地址刷新失败'), findsNothing);
+      expect(find.byType(BiliPlaybackPage), findsOneWidget);
+      expect(find.byType(BiliTvHomePage), findsNothing);
+      expect(find.text('退出应用？'), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -3794,6 +4112,7 @@ void main() {
 
       expect(find.byType(BiliTvHomePage), findsOneWidget);
       expect(find.byType(BiliPlaybackPage), findsNothing);
+      expect(find.text('退出应用？'), findsNothing);
       expect(
         platformCalls.where((call) => call.method == 'SystemNavigator.pop'),
         isEmpty,
