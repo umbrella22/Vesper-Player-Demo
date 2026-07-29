@@ -31,6 +31,7 @@ class MainActivity : FlutterFragmentActivity() {
             when (call.method) {
                 "isTv" -> result.success(isTvDevice())
                 "isAutoRotateEnabled" -> result.success(isAutoRotateEnabled())
+                "isHcppPlatformSupported" -> result.success(isHcppPlatformSupported())
                 else -> result.notImplemented()
             }
         }
@@ -299,6 +300,24 @@ class MainActivity : FlutterFragmentActivity() {
                 0,
             ) == 1
         } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    private fun isHcppPlatformSupported(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return false
+        }
+        return try {
+            val applicationInfo = packageManager.getApplicationInfo(
+                packageName,
+                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+            )
+            applicationInfo.metaData?.getBoolean(
+                "io.flutter.embedding.android.EnableHcpp",
+                false,
+            ) == true
+        } catch (_: PackageManager.NameNotFoundException) {
             false
         }
     }

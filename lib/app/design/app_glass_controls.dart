@@ -221,20 +221,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
       interactionGlowColor: const Color(0x1FFFFFFF),
     );
 
-    if (quality != GlassQuality.premium) {
-      return tabBar;
-    }
-
-    // Keep this navigation experiment on the package's full Impeller path.
-    // The app-wide adaptive ceiling can otherwise hide refraction differences.
-    // ignore: experimental_member_use
-    return GlassAdaptiveScope(
-      minQuality: GlassQuality.premium,
-      maxQuality: GlassQuality.premium,
-      initialQuality: GlassQuality.premium,
-      allowStepUp: false,
-      child: tabBar,
-    );
+    return tabBar;
   }
 }
 
@@ -297,19 +284,7 @@ class AppGlassSectionTabs extends StatelessWidget {
       interactionGlowColor: const Color(0x1FFFFFFF),
     );
 
-    if (quality != GlassQuality.premium) {
-      return tabBar;
-    }
-
-    // Match the bottom navigation's full Impeller liquid-glass path.
-    // ignore: experimental_member_use
-    return GlassAdaptiveScope(
-      minQuality: GlassQuality.premium,
-      maxQuality: GlassQuality.premium,
-      initialQuality: GlassQuality.premium,
-      allowStepUp: false,
-      child: tabBar,
-    );
+    return tabBar;
   }
 }
 

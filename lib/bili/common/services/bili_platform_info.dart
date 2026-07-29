@@ -36,4 +36,15 @@ final class BiliPlatformInfo {
       return false;
     }
   }
+
+  Future<bool> isHcppPlatformSupported() async {
+    try {
+      return await _channel.invokeMethod<bool>('isHcppPlatformSupported') ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

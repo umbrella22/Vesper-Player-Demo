@@ -24,4 +24,21 @@ void main() {
     expect(await BiliPlatformInfo.instance.isAutoRotateEnabled(), isTrue);
     expect(methods, <String>['isAutoRotateEnabled', 'isAutoRotateEnabled']);
   });
+
+  test('HCPP support is read from the Android platform', () async {
+    const channel = MethodChannel('dev.ikaros.bilibili_player/platform');
+    final methods = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          methods.add(call.method);
+          return call.method == 'isHcppPlatformSupported';
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    expect(await BiliPlatformInfo.instance.isHcppPlatformSupported(), isTrue);
+    expect(methods, <String>['isHcppPlatformSupported']);
+  });
 }

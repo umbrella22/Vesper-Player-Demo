@@ -285,6 +285,8 @@ void main() {
     await tester.pump();
 
     final tabs = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    // ignore: experimental_member_use
+    expect(find.byType(GlassAdaptiveScope), findsNothing);
     expect(tabs.quality, GlassQuality.premium);
     expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
     expect(tabs.selectedIconColor, AppVisualTokens.textPrimary);

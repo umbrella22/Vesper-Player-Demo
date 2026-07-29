@@ -1669,6 +1669,8 @@ void main() {
     expect(contentRect.top, 0);
     expect(contentRect.bottom, greaterThan(bottomBarRect.top));
     expect(topClearance.height, 44 + 44);
+    // ignore: experimental_member_use
+    expect(find.byType(GlassAdaptiveScope), findsNothing);
     expect(bottomBar.quality, GlassQuality.premium);
     expect(bottomBar.settings, isNull);
     expect(bottomBar.indicatorSettings, isNull);
