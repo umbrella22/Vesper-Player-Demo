@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-const String _biliStorageFolderName = 'bilibili-player';
+const String _appStorageFolderName = 'vesper-player';
 
 Future<Directory> resolveBiliStorageDirectory({
   Directory? baseDirectory,
@@ -56,13 +56,13 @@ Future<void> clearBiliStorageFile({
 }
 
 Directory legacyBiliStorageDirectory() {
-  return Directory('${Directory.systemTemp.path}/$_biliStorageFolderName');
+  return Directory('${Directory.systemTemp.path}/$_appStorageFolderName');
 }
 
 Future<Directory> _defaultBiliStorageDirectory() async {
   try {
     final supportDirectory = await getApplicationSupportDirectory();
-    return Directory('${supportDirectory.path}/$_biliStorageFolderName');
+    return Directory('${supportDirectory.path}/$_appStorageFolderName');
   } on MissingPluginException {
     return legacyBiliStorageDirectory();
   }

@@ -15,13 +15,19 @@ class _TuningOptionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final color = enabled
         ? selected
               ? AppVisualTokens.primaryBlue
-              : const Color(0xFF162033)
-        : const Color(0xFF9AA3B2);
+              : visualTheme.textPrimary
+        : visualTheme.textTertiary;
     return Material(
-      color: selected ? const Color(0xFFFFEDF3) : const Color(0xFFF7F8FA),
+      color: selected
+          ? Color.alphaBlend(
+              AppVisualTokens.primaryBlue.withValues(alpha: 0.12),
+              visualTheme.surfaceRaised,
+            )
+          : visualTheme.surfaceRaised,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -52,8 +58,9 @@ class _CacheEntryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Material(
-      color: const Color(0xFFF7F8FA),
+      color: visualTheme.surfaceRaised,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -72,15 +79,15 @@ class _CacheEntryButton extends StatelessWidget {
                 child: Text(
                   '缓存',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF162033),
+                    color: visualTheme.textPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 22,
-                color: Color(0xFF9AA3B2),
+                color: visualTheme.textTertiary,
               ),
             ],
           ),
@@ -98,10 +105,11 @@ class _PanelHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return Text(
       title,
       style: theme.textTheme.titleLarge?.copyWith(
-        color: const Color(0xFF162033),
+        color: visualTheme.textPrimary,
         fontWeight: FontWeight.w800,
       ),
     );
@@ -121,9 +129,10 @@ class _PlaybackContextTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE8EAF0))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: visualTheme.divider)),
       ),
       child: SizedBox(
         height: 40,
@@ -139,7 +148,7 @@ class _PlaybackContextTabs extends StatelessWidget {
                 indicatorSize: TabBarIndicatorSize.label,
                 indicatorWeight: 3,
                 labelColor: AppVisualTokens.primaryBlue,
-                unselectedLabelColor: const Color(0xFF777D88),
+                unselectedLabelColor: visualTheme.textSecondary,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 12),
                 splashBorderRadius: BorderRadius.circular(8),
                 labelStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -208,8 +217,20 @@ class _CollapsedPlaybackBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xFFFB5C99),
+    final visualTheme = AppVisualTheme.of(context);
+    return DecoratedBox(
+      key: const ValueKey<String>('playback-collapsed-bar'),
+      decoration: BoxDecoration(
+        color: visualTheme.surface,
+        border: Border(bottom: BorderSide(color: visualTheme.divider)),
+        boxShadow: [
+          BoxShadow(
+            color: visualTheme.shadow,
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: SafeArea(
         bottom: false,
         child: SizedBox(
@@ -236,7 +257,7 @@ class _CollapsedPlaybackBar extends StatelessWidget {
                           isPlaying
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          color: Colors.white,
+                          color: AppVisualTokens.primaryBlue,
                           size: 34,
                         ),
                         const SizedBox(width: 5),
@@ -244,8 +265,8 @@ class _CollapsedPlaybackBar extends StatelessWidget {
                           isPlaying ? '正在播放' : '继续播放',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: visualTheme.textPrimary,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
                             height: 1.1,
@@ -274,10 +295,11 @@ class _CollapsedBarIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return IconButton(
       onPressed: onTap,
       constraints: const BoxConstraints(minWidth: 52, minHeight: 52),
-      icon: Icon(icon, color: Colors.white, size: 30),
+      icon: Icon(icon, color: visualTheme.textPrimary, size: 30),
     );
   }
 }
@@ -307,6 +329,7 @@ class _CommentThreadList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     if (comments.isEmpty && loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 28),
@@ -333,18 +356,18 @@ class _CommentThreadList extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFF171923),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w900,
                   height: 1.15,
                 ),
               ),
             ),
-            const Icon(Icons.sort_rounded, size: 20, color: Color(0xFF8C929F)),
+            Icon(Icons.sort_rounded, size: 20, color: visualTheme.textTertiary),
             const SizedBox(width: 5),
             Text(
               '按热度',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8C929F),
+                color: visualTheme.textTertiary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -357,7 +380,7 @@ class _CommentThreadList extends StatelessWidget {
             child: Text(
               '暂无评论',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8C929F),
+                color: visualTheme.textTertiary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -370,11 +393,7 @@ class _CommentThreadList extends StatelessWidget {
               onOpenReplies: onOpenReplies,
             ),
             if (comment != comments.last)
-              const Divider(
-                height: 28,
-                thickness: 0.7,
-                color: Color(0xFFE8EAF0),
-              ),
+              Divider(height: 28, thickness: 0.7, color: visualTheme.divider),
           ],
           if (loadingMore) ...[
             const SizedBox(height: 14),
@@ -403,7 +422,7 @@ class _CommentThreadList extends StatelessWidget {
               child: Text(
                 '没有更多评论了',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFFA0A6B2),
+                  color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -431,6 +450,7 @@ class _CommentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final imageProvider = comment.authorAvatarUrl.isEmpty
         ? null
         : ResizeImage.resizeIfNeeded(
@@ -443,7 +463,10 @@ class _CommentTile extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 19,
-          backgroundColor: const Color(0xFFE8F4FA),
+          backgroundColor: Color.alphaBlend(
+            AppVisualTokens.primaryBlue.withValues(alpha: 0.12),
+            visualTheme.surfaceRaised,
+          ),
           backgroundImage: imageProvider,
           child: imageProvider == null
               ? Text(
@@ -451,7 +474,7 @@ class _CommentTile extends StatelessWidget {
                       ? '?'
                       : comment.authorName.characters.first,
                   style: TextStyle(
-                    color: const Color(0xFF178DB8),
+                    color: AppVisualTokens.primaryBlue,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -473,7 +496,7 @@ class _CommentTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF404756),
+                      color: visualTheme.textSecondary,
                       fontWeight: FontWeight.w900,
                       height: 1.18,
                     ),
@@ -487,7 +510,7 @@ class _CommentTile extends StatelessWidget {
                 Text(
                   comment.createdAtLabel,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFA0A6B2),
+                    color: visualTheme.textTertiary,
                     fontWeight: FontWeight.w700,
                     height: 1.1,
                   ),
@@ -499,7 +522,7 @@ class _CommentTile extends StatelessWidget {
                 timeLinks: comment.timeLinks,
                 onSeekToTime: onSeekToTime,
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFF171923),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w800,
                   height: 1.5,
                 ),
@@ -537,9 +560,13 @@ class _CommentLevelBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFEAF0),
+        color: Color.alphaBlend(
+          AppVisualTokens.biliSourcePink.withValues(alpha: 0.12),
+          visualTheme.surfaceRaised,
+        ),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Padding(
@@ -547,7 +574,7 @@ class _CommentLevelBadge extends StatelessWidget {
         child: Text(
           label,
           style: const TextStyle(
-            color: AppVisualTokens.primaryBlue,
+            color: AppVisualTokens.biliSourcePink,
             fontSize: 10,
             fontWeight: FontWeight.w900,
             height: 1.15,
@@ -618,14 +645,15 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final style =
         widget.style ??
         Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: const Color(0xFF171923),
+          color: visualTheme.textPrimary,
           height: 1.5,
         );
     final linkStyle = style?.copyWith(
-      color: const Color(0xFF178DB8),
+      color: AppVisualTokens.primaryBlue,
       fontWeight: FontWeight.w900,
       decoration: TextDecoration.none,
     );
@@ -707,8 +735,12 @@ class _CommentTimeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Material(
-      color: const Color(0xFFEAF7FC),
+      color: Color.alphaBlend(
+        AppVisualTokens.primaryBlue.withValues(alpha: 0.12),
+        visualTheme.surfaceRaised,
+      ),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -721,13 +753,13 @@ class _CommentTimeChip extends StatelessWidget {
               const Icon(
                 Icons.play_arrow_rounded,
                 size: 16,
-                color: Color(0xFF178DB8),
+                color: AppVisualTokens.primaryBlue,
               ),
               const SizedBox(width: 3),
               Text(
                 link.label,
                 style: const TextStyle(
-                  color: Color(0xFF178DB8),
+                  color: AppVisualTokens.primaryBlue,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                   height: 1.1,
@@ -802,6 +834,7 @@ class _CommentPicture extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final cacheWidth = (MediaQuery.devicePixelRatioOf(context) * 420)
         .round()
         .clamp(280, 960)
@@ -812,21 +845,21 @@ class _CommentPicture extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           DecoratedBox(
-            decoration: const BoxDecoration(color: Color(0xFFE7EAF0)),
+            decoration: BoxDecoration(color: visualTheme.surfaceRaised),
             child: Image.network(
               picture.url,
               fit: BoxFit.cover,
               cacheWidth: cacheWidth,
-              errorBuilder: (_, _, _) => const Icon(
+              errorBuilder: (_, _, _) => Icon(
                 Icons.broken_image_outlined,
-                color: Color(0xFF8C929F),
+                color: visualTheme.textTertiary,
               ),
             ),
           ),
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               border: Border.fromBorderSide(
-                BorderSide(color: Color(0x1A000000)),
+                BorderSide(color: visualTheme.imageOutline),
               ),
             ),
           ),
@@ -843,6 +876,7 @@ class _CommentActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Row(
       children: [
         _CommentPassiveAction(
@@ -865,7 +899,11 @@ class _CommentActionRow extends StatelessWidget {
           label: '',
         ),
         const Spacer(),
-        const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFFADB3BE)),
+        Icon(
+          Icons.more_vert_rounded,
+          size: 20,
+          color: visualTheme.textTertiary,
+        ),
       ],
     );
   }
@@ -884,9 +922,10 @@ class _CommentPassiveAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final color = selected
         ? AppVisualTokens.primaryBlue
-        : const Color(0xFF6D7480);
+        : visualTheme.textSecondary;
     return SizedBox(
       height: 40,
       child: Row(
@@ -924,6 +963,7 @@ class _CommentReplyPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final replies = comment.replies.take(2).toList(growable: false);
     final total = comment.replyCount > replies.length
         ? comment.replyCount
@@ -931,7 +971,7 @@ class _CommentReplyPreview extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: Material(
-        color: const Color(0xFFF5F6FA),
+        color: visualTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(7),
         child: InkWell(
           borderRadius: BorderRadius.circular(7),
@@ -950,7 +990,7 @@ class _CommentReplyPreview extends StatelessWidget {
                   Text(
                     '共$total条回复 >',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF178DB8),
+                      color: AppVisualTokens.primaryBlue,
                       fontWeight: FontWeight.w900,
                       height: 1.2,
                       fontFeatures: const [ui.FontFeature.tabularFigures()],
@@ -975,13 +1015,14 @@ class _NestedReplyLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
           '${reply.authorName}: ',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF178DB8),
+            color: AppVisualTokens.primaryBlue,
             fontWeight: FontWeight.w900,
             height: 1.45,
           ),
@@ -991,7 +1032,7 @@ class _NestedReplyLine extends StatelessWidget {
           timeLinks: reply.timeLinks,
           onSeekToTime: onSeekToTime,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF171923),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
             height: 1.45,
           ),
@@ -1016,14 +1057,15 @@ class _CommentComposerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return SafeArea(
       top: false,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: visualTheme.surface,
           boxShadow: [
             BoxShadow(
-              color: Color(0x12000000),
+              color: visualTheme.shadow,
               blurRadius: 16,
               offset: Offset(0, -6),
             ),
@@ -1046,7 +1088,7 @@ class _CommentComposerBar extends StatelessWidget {
                     hintText: '你猜我的评论区在等谁？',
                     isDense: true,
                     filled: true,
-                    fillColor: const Color(0xFFF0F1F5),
+                    fillColor: visualTheme.surfaceRaised,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 12,
@@ -1063,9 +1105,9 @@ class _CommentComposerBar extends StatelessWidget {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.sentiment_satisfied_alt_rounded,
-                            color: Color(0xFF8C929F),
+                            color: visualTheme.textTertiary,
                           ),
                   ),
                 ),
@@ -1100,6 +1142,7 @@ class _PlaybackBottomSheetScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final height = MediaQuery.sizeOf(context).height * 0.82;
     return SizedBox(
       height: height,
@@ -1116,7 +1159,7 @@ class _PlaybackBottomSheetScaffold extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF171923),
+                      color: visualTheme.textPrimary,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -1127,17 +1170,17 @@ class _PlaybackBottomSheetScaffold extends StatelessWidget {
                     minWidth: 48,
                     minHeight: 48,
                   ),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.close_rounded,
                     size: 30,
-                    color: Color(0xFF9AA0AA),
+                    color: visualTheme.textTertiary,
                   ),
                 ),
                 const SizedBox(width: 4),
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE8EAF0)),
+          Divider(height: 1, color: visualTheme.divider),
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -1158,10 +1201,11 @@ class _CommentReplySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return SizedBox(
       width: double.infinity,
       child: DecoratedBox(
-        decoration: const BoxDecoration(color: Color(0xFFF5F6FA)),
+        decoration: BoxDecoration(color: visualTheme.surfaceMuted),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: Row(
@@ -1170,22 +1214,22 @@ class _CommentReplySummary extends StatelessWidget {
                 child: Text(
                   '相关回复共$totalCount条',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF8C929F),
+                    color: visualTheme.textTertiary,
                     fontWeight: FontWeight.w900,
                     fontFeatures: const [ui.FontFeature.tabularFigures()],
                   ),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.sort_rounded,
                 size: 20,
-                color: Color(0xFF8C929F),
+                color: visualTheme.textTertiary,
               ),
               const SizedBox(width: 5),
               Text(
                 '按时间',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF8C929F),
+                  color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1228,6 +1272,7 @@ class _CommentReplyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Column(
       children: [
         SizedBox(
@@ -1241,7 +1286,7 @@ class _CommentReplyPanel extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFF171923),
+                    color: visualTheme.textPrimary,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1250,16 +1295,16 @@ class _CommentReplyPanel extends StatelessWidget {
                 onPressed: onClose,
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: '关闭评论详情',
-                icon: const Icon(
+                icon: Icon(
                   Icons.close_rounded,
                   size: 28,
-                  color: Color(0xFF9AA0AA),
+                  color: visualTheme.textTertiary,
                 ),
               ),
             ],
           ),
         ),
-        const Divider(height: 1, color: Color(0xFFE8EAF0)),
+        Divider(height: 1, color: visualTheme.divider),
         Expanded(
           child: ListView.builder(
             key: const PageStorageKey<String>('playback-comment-replies'),
@@ -1307,10 +1352,10 @@ class _CommentReplyPanel extends StatelessWidget {
                         showRepliesPreview: false,
                       ),
                       if (replyIndex != replies.length - 1)
-                        const Divider(
+                        Divider(
                           height: 28,
                           thickness: 0.7,
-                          color: Color(0xFFE8EAF0),
+                          color: visualTheme.divider,
                         ),
                     ],
                   ),
@@ -1352,6 +1397,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     if (loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 22),
@@ -1372,7 +1418,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFFB64A5A),
+                color: visualTheme.destructive,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1393,7 +1439,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
           child: Text(
             '暂无相关回复',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8C929F),
+              color: visualTheme.textTertiary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1418,7 +1464,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
         child: Text(
           '没有更多回复了',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: const Color(0xFFA0A6B2),
+            color: visualTheme.textTertiary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1434,13 +1480,14 @@ class _DanmakuEntryPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 20, maxWidth: 140),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFFF8F8FA),
+          color: visualTheme.surfaceRaised,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE9EAF0)),
+          border: Border.all(color: visualTheme.divider),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
@@ -1453,16 +1500,16 @@ class _DanmakuEntryPill extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF9AA0AA),
+                    color: visualTheme.textTertiary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
+              Icon(
                 Icons.chat_bubble_outline_rounded,
                 size: 14,
-                color: Color(0xFF5E6572),
+                color: visualTheme.textSecondary,
               ),
             ],
           ),
@@ -1508,17 +1555,18 @@ class _PlaybackMetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF9AA0AA)),
+        Icon(icon, size: 16, color: visualTheme.textTertiary),
         const SizedBox(width: 4),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF8C929F),
+            color: visualTheme.textTertiary,
             fontWeight: FontWeight.w700,
             fontFeatures: const [ui.FontFeature.tabularFigures()],
           ),
@@ -1546,13 +1594,14 @@ class _PlaybackIntroSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final titleStyle = theme.textTheme.titleLarge?.copyWith(
-      color: const Color(0xFF11131A),
+      color: visualTheme.textPrimary,
       fontWeight: FontWeight.w900,
       height: 1.18,
     );
     final descriptionStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: const Color(0xFF626875),
+      color: visualTheme.textSecondary,
       height: 1.62,
       fontWeight: FontWeight.w500,
     );
@@ -1647,6 +1696,7 @@ class _IntroExpandButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Transform.translate(
       offset: Offset(0, (firstLineHeight - 40) / 2),
       child: IconButton(
@@ -1658,9 +1708,9 @@ class _IntroExpandButton extends StatelessWidget {
           turns: expanded ? 0.5 : 0,
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
-          child: const Icon(
+          child: Icon(
             Icons.keyboard_arrow_down_rounded,
-            color: Color(0xFF9AA0AA),
+            color: visualTheme.textTertiary,
             size: 28,
           ),
         ),
@@ -1678,6 +1728,7 @@ class _PlaybackSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Row(
       children: [
         Expanded(
@@ -1686,7 +1737,7 @@ class _PlaybackSectionHeader extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: const Color(0xFF171923),
+              color: visualTheme.textPrimary,
               fontWeight: FontWeight.w900,
               height: 1.15,
             ),
@@ -1715,12 +1766,13 @@ class _PageSelectionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final cacheWidth = (96 * MediaQuery.devicePixelRatioOf(context))
         .round()
         .clamp(160, 360)
         .toInt();
     return Material(
-      color: const Color(0xFFF7F8FA),
+      color: visualTheme.surfaceRaised,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -1738,28 +1790,28 @@ class _PageSelectionButton extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       DecoratedBox(
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE4E7EC),
+                        decoration: BoxDecoration(
+                          color: visualTheme.surfaceMuted,
                         ),
                         child: coverUrl.isEmpty
-                            ? const Icon(
+                            ? Icon(
                                 Icons.video_library_outlined,
-                                color: Color(0xFF8C929F),
+                                color: visualTheme.textTertiary,
                               )
                             : Image.network(
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: cacheWidth,
-                                errorBuilder: (_, _, _) => const Icon(
+                                errorBuilder: (_, _, _) => Icon(
                                   Icons.broken_image_outlined,
-                                  color: Color(0xFF8C929F),
+                                  color: visualTheme.textTertiary,
                                 ),
                               ),
                       ),
-                      const DecoratedBox(
+                      DecoratedBox(
                         decoration: BoxDecoration(
                           border: Border.fromBorderSide(
-                            BorderSide(color: Color(0x1A000000)),
+                            BorderSide(color: visualTheme.imageOutline),
                           ),
                         ),
                       ),
@@ -1777,7 +1829,7 @@ class _PageSelectionButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF8C929F),
+                        color: visualTheme.textTertiary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1787,7 +1839,7 @@ class _PageSelectionButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: const Color(0xFF171923),
+                        color: visualTheme.textPrimary,
                         fontWeight: FontWeight.w900,
                         height: 1.2,
                       ),
@@ -1798,7 +1850,7 @@ class _PageSelectionButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF8C929F),
+                        color: visualTheme.textTertiary,
                         fontWeight: FontWeight.w700,
                         fontFeatures: const [ui.FontFeature.tabularFigures()],
                       ),
@@ -1807,10 +1859,10 @@ class _PageSelectionButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
+              Icon(
                 Icons.keyboard_arrow_up_rounded,
                 size: 28,
-                color: Color(0xFF9AA0AA),
+                color: visualTheme.textTertiary,
               ),
             ],
           ),
@@ -1864,6 +1916,7 @@ class _OwnerSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final imageProvider = avatarUrl.isEmpty
         ? null
         : ResizeImage.resizeIfNeeded(96, 96, NetworkImage(avatarUrl));
@@ -1871,7 +1924,7 @@ class _OwnerSummary extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 22,
-          backgroundColor: const Color(0xFF29A9DF),
+          backgroundColor: AppVisualTokens.primaryBlue,
           backgroundImage: imageProvider,
           child: imageProvider == null
               ? Text(
@@ -1893,7 +1946,7 @@ class _OwnerSummary extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFF171923),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1903,7 +1956,7 @@ class _OwnerSummary extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF8B909B),
+                  color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -2034,9 +2087,10 @@ class _WatchLaterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final foreground = selected
         ? AppVisualTokens.primaryBlue
-        : const Color(0xFF343A46);
+        : visualTheme.textSecondary;
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
@@ -2062,7 +2116,7 @@ class _WatchLaterButton extends StatelessWidget {
           side: BorderSide(
             color: selected
                 ? AppVisualTokens.primaryBlue40
-                : const Color(0x22343A46),
+                : visualTheme.divider,
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -2090,9 +2144,10 @@ class _ActionStatButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final foreground = selected
         ? AppVisualTokens.primaryBlue
-        : const Color(0xFF343A46);
+        : visualTheme.textSecondary;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(8),
@@ -2129,8 +2184,8 @@ class _ActionStatButton extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF8C929F),
+                style: TextStyle(
+                  color: visualTheme.textTertiary,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   height: 1.1,
@@ -2198,9 +2253,10 @@ class _EpisodePreviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final titleColor = selected
         ? AppVisualTokens.primaryBlue
-        : const Color(0xFF171923);
+        : visualTheme.textPrimary;
     final label = isPgc ? '第 ${page.pageNumber} 话' : 'P${page.pageNumber}';
     return Material(
       color: Colors.transparent,
@@ -2217,12 +2273,12 @@ class _EpisodePreviewTile extends StatelessWidget {
                   width: 174,
                   height: 104,
                   child: (page.coverUrl ?? coverUrl).isEmpty
-                      ? const ColoredBox(color: Color(0xFFC8CAD2))
+                      ? ColoredBox(color: visualTheme.surfaceRaised)
                       : Image.network(
                           page.coverUrl ?? coverUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) =>
-                              const ColoredBox(color: Color(0xFFC8CAD2)),
+                              ColoredBox(color: visualTheme.surfaceRaised),
                         ),
                 ),
               ),
@@ -2259,7 +2315,7 @@ class _EpisodePreviewTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF8C929F),
+                        color: visualTheme.textTertiary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -2291,6 +2347,7 @@ class _RelatedVideoSliverList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     if (items.isEmpty && loading) {
       return const SliverToBoxAdapter(
         child: Padding(
@@ -2303,7 +2360,10 @@ class _RelatedVideoSliverList extends StatelessWidget {
       return SliverToBoxAdapter(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF2F4),
+            color: Color.alphaBlend(
+              visualTheme.destructive.withValues(alpha: 0.12),
+              visualTheme.surfaceRaised,
+            ),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Padding(
@@ -2311,7 +2371,7 @@ class _RelatedVideoSliverList extends StatelessWidget {
             child: Text(
               errorMessage!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8D2A46),
+                color: visualTheme.destructive,
                 height: 1.45,
                 fontWeight: FontWeight.w600,
               ),
@@ -2325,7 +2385,7 @@ class _RelatedVideoSliverList extends StatelessWidget {
         child: Text(
           '暂无相关视频',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF8C929F),
+            color: visualTheme.textTertiary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -2347,10 +2407,10 @@ class _RelatedVideoSliverList extends StatelessWidget {
           );
         }
         if (index.isOdd) {
-          return const Divider(
+          return Divider(
             height: 18,
             thickness: 0.7,
-            color: Color(0xFFE8EAF0),
+            color: visualTheme.divider,
           );
         }
         final item = items[index ~/ 2];
@@ -2378,6 +2438,7 @@ class _RelatedVideoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final coverWidth = constraints.maxWidth < 390 ? 132.0 : 150.0;
@@ -2405,28 +2466,28 @@ class _RelatedVideoTile extends StatelessWidget {
                         fit: StackFit.expand,
                         children: [
                           DecoratedBox(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE4E7EC),
+                            decoration: BoxDecoration(
+                              color: visualTheme.surfaceRaised,
                             ),
                             child: item.coverUrl.isEmpty
-                                ? const Icon(
+                                ? Icon(
                                     Icons.video_library_outlined,
-                                    color: Color(0xFF8C929F),
+                                    color: visualTheme.textTertiary,
                                   )
                                 : Image.network(
                                     item.coverUrl,
                                     fit: BoxFit.cover,
                                     cacheWidth: cacheWidth,
-                                    errorBuilder: (_, _, _) => const Icon(
+                                    errorBuilder: (_, _, _) => Icon(
                                       Icons.broken_image_outlined,
-                                      color: Color(0xFF8C929F),
+                                      color: visualTheme.textTertiary,
                                     ),
                                   ),
                           ),
-                          const DecoratedBox(
+                          DecoratedBox(
                             decoration: BoxDecoration(
                               border: Border.fromBorderSide(
-                                BorderSide(color: Color(0x1A000000)),
+                                BorderSide(color: visualTheme.imageOutline),
                               ),
                             ),
                           ),
@@ -2487,7 +2548,7 @@ class _RelatedVideoTile extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: const Color(0xFF171923),
+                              color: visualTheme.textPrimary,
                               fontWeight: FontWeight.w900,
                               height: 1.25,
                             ),
@@ -2498,7 +2559,7 @@ class _RelatedVideoTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF8C929F),
+                              color: visualTheme.textTertiary,
                               fontWeight: FontWeight.w700,
                               height: 1.1,
                             ),
@@ -2506,10 +2567,10 @@ class _RelatedVideoTile extends StatelessWidget {
                           const Spacer(),
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.play_circle_outline_rounded,
                                 size: 15,
-                                color: Color(0xFF9AA0AA),
+                                color: visualTheme.textTertiary,
                               ),
                               const SizedBox(width: 3),
                               Flexible(
@@ -2518,7 +2579,7 @@ class _RelatedVideoTile extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF8C929F),
+                                    color: visualTheme.textTertiary,
                                     fontWeight: FontWeight.w700,
                                     fontFeatures: const [
                                       ui.FontFeature.tabularFigures(),
@@ -2527,10 +2588,10 @@ class _RelatedVideoTile extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              const Icon(
+                              Icon(
                                 Icons.subtitles_outlined,
                                 size: 15,
-                                color: Color(0xFF9AA0AA),
+                                color: visualTheme.textTertiary,
                               ),
                               const SizedBox(width: 3),
                               Flexible(
@@ -2539,7 +2600,7 @@ class _RelatedVideoTile extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF8C929F),
+                                    color: visualTheme.textTertiary,
                                     fontWeight: FontWeight.w700,
                                     fontFeatures: const [
                                       ui.FontFeature.tabularFigures(),
@@ -2579,9 +2640,13 @@ class _PlaybackInlineError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF2F4),
+        color: Color.alphaBlend(
+          visualTheme.destructive.withValues(alpha: 0.12),
+          visualTheme.surfaceRaised,
+        ),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Padding(
@@ -2592,7 +2657,7 @@ class _PlaybackInlineError extends StatelessWidget {
             Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
-                color: const Color(0xFF9A2947),
+                color: visualTheme.destructive,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2600,7 +2665,7 @@ class _PlaybackInlineError extends StatelessWidget {
             Text(
               message,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF6F3147),
+                color: visualTheme.textSecondary,
                 height: 1.6,
               ),
             ),
@@ -2625,9 +2690,10 @@ class _InfoBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: visualTheme.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
@@ -2638,7 +2704,7 @@ class _InfoBlock extends StatelessWidget {
             Text(
               title,
               style: theme.textTheme.titleSmall?.copyWith(
-                color: const Color(0xFF171923),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -2660,6 +2726,7 @@ class _SnapshotRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -2670,7 +2737,7 @@ class _SnapshotRow extends StatelessWidget {
             child: Text(
               label,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF7B8B9F),
+                color: visualTheme.textTertiary,
               ),
             ),
           ),
@@ -2678,7 +2745,7 @@ class _SnapshotRow extends StatelessWidget {
             child: Text(
               value,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF162033),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
@@ -2699,6 +2766,7 @@ class _BiliPlaybackErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
 
     return SafeArea(
       child: Center(
@@ -2706,11 +2774,11 @@ class _BiliPlaybackErrorState extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 460),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: visualTheme.surface,
               borderRadius: BorderRadius.circular(30),
-              boxShadow: const <BoxShadow>[
+              boxShadow: <BoxShadow>[
                 BoxShadow(
-                  color: Color(0x140A1628),
+                  color: visualTheme.shadow,
                   blurRadius: 24,
                   offset: Offset(0, 14),
                 ),
@@ -2725,7 +2793,7 @@ class _BiliPlaybackErrorState extends StatelessWidget {
                   Text(
                     '播放器启动失败',
                     style: theme.textTheme.titleLarge?.copyWith(
-                      color: const Color(0xFF162033),
+                      color: visualTheme.textPrimary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -2733,7 +2801,7 @@ class _BiliPlaybackErrorState extends StatelessWidget {
                   Text(
                     error.toString(),
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF4B5B6E),
+                      color: visualTheme.textSecondary,
                       height: 1.6,
                     ),
                   ),

@@ -7,6 +7,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
     VesperPlayerSnapshot snapshot,
   ) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final timeline = snapshot.timeline;
 
     return Column(
@@ -17,7 +18,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         Text(
           '分辨率',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -27,7 +28,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         Text(
           '播放策略',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -37,7 +38,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         Text(
           '倍速',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -47,7 +48,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         Text(
           '字幕',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -57,7 +58,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
         Text(
           '离线缓存',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -101,6 +102,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
     VesperPlayerSnapshot snapshot,
   ) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final biliTracks = _playbackSelectionTracks(snapshot);
     final availableIds = _availableBiliQualityIds(biliTracks);
     final selectedId = _selectedBiliQualityId;
@@ -108,7 +110,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
       return Text(
         '当前播放链路无可选清晰度。',
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: const Color(0xFF8B9098),
+          color: visualTheme.textTertiary,
           fontWeight: FontWeight.w600,
         ),
       );
@@ -181,6 +183,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
     VesperPlayerSnapshot snapshot,
   ) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final tracks = _subtitleTracks(snapshot);
     if (tracks.isEmpty) {
       final advertised =
@@ -197,7 +200,7 @@ extension _BiliPlaybackTuning on _BiliPlaybackPageState {
                 ? '当前视频没有可用字幕。'
                 : '字幕正在准备，请稍后重试。'),
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: const Color(0xFF8B9098),
+          color: visualTheme.textTertiary,
           fontWeight: FontWeight.w600,
         ),
       );

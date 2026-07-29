@@ -5,18 +5,19 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/system_presentation.dart';
-import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_logout_service.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
-import 'package:bilibili_player/download/download.dart';
-import 'package:bilibili_player/app/home_page.dart';
-import 'package:bilibili_player/main.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_theme_controller.dart';
+import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_logout_service.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/app/home_page.dart';
+import 'package:vesper_media/main.dart';
 
 class BiliSettingsPage extends StatefulWidget {
   const BiliSettingsPage({
@@ -27,7 +28,7 @@ class BiliSettingsPage extends StatefulWidget {
     this.offlineController,
   });
 
-  final BiliAppSettings? appSettings;
+  final AppSettingsStore? appSettings;
   final BiliClient? client;
   final BiliSessionStore? sessionStore;
   final BiliOfflineDownloadController? offlineController;
@@ -37,7 +38,7 @@ class BiliSettingsPage extends StatefulWidget {
 }
 
 class _BiliSettingsPageState extends State<BiliSettingsPage> {
-  late final BiliAppSettings _appSettings;
+  late final AppSettingsStore _appSettings;
   late final BiliClient _client;
   late final BiliSessionStore _sessionStore;
   late final BiliOfflineDownloadController _offlineController;
@@ -49,7 +50,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   @override
   void initState() {
     super.initState();
-    _appSettings = widget.appSettings ?? const BiliAppSettings();
+    _appSettings = widget.appSettings ?? const AppSettingsStore();
     _client = widget.client ?? BiliClient.instance;
     _sessionStore = widget.sessionStore ?? const BiliSessionStore();
     _offlineController =
@@ -126,7 +127,10 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
             ),
           );
         },
-        transitionDuration: const Duration(milliseconds: 420),
+        transitionDuration: AppVisualTokens.motionDuration(
+          context,
+          AppVisualTokens.overlayDuration,
+        ),
       ),
       (_) => false,
     );
@@ -200,22 +204,106 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
           : SystemUiMode.edgeToEdge,
     );
     setBiliSystemUiOverlayStyle(
-      mode == BiliUiMode.tv ? biliTvSystemUiStyle : biliAppSystemUiStyle,
+      mode == BiliUiMode.tv
+          ? biliTvSystemUiStyle
+          : appSystemUiStyleForBrightness(_preferredAppBrightness()),
     );
+  }
+
+  Brightness _preferredAppBrightness() {
+    return switch (AppThemeScope.of(context).preference) {
+      AppThemePreference.system =>
+        WidgetsBinding.instance.platformDispatcher.platformBrightness,
+      AppThemePreference.light => Brightness.light,
+      AppThemePreference.dark => Brightness.dark,
+    };
+  }
+
+  Future<void> _showThemePicker() async {
+    final controller = AppThemeScope.of(context);
+    await showBiliGlassSheet<void>(
+      context: context,
+      appearance: BiliGlassSheetAppearance.readable,
+      maxContentHeightFactor: 0.62,
+      builder: (sheetContext) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 14),
+              child: Text(
+                '外观',
+                style: Theme.of(
+                  sheetContext,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+            AppGroupedSurface(
+              children: [
+                for (final preference in AppThemePreference.values)
+                  AppSettingsRow(
+                    icon: _themePreferenceIcon(preference),
+                    title: _themePreferenceLabel(preference),
+                    subtitle: _themePreferenceDescription(preference),
+                    trailing: controller.preference == preference
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: AppVisualTokens.primaryBlue,
+                          )
+                        : const SizedBox(width: 24),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      unawaited(_setThemePreference(preference));
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _setThemePreference(AppThemePreference preference) async {
+    try {
+      await AppThemeScope.of(context).setPreference(preference);
+    } catch (error) {
+      if (mounted) {
+        _showMessage('保存主题失败：$error');
+      }
+    }
+  }
+
+  Future<void> _openOfflineCache() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            OfflineCachePage(controller: _offlineController, client: _client),
+      ),
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return AppGlassScaffold(
-      backgroundColor: const Color(0xFFF3F6FB),
+      backgroundColor: visualTheme.background,
       statusBarStyle: GlassStatusBarStyle.auto,
       extendBody: false,
-      appBar: const GlassAppBar(
+      appBar: GlassAppBar(
         centerTitle: false,
         title: Text(
           '设置',
           style: TextStyle(
-            color: Color(0xFF20232B),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w900,
             fontSize: 22,
           ),
@@ -230,119 +318,88 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        4,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
-        _buildSectionLabel('显示模式'),
-        SignalBuilder(builder: _buildDisplayModeCard),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            '开启后应用将在手机和平板上也显示 TV 界面。'
-            '关闭后将根据设备自动选择界面。切换后需返回首页生效。',
-            style: TextStyle(
-              color: const Color(0xFF8B9098).withValues(alpha: 0.75),
-              fontSize: 12,
-              height: 1.5,
+        const AppSectionLabel('外观与显示'),
+        AppGroupedSurface(
+          children: [
+            AppSettingsRow(
+              icon: _themePreferenceIcon(AppThemeScope.of(context).preference),
+              title: '外观',
+              subtitle: _themePreferenceLabel(
+                AppThemeScope.of(context).preference,
+              ),
+              onTap: _showThemePicker,
             ),
-          ),
+            SignalBuilder(builder: _buildDisplayModeRow),
+          ],
         ),
         SignalBuilder(builder: _buildReturnHomeAction),
-        const SizedBox(height: 28),
-        _buildSectionLabel('账号'),
-        SignalBuilder(builder: _buildAccountCard),
-        const SizedBox(height: 28),
-        _buildSectionLabel('关于'),
-        GlassCard(
-          useOwnLayer: true,
-          quality: GlassQuality.minimal,
-          padding: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            leading: const Icon(
-              Icons.info_outline_rounded,
-              color: AppVisualTokens.primaryBlue,
+        const AppSectionLabel('Bilibili 账号'),
+        AppGroupedSurface(children: [SignalBuilder(builder: _buildAccountRow)]),
+        const AppSectionLabel('离线数据'),
+        AppGroupedSurface(
+          children: [
+            AppSettingsRow(
+              icon: Icons.download_done_rounded,
+              title: '离线缓存',
+              subtitle: '管理下载、存储占用和导出内容',
+              onTap: () => unawaited(_openOfflineCache()),
             ),
-            title: const Text(
-              'bilibili_player',
-              style: TextStyle(fontWeight: FontWeight.w700),
+          ],
+        ),
+        const AppSectionLabel('关于'),
+        const AppGroupedSurface(
+          children: [
+            AppSettingsRow(
+              icon: Icons.play_circle_outline_rounded,
+              title: 'Vesper',
+              subtitle: '版本 1.2.0',
+              trailing: SizedBox(width: 24),
             ),
-            subtitle: const Text(
-              '0.1.0 — TV Preview',
-              style: TextStyle(fontSize: 13),
-            ),
-          ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildAccountCard(BuildContext context) {
+  Widget _buildAccountRow(BuildContext context) {
     final loggedIn = _hasAuthenticatedSession.value;
     final loggingOut = _loggingOut.value;
-    return GlassCard(
-      useOwnLayer: true,
-      quality: GlassQuality.minimal,
-      padding: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        leading: Icon(
-          loggedIn
-              ? Icons.account_circle_rounded
-              : Icons.account_circle_outlined,
-          color: AppVisualTokens.biliSourcePink,
-        ),
-        title: const Text(
-          'Bilibili 账号',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text(
-          loggedIn ? '当前已保存本地登录 cookie' : '当前未保存本地登录 cookie',
-          style: const TextStyle(color: Color(0xFF8B9098), fontSize: 13),
-        ),
-        trailing: loggedIn
-            ? TextButton(
-                onPressed: loggingOut ? null : _confirmLogout,
-                child: loggingOut
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('退出登录'),
-              )
-            : null,
-      ),
+    return AppSettingsRow(
+      icon: loggedIn
+          ? Icons.account_circle_rounded
+          : Icons.account_circle_outlined,
+      iconColor: AppVisualTokens.biliSourcePink,
+      title: loggedIn ? '已登录' : '未登录',
+      subtitle: loggedIn ? '登录信息仅保存在本机' : '可在“我的”页面扫码登录',
+      trailing: loggedIn
+          ? TextButton(
+              onPressed: loggingOut ? null : _confirmLogout,
+              child: loggingOut
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('退出'),
+            )
+          : const SizedBox(width: 24),
     );
   }
 
-  Widget _buildDisplayModeCard(BuildContext context) {
+  Widget _buildDisplayModeRow(BuildContext context) {
     final forceTvMode = _forceTvMode.value;
-    return GlassCard(
-      useOwnLayer: true,
-      quality: GlassQuality.minimal,
-      padding: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
-        secondary: const Icon(
-          Icons.tv_rounded,
-          color: AppVisualTokens.primaryBlue,
-        ),
-        title: const Text(
-          '强制 TV 模式',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF20232B),
-          ),
-        ),
-        subtitle: Text(
-          forceTvMode ? '当前：TV 模式界面' : '当前：根据设备自动选择',
-          style: const TextStyle(color: Color(0xFF8B9098), fontSize: 13),
-        ),
-        value: forceTvMode,
-        onChanged: _toggleForceTvMode,
-        activeThumbColor: AppVisualTokens.primaryBlue,
-      ),
+    return AppSettingsRow(
+      icon: Icons.tv_rounded,
+      title: '强制 TV 模式',
+      subtitle: forceTvMode ? '返回首页后切换为 TV 界面' : '根据设备自动选择界面',
+      onTap: () => unawaited(_toggleForceTvMode(!forceTvMode)),
+      trailing: Switch(value: forceTvMode, onChanged: _toggleForceTvMode),
     );
   }
 
@@ -351,8 +408,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Center(
+      padding: const EdgeInsets.only(top: 12),
+      child: SizedBox(
+        width: double.infinity,
         child: AppGlassButton(
           onPressed: _switchHome,
           icon: Icons.home_rounded,
@@ -362,22 +420,32 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     );
   }
 
-  Widget _buildSectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF8B9098),
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
   bool _isAuthenticatedCookieSet(Map<String, String> cookies) {
     return (cookies['SESSDATA'] ?? '').isNotEmpty &&
         (cookies['bili_jct'] ?? '').isNotEmpty;
   }
+}
+
+String _themePreferenceLabel(AppThemePreference preference) {
+  return switch (preference) {
+    AppThemePreference.system => '跟随系统',
+    AppThemePreference.light => '浅色',
+    AppThemePreference.dark => '深色',
+  };
+}
+
+String _themePreferenceDescription(AppThemePreference preference) {
+  return switch (preference) {
+    AppThemePreference.system => '随设备的外观设置自动切换',
+    AppThemePreference.light => '始终使用银雾浅色界面',
+    AppThemePreference.dark => '始终使用石墨深色界面',
+  };
+}
+
+IconData _themePreferenceIcon(AppThemePreference preference) {
+  return switch (preference) {
+    AppThemePreference.system => Icons.brightness_auto_rounded,
+    AppThemePreference.light => Icons.light_mode_rounded,
+    AppThemePreference.dark => Icons.dark_mode_rounded,
+  };
 }

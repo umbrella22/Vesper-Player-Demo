@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
@@ -18,6 +20,7 @@ Future<BiliUserProfile?> showBiliQrLoginSheet({
     context: context,
     maxContentHeightFactor: 0.86,
     contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+    appearance: BiliGlassSheetAppearance.readable,
     builder: (_) =>
         BiliQrLoginSheet(client: client, sessionStore: sessionStore),
   );
@@ -72,6 +75,8 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final qrSize = (MediaQuery.sizeOf(context).height * 0.30)
         .clamp(200.0, 240.0)
         .toDouble();
@@ -95,7 +100,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
                     '扫码登录哔哩哔哩',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF142237),
+                      color: visualTheme.textPrimary,
                     ),
                   ),
                 ),
@@ -108,19 +113,31 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              '登录后的 cookie 会带入搜索、详情、推荐流与播放解析。当前实现按 Web 端二维码登录流程走。',
+              '使用哔哩哔哩 App 扫码并确认，登录状态将保存在本机。',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: visualTheme.textSecondary,
                 height: 1.5,
               ),
             ),
             const SizedBox(height: 24),
             Center(
               child: DecoratedBox(
+                key: const ValueKey<String>('bili-qr-code-surface'),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0x1A142237)),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.1),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.28 : 0.08,
+                      ),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(18),
@@ -147,6 +164,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
 
   Widget _buildStatusMessage(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final message = _controller.statusMessage;
     final timestampMs = _controller.pollResult?.timestampMs;
     return Column(
@@ -159,8 +177,8 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
             key: ValueKey<String>(message),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: _controller.errorMessage == null
-                  ? const Color(0xFF526477)
-                  : const Color(0xFF9A3453),
+                  ? visualTheme.textSecondary
+                  : theme.colorScheme.error,
               height: 1.5,
             ),
           ),

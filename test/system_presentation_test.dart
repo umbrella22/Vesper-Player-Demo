@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:bilibili_player/app/system_presentation.dart';
+import 'package:vesper_media/app/system_presentation.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +51,19 @@ void main() {
     expect(calls.single.method, 'SystemChrome.setEnabledSystemUIMode');
     expect(calls.single.arguments, 'SystemUiMode.immersiveSticky');
   });
+
+  test(
+    'playback keeps light status icons and theme-aware navigation icons',
+    () {
+      final light = playbackSystemUiStyleForBrightness(Brightness.light);
+      final dark = playbackSystemUiStyleForBrightness(Brightness.dark);
+
+      expect(light.statusBarIconBrightness, Brightness.light);
+      expect(light.systemNavigationBarIconBrightness, Brightness.dark);
+      expect(dark.statusBarIconBrightness, Brightness.light);
+      expect(dark.systemNavigationBarIconBrightness, Brightness.light);
+    },
+  );
 
   test('returning from tv mode restores app system overlays', () async {
     final calls = <MethodCall>[];

@@ -2,9 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
 
 final class BiliTvDialogAction<T> {
   const BiliTvDialogAction({
@@ -28,7 +28,7 @@ typedef BiliTvGlassOverlayBuilder =
 Future<T?> showBiliTvGlassOverlay<T>({
   required BuildContext context,
   required BiliTvGlassOverlayBuilder builder,
-  double maxWidth = 560,
+  double maxWidth = 620,
   String debugLabel = 'tv_dialog',
 }) {
   assert(maxWidth > 0);
@@ -40,7 +40,7 @@ Future<T?> showBiliTvGlassOverlay<T>({
     context: context,
     barrierDismissible: false,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: const Color(0xB8000000),
+    barrierColor: const Color(0xCC000000),
     transitionDuration: transitionDuration,
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -60,7 +60,7 @@ Future<T?> showBiliTvGlassOverlay<T>({
       void dismiss() => Navigator.of(dialogContext).pop();
 
       return Theme(
-        data: AppVisualTokens.darkTheme(),
+        data: AppVisualTokens.tvTheme(),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -99,7 +99,7 @@ Future<T?> showBiliTvGlassDialog<T>({
   required String message,
   required IconData icon,
   required List<BiliTvDialogAction<T>> actions,
-  double maxWidth = 560,
+  double maxWidth = 620,
 }) {
   assert(actions.isNotEmpty && actions.length <= 3);
   assert(actions.where((action) => action.autofocus).length <= 1);
@@ -158,92 +158,104 @@ class BiliTvGlassDialogSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const outerRadius = 26.0;
+    const outerRadius = 24.0;
+    final highContrast = MediaQuery.highContrastOf(context);
+    final content = DecoratedBox(
+      key: surfaceKey,
+      decoration: BoxDecoration(
+        color: highContrast ? const Color(0xFF1B1E24) : const Color(0xF21B1E24),
+        borderRadius: BorderRadius.circular(outerRadius),
+        border: Border.all(
+          color: highContrast
+              ? const Color(0xCCFFFFFF)
+              : const Color(0x38FFFFFF),
+          width: highContrast ? 1.5 : 1,
+        ),
+      ),
+      child: SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(36, 34, 36, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: const Color(0x1FFFFFFF),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1AFFFFFF),
+                        blurRadius: 0,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: const Color(0xF2FFFFFF), size: 28),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (message case final value?) ...[
+              const SizedBox(height: 22),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Color(0xC7FFFFFF),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
+              ),
+            ],
+            if (this.content case final value?) ...[
+              const SizedBox(height: 24),
+              value,
+            ],
+            if (footer case final value?) ...[
+              const SizedBox(height: 30),
+              value,
+            ],
+          ],
+        ),
+      ),
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(outerRadius),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 32,
-            offset: Offset(0, 16),
+            color: Color(0x80000000),
+            blurRadius: 40,
+            offset: Offset(0, 18),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(outerRadius),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: DecoratedBox(
-            key: surfaceKey,
-            decoration: BoxDecoration(
-              color: const Color(0xF01A1C22),
-              borderRadius: BorderRadius.circular(outerRadius),
-              border: Border.all(color: const Color(0x38FFFFFF)),
-            ),
-            child: SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(30, 28, 30, 26),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: const Color(0x18FFFFFF),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: Icon(
-                          icon,
-                          color: const Color(0xE6FFFFFF),
-                          size: 27,
-                        ),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 25,
-                            fontWeight: FontWeight.w800,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (message case final value?) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        color: Color(0xC7FFFFFF),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                  if (content case final value?) ...[
-                    const SizedBox(height: 22),
-                    value,
-                  ],
-                  if (footer case final value?) ...[
-                    const SizedBox(height: 28),
-                    value,
-                  ],
-                ],
+        child: highContrast
+            ? content
+            : BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: content,
               ),
-            ),
-          ),
-        ),
       ),
     );
   }

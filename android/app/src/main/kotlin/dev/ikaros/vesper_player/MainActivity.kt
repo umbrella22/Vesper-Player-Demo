@@ -1,4 +1,4 @@
-package dev.ikaros.bilibili_player
+package dev.ikaros.vesper_player
 
 import android.app.UiModeManager
 import android.content.res.Configuration
@@ -26,7 +26,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/platform",
+            "dev.ikaros.vesper_player/platform",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isTv" -> result.success(isTvDevice())
@@ -38,7 +38,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/device_controls",
+            "dev.ikaros.vesper_player/device_controls",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getBrightness" -> result.success(readBrightness().toDouble())
@@ -57,7 +57,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/download_plugin",
+            "dev.ikaros.vesper_player/download_plugin",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "bundledDownloadPluginLibraryPaths" ->
@@ -68,7 +68,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/player_plugins",
+            "dev.ikaros.vesper_player/player_plugins",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "bundledSourceNormalizerPluginLibraryPaths" ->
@@ -79,7 +79,7 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/storage_space",
+            "dev.ikaros.vesper_player/storage_space",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getStorageUsage" -> result.success(deviceStorageUsage())
@@ -89,13 +89,13 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.bilibili_player/media_export",
+            "dev.ikaros.vesper_player/media_export",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "exportMp4ToGallery" -> {
                     val sourcePath = call.argument<String>("sourcePath") ?: ""
                     val displayName =
-                        call.argument<String>("displayName") ?: "bilibili-offline-video.mp4"
+                        call.argument<String>("displayName") ?: "vesper-offline-video.mp4"
                     try {
                         result.success(exportMp4ToGallery(sourcePath, displayName))
                     } catch (error: Exception) {
@@ -221,7 +221,7 @@ class MainActivity : FlutterFragmentActivity() {
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Bilibili Player")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Vesper")
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val resolver = contentResolver
@@ -245,7 +245,7 @@ class MainActivity : FlutterFragmentActivity() {
     private fun exportMp4ToPublicMovies(source: File, displayName: String): String {
         val directory = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-            "Bilibili Player",
+            "Vesper",
         )
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("无法创建相册导出目录。")
@@ -276,7 +276,7 @@ class MainActivity : FlutterFragmentActivity() {
         val sanitized = displayName
             .replace(Regex("""[\\/:*?"<>|]+"""), "-")
             .trim()
-            .ifBlank { "bilibili-offline-video.mp4" }
+            .ifBlank { "vesper-offline-video.mp4" }
         return if (sanitized.endsWith(".mp4", ignoreCase = true)) sanitized else "$sanitized.mp4"
     }
 

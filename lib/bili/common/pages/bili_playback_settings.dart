@@ -19,6 +19,7 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
       barrierColor: Colors.black.withValues(alpha: 0.40),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (dialogContext, _, _) {
+        final visualTheme = AppVisualTheme.of(dialogContext);
         final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
             .clamp(
               MediaQuery.sizeOf(dialogContext).width * 0.28,
@@ -28,7 +29,7 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
         return Align(
           alignment: Alignment.centerLeft,
           child: Material(
-            color: const Color(0xFFF4F4F8),
+            color: visualTheme.background,
             borderRadius: const BorderRadius.horizontal(
               right: Radius.circular(22),
             ),
@@ -74,11 +75,12 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
   }
 
   Future<void> _showSettingsSheet(VesperPlayerController controller) {
+    final visualTheme = AppVisualTheme.of(context);
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: const Color(0xFFF4F4F8),
+      backgroundColor: visualTheme.background,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.82,
       ),
@@ -99,8 +101,15 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
                 return SingleChildScrollView(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppVisualTheme.of(context).surface,
                       borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppVisualTheme.of(context).shadow,
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(18),
@@ -148,6 +157,7 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
       barrierColor: Colors.black.withValues(alpha: 0.40),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (dialogContext, _, _) {
+        final visualTheme = AppVisualTheme.of(dialogContext);
         final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
             .clamp(
               MediaQuery.sizeOf(dialogContext).width * 0.28,
@@ -157,7 +167,7 @@ extension _BiliPlaybackSettingsSurface on _BiliPlaybackPageState {
         return Align(
           alignment: Alignment.centerLeft,
           child: Material(
-            color: const Color(0xFFF4F4F8),
+            color: visualTheme.background,
             borderRadius: const BorderRadius.horizontal(
               right: Radius.circular(22),
             ),

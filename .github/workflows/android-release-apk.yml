@@ -118,7 +118,7 @@ jobs:
         run: |
           mkdir -p artifacts
           tag_name="${GITHUB_REF_NAME//\//-}"
-          apk_name="bilibili-player-${tag_name}-android-arm64-release.apk"
+          apk_name="vesper-${tag_name}-android-arm64-release.apk"
           apk_path="build/app/outputs/flutter-apk/app-release.apk"
           if [[ ! -f "$apk_path" ]]; then
             apk_path="$(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*release*.apk' | sort | head -n 1)"

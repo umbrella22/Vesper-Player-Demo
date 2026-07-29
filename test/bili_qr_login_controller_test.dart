@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_login_controller.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/widgets/bili_qr_login_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -76,35 +76,34 @@ void main() {
       },
     );
 
-    testWidgets(
-      'cancel ignores an in-flight confirmed result',
-      (WidgetTester tester) async {
-        final pollCompleter = Completer<BiliQrLoginPollResult>();
-        final client = _FakeQrLoginClient()
-          ..pollSteps.add(() => pollCompleter.future);
-        var confirmedCalls = 0;
-        final controller = _buildController(
-          client,
-          onConfirmed: (_) => confirmedCalls += 1,
-        );
-        addTearDown(controller.dispose);
+    testWidgets('cancel ignores an in-flight confirmed result', (
+      WidgetTester tester,
+    ) async {
+      final pollCompleter = Completer<BiliQrLoginPollResult>();
+      final client = _FakeQrLoginClient()
+        ..pollSteps.add(() => pollCompleter.future);
+      var confirmedCalls = 0;
+      final controller = _buildController(
+        client,
+        onConfirmed: (_) => confirmedCalls += 1,
+      );
+      addTearDown(controller.dispose);
 
-        await controller.start();
-        expect(client.pollCalls, 1);
+      await controller.start();
+      expect(client.pollCalls, 1);
 
-        controller.cancel();
-        pollCompleter.complete(
-          const BiliQrLoginPollResult(
-            status: BiliQrLoginStatus.confirmed,
-            message: '登录成功',
-          ),
-        );
-        await tester.pump();
+      controller.cancel();
+      pollCompleter.complete(
+        const BiliQrLoginPollResult(
+          status: BiliQrLoginStatus.confirmed,
+          message: '登录成功',
+        ),
+      );
+      await tester.pump();
 
-        expect(client.fetchProfileCalls, 0);
-        expect(confirmedCalls, 0);
-      },
-    );
+      expect(client.fetchProfileCalls, 0);
+      expect(confirmedCalls, 0);
+    });
   });
 }
 

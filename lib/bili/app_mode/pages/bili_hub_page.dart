@@ -4,18 +4,18 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
-import 'package:bilibili_player/download/download.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
+import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
+import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_hub_page.dart';
 import 'bili_library_page.dart';
 import 'bili_settings_page.dart';
@@ -345,8 +345,9 @@ class _BiliHubPageState extends State<BiliHubPage> {
     return SignalBuilder(
       builder: (context) {
         final selectedTab = _viewModel.selectedTab.value;
+        final visualTheme = AppVisualTheme.of(context);
         return AppGlassScaffold(
-          backgroundColor: const Color(0xFFF3F6FB),
+          backgroundColor: visualTheme.background,
           statusBarStyle: GlassStatusBarStyle.auto,
           extendBody: true,
           appBarHeight: _homeAppBarHeight,

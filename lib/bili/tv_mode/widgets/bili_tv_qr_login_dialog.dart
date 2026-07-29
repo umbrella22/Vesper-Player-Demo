@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_code_view.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_login_controller.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/widgets/bili_qr_code_view.dart';
+import 'package:vesper_media/bili/common/widgets/bili_qr_login_controller.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 
 Future<BiliUserProfile?> showBiliTvQrLoginDialog({
   required BuildContext context,
@@ -17,7 +17,7 @@ Future<BiliUserProfile?> showBiliTvQrLoginDialog({
 }) {
   return showBiliTvGlassOverlay<BiliUserProfile>(
     context: context,
-    maxWidth: 820,
+    maxWidth: 930,
     debugLabel: 'tv_qr_login_dialog',
     builder: (dialogContext, dismiss) => BiliTvQrLoginDialog(
       client: client,
@@ -120,39 +120,30 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
         builder: (context, _) {
           final screenSize = MediaQuery.sizeOf(context);
           final compact = screenSize.height < 560;
-          final qrSize = (screenSize.height * (compact ? 0.28 : 0.30))
-              .clamp(132.0, 230.0)
+          final qrSize = (screenSize.height * (compact ? 0.34 : 0.32))
+              .clamp(132.0, 250.0)
               .toDouble();
           return BiliTvGlassDialogSurface(
-            title: '扫码登录',
+            title: '登录 Bilibili 账号',
             icon: Icons.qr_code_scanner_rounded,
             scrollController: _scrollController,
             surfaceKey: const ValueKey<String>('bili-tv-qr-login-surface'),
             content: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildQrSurface(qrSize),
-                SizedBox(width: compact ? 22 : 30),
-                Expanded(child: _buildStatusPanel(qrSize, compact: compact)),
+                _buildQrColumn(qrSize, compact: compact),
+                SizedBox(width: compact ? 24 : 36),
+                Expanded(child: _buildLoginPanel(qrSize, compact: compact)),
               ],
             ),
             footer: Row(
               children: [
                 Expanded(
                   child: BiliTvDialogButton(
-                    label: '关闭',
-                    icon: Icons.close_rounded,
-                    autofocus: true,
-                    debugLabel: 'tv_qr_login_close',
-                    onTap: _dismiss,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: BiliTvDialogButton(
                     label: '刷新二维码',
                     icon: Icons.refresh_rounded,
-                    enabled: _controller.canRefresh,
+                    autofocus: true,
+                    enabled: !_controller.isLoading,
                     debugLabel: 'tv_qr_login_refresh',
                     onTap: () => unawaited(_controller.refresh()),
                   ),
@@ -160,11 +151,10 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: BiliTvDialogButton(
-                    label: _controller.checkLabel,
-                    icon: Icons.sync_rounded,
-                    enabled: _controller.canCheck,
-                    debugLabel: 'tv_qr_login_check',
-                    onTap: () => unawaited(_controller.checkNow()),
+                    label: '取消',
+                    icon: Icons.close_rounded,
+                    debugLabel: 'tv_qr_login_cancel',
+                    onTap: _dismiss,
                   ),
                 ),
               ],
@@ -175,76 +165,156 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
     );
   }
 
-  Widget _buildQrSurface(double qrSize) {
-    return DecoratedBox(
-      key: const ValueKey<String>('bili-tv-qr-code-surface'),
+  Widget _buildQrColumn(double qrSize, {required bool compact}) {
+    return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF2A2D34),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0x24FFFFFF)),
         boxShadow: const [
-          BoxShadow(color: Color(0x1AFFFFFF), spreadRadius: 1),
           BoxShadow(
-            color: Color(0x55000000),
-            blurRadius: 22,
-            offset: Offset(0, 10),
+            color: Color(0x40000000),
+            blurRadius: 20,
+            offset: Offset(0, 9),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: SizedBox.square(
-          dimension: qrSize,
-          child: BiliQrCodeView(
-            ticket: _controller.ticket,
-            isLoading: _controller.isLoading,
+      padding: EdgeInsets.all(compact ? 14 : 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DecoratedBox(
+            key: const ValueKey<String>('bili-tv-qr-code-surface'),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SizedBox.square(
+                dimension: qrSize,
+                child: BiliQrCodeView(
+                  ticket: _controller.ticket,
+                  isLoading: _controller.isLoading,
+                ),
+              ),
+            ),
           ),
-        ),
+          SizedBox(height: compact ? 10 : 14),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: _controller.errorMessage == null
+                      ? const Color(0xFF57D38C)
+                      : const Color(0xFFFF7B83),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  _controller.errorMessage == null
+                      ? '二维码有效，请使用手机扫码'
+                      : '二维码需要刷新',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xB3FFFFFF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatusPanel(double qrSize, {required bool compact}) {
+  Widget _buildLoginPanel(double qrSize, {required bool compact}) {
     final error = _controller.errorMessage != null;
     final timestampMs = _controller.pollResult?.timestampMs;
     return SizedBox(
-      height: qrSize + 28,
+      height: qrSize + (compact ? 58 : 66),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '使用手机端哔哩哔哩扫码并确认',
+            '登录后可以同步收藏、关注与播放记录。',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              height: 1.25,
+              color: Color(0xA6FFFFFF),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
             ),
           ),
-          SizedBox(height: compact ? 8 : 12),
-          AnimatedSwitcher(
+          SizedBox(height: compact ? 10 : 16),
+          const _TvLoginStep(index: 1, label: '打开哔哩哔哩客户端'),
+          SizedBox(height: compact ? 7 : 10),
+          const _TvLoginStep(index: 2, label: '使用扫一扫扫描左侧二维码'),
+          SizedBox(height: compact ? 7 : 10),
+          const _TvLoginStep(index: 3, label: '在手机上确认登录'),
+          const Spacer(),
+          AnimatedContainer(
             duration: AppVisualTokens.motionDuration(
               context,
               AppVisualTokens.overlayDuration,
             ),
-            child: Text(
-              _controller.statusMessage,
-              key: ValueKey<String>(_controller.statusMessage),
-              maxLines: compact ? 3 : 4,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: error ? const Color(0x18FF7B83) : const Color(0x14FFFFFF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
                 color: error
-                    ? const Color(0xFFFFB4AB)
-                    : const Color(0xD9FFFFFF),
-                fontSize: compact ? 14 : 16,
-                fontWeight: FontWeight.w500,
-                height: 1.45,
+                    ? const Color(0x40FF7B83)
+                    : const Color(0x1FFFFFFF),
               ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  error ? Icons.error_outline_rounded : Icons.sync_rounded,
+                  color: error
+                      ? const Color(0xFFFFA1A7)
+                      : const Color(0xB3FFFFFF),
+                  size: 18,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: AppVisualTokens.motionDuration(
+                      context,
+                      AppVisualTokens.overlayDuration,
+                    ),
+                    child: Text(
+                      _controller.statusMessage,
+                      key: ValueKey<String>(_controller.statusMessage),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: error
+                            ? const Color(0xFFFFB4AB)
+                            : const Color(0xD9FFFFFF),
+                        fontSize: compact ? 12 : 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (timestampMs != null) ...[
-            SizedBox(height: compact ? 6 : 10),
+            const SizedBox(height: 6),
             Text(
               '状态更新时间 ${_formatTimestamp(timestampMs)}',
               style: const TextStyle(
@@ -254,28 +324,53 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
               ),
             ),
           ],
-          const Spacer(),
-          const Row(
-            children: [
-              Icon(Icons.autorenew_rounded, size: 18, color: Color(0x99FFFFFF)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '状态会自动检查，登录成功后自动关闭',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Color(0x99FFFFFF),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _TvLoginStep extends StatelessWidget {
+  const _TvLoginStep({required this.index, required this.label});
+
+  final int index;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0x1FFFFFFF),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            '$index',
+            style: const TextStyle(
+              color: Color(0xE6FFFFFF),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xD9FFFFFF),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

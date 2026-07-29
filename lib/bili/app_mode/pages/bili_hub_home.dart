@@ -38,6 +38,7 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Row(
       children: [
         _AvatarButton(
@@ -63,16 +64,16 @@ class _HomeHeader extends StatelessWidget {
                 height: 36,
                 quality: GlassQuality.standard,
                 textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF2D3038),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w700,
                 ),
                 placeholderStyle: Theme.of(context).textTheme.bodyMedium
                     ?.copyWith(
-                      color: const Color(0xFF858A94),
+                      color: visualTheme.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
-                searchIconColor: const Color(0xFF5C6069),
-                clearIconColor: const Color(0xFF5C6069),
+                searchIconColor: visualTheme.textSecondary,
+                clearIconColor: visualTheme.textSecondary,
               ),
               if (isSearching)
                 const Padding(
@@ -182,10 +183,11 @@ class _HomeVideoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return Material(
-      color: Colors.white,
-      elevation: 4,
-      shadowColor: const Color(0x2E1E2633),
+      color: visualTheme.surface,
+      elevation: Theme.of(context).brightness == Brightness.dark ? 0 : 1,
+      shadowColor: visualTheme.shadow,
       borderRadius: BorderRadius.circular(8),
       surfaceTintColor: Colors.transparent,
       child: InkWell(
@@ -193,7 +195,7 @@ class _HomeVideoCard extends StatelessWidget {
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: visualTheme.surface,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -209,21 +211,32 @@ class _HomeVideoCard extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       ColoredBox(
-                        color: const Color(0xFFE4E7EC),
+                        color: visualTheme.surfaceRaised,
                         child: item.coverUrl.isEmpty
-                            ? const Icon(
+                            ? Icon(
                                 Icons.video_library_outlined,
-                                color: Color(0xFF8C929F),
+                                color: visualTheme.textTertiary,
                               )
                             : Image.network(
                                 item.coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,
-                                errorBuilder: (_, _, _) => const Icon(
+                                errorBuilder: (_, _, _) => Icon(
                                   Icons.broken_image_outlined,
-                                  color: Color(0xFF8C929F),
+                                  color: visualTheme.textTertiary,
                                 ),
                               ),
+                      ),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: visualTheme.imageOutline,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       const Positioned.fill(
                         child: DecoratedBox(
@@ -291,7 +304,7 @@ class _HomeVideoCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
-                            color: const Color(0xFF20232B),
+                            color: visualTheme.textPrimary,
                             fontWeight: FontWeight.w900,
                             height: 1.25,
                           ),
@@ -312,24 +325,24 @@ class _HomeVideoCard extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: const Color(0xFF8B9098),
+                                  color: visualTheme.textSecondary,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
                             SizedBox(
-                              width: 40,
-                              height: 32,
+                              width: AppVisualTokens.minimumTapTarget,
+                              height: AppVisualTokens.minimumTapTarget,
                               child: IconButton(
                                 onPressed: onCacheTap,
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(
-                                  minWidth: 40,
-                                  minHeight: 32,
+                                  minWidth: AppVisualTokens.minimumTapTarget,
+                                  minHeight: AppVisualTokens.minimumTapTarget,
                                 ),
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.more_vert_rounded,
-                                  color: Color(0xFF9AA0AA),
+                                  color: visualTheme.textTertiary,
                                   size: 20,
                                 ),
                                 tooltip: '缓存',
@@ -357,14 +370,14 @@ class _RegionMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 32,
+    final visualTheme = AppVisualTheme.of(context);
+    return SizedBox.square(
+      dimension: AppVisualTokens.minimumTapTarget,
       child: IconButton(
         onPressed: onTap,
         padding: EdgeInsets.zero,
         icon: const Icon(Icons.menu_rounded, size: 22),
-        color: const Color(0xFF2D3038),
+        color: visualTheme.textPrimary,
         tooltip: '分区',
       ),
     );
@@ -483,6 +496,7 @@ class _LoadMoreFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 2, 0, 18),
       child: Center(
@@ -499,7 +513,7 @@ class _LoadMoreFooter extends StatelessWidget {
                   hasMore ? '上滑加载更多' : '没有更多了',
                   key: ValueKey<String>(hasMore ? 'more' : 'done'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF8B9098),
+                    color: visualTheme.textSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),

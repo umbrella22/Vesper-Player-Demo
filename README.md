@@ -1,48 +1,36 @@
-# Vesper Player Demo
+# Vesper
 
-Vesper Player Demo 是一个 Flutter 移动端客户端 demo，核心目标是验证
-[`vesper-player-sdk`](https://github.com/umbrella22/Vesper) 在真实业务外壳中的集成可行性。项目用视频平台客户端
-常见的浏览、登录、搜索和播放流程作为测试场景，观察 Vesper Player 在
-Android 原生 DASH、iOS DASH-to-HLS bridge、progressive 后备、本地会话、
-构建打包等链路里的表现。
+Vesper 是一个由
+[`vesper-player-sdk`](https://github.com/umbrella22/Vesper) 驱动的 Flutter 媒体客户端，
+覆盖手机与 Android TV。应用以中性的银雾视觉系统承载浏览、账号、搜索、播放和
+离线媒体流程，同时验证 Vesper Player 在 Android 原生 DASH、iOS DASH-to-HLS
+bridge、progressive 后备、本地会话和发布构建等链路里的表现。
 
 **本项目不是任何平台的官方客户端，也不是完整产品。它只用于技术验证、学习和
 兼容性测试，不隶属于、代表或关联任何视频平台。使用本项目时请遵守目标服务的
 用户协议、版权规则和当地法律法规。**
 
-**本项目没有任何授权的 Testflight 发放以及任何收费版本，请注意辨别和考虑安全性问题。
-Vesper Player Demo 从未在任何平台上架和收费（包括AppStore与Testflight、Google Play 等）**
+**本项目没有任何授权的 TestFlight 发放以及任何收费版本，请注意辨别和考虑安全性问题。
+Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 Google Play 等）。**
 
 **如果您在任何平台上看到有人以收费方式提供本项目的服务或应用，请注意这是未经授权的行为，并且与我们的原始意图不符。我们强烈谴责将本项目用于商业盈利的行为，由此引发的任何安全风险与此项目无关。**
 
 ## 当前项目已有功能
 
-- App 模式：面向手机触控场景，提供视频平台客户端风格的首页、搜索、登录、播放
+- App 模式：面向手机触控场景，提供主题自适应的首页、搜索、账号、媒体库、播放
   和离线缓存入口。
-- TV 模式：面向大屏和遥控器操作场景，提供更适合横屏浏览的首页和视频
-  观看体验。
+- TV 模式：面向大屏和遥控器操作场景，提供沉浸式 Hero、媒体 Shelf、可折叠导航
+  和四向焦点体验。
 - 通过本地 path dependency 接入 [`vesper-player-sdk`](https://github.com/umbrella22/Vesper)，用于验证 Vesper Player
   在 Flutter 移动应用中的真实集成效果。
 - 已实现登录态、搜索、播放历史、分 P 播放、SDK 调试信息展示等接近真实
   客户端的基础链路。
 
-### 功能预览
-
-以下截图均来自当前仓库已经实现的界面，用于快速预览移动端和 TV 端效果。
-
-| 移动端首页                        | 移动端番剧分区                        |
-| --------------------------------- | ------------------------------------- |
-| ![移动端首页预览](asset/首页.jpg) | ![移动端番剧分区预览](asset/番剧.jpg) |
-
-| TV 首页                          | TV 分区                          |
-| -------------------------------- | -------------------------------- |
-| ![TV 首页预览](asset/tv首页.jpg) | ![TV 分区预览](asset/tv分区.jpg) |
-
 ## 功能介绍
 
 ### 浏览与账号
 
-- 视频平台国际版风格。
+- Vesper 自有的银雾浅色、石墨深色与 Apple TV 风格大屏界面。
 - 通过目标视频平台 Web 登录接口实现二维码登录。
 - 登录 cookie 本地持久化，并在下次启动时恢复登录状态。
 - 首页 feed、关键词搜索、BV 号直达和视频链接粘贴打开。
@@ -60,6 +48,13 @@ Vesper Player Demo 从未在任何平台上架和收费（包括AppStore与Testf
 - 播放历史存储在 app support 目录下的项目数据文件中。
 - 登录 cookie session 存储在 app support 目录下的项目数据文件中。
 - 旧版临时目录数据会在下次加载时自动迁移到 app support 目录。
+
+### 安装兼容边界
+
+Vesper 使用新的发布标识：Android 为 `dev.ikaros.vesper_player`，iOS 为
+`dev.ikaros.vesperPlayer`。系统会将它视为独立应用，因此不会继承旧标识应用沙盒中
+的登录状态、历史记录、设置和离线缓存。应用内部的临时目录迁移只处理当前 Vesper
+沙盒可访问的数据，不跨应用标识读取旧沙盒。
 
 ## 当前范围
 

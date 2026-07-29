@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/bili/common/services/bili_platform_info.dart';
+import 'package:vesper_media/bili/common/services/bili_platform_info.dart';
 
 const biliAppDefaultOrientations = <DeviceOrientation>[];
 
@@ -41,6 +41,20 @@ const biliDarkSurfaceSystemUiStyle = SystemUiOverlayStyle(
 );
 
 const biliTvSystemUiStyle = biliDarkSurfaceSystemUiStyle;
+
+SystemUiOverlayStyle appSystemUiStyleForBrightness(Brightness brightness) {
+  return brightness == Brightness.dark
+      ? biliDarkSurfaceSystemUiStyle
+      : biliAppSystemUiStyle;
+}
+
+SystemUiOverlayStyle playbackSystemUiStyleForBrightness(Brightness brightness) {
+  return biliDarkSurfaceSystemUiStyle.copyWith(
+    systemNavigationBarIconBrightness: brightness == Brightness.dark
+        ? Brightness.light
+        : Brightness.dark,
+  );
+}
 
 int _preferredOrientationGeneration = 0;
 bool _usesAppOrientationPolicy = true;

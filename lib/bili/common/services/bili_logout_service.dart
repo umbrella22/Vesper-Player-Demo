@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:bilibili_player/download/download.dart';
+import 'package:vesper_media/download/download.dart';
 
 import 'bili_client.dart';
 import 'bili_session_store.dart';

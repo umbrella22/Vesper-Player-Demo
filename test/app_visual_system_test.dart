@@ -1,12 +1,13 @@
 import 'dart:io';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_previews.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -25,14 +26,31 @@ void main() {
     expect(theme.cardTheme.shape, isA<RoundedRectangleBorder>());
   });
 
+  testWidgets('mobile playback previews render in light and dark themes', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(appMobilePlaybackLightPreview());
+    await tester.pump();
+    expect(find.text('在城市的夜色里，重新发现熟悉的声音'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(appMobilePlaybackDarkPreview());
+    await tester.pump();
+    expect(find.text('在城市的夜色里，重新发现熟悉的声音'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'app settings persists quality and serializes concurrent writes',
     () async {
       final root = Directory(
         '${Directory.systemTemp.path}/bili-visual-settings-${DateTime.now().microsecondsSinceEpoch}',
       );
-      final first = BiliAppSettings(baseDirectory: root);
-      final second = BiliAppSettings(baseDirectory: root);
+      final first = AppSettingsStore(baseDirectory: root);
+      final second = AppSettingsStore(baseDirectory: root);
       addTearDown(() async {
         if (await root.exists()) {
           await root.delete(recursive: true);
@@ -47,7 +65,7 @@ void main() {
       expect(await first.getForceTvMode(), isTrue);
       expect(await second.getGlassQuality(), GlassQuality.minimal);
 
-      final file = File('${root.path}/bili-app-settings.json');
+      final file = File('${root.path}/vesper-app-settings.json');
       await file.writeAsString('{"glassQuality":"unknown"}');
       expect(await first.getGlassQuality(), isNull);
     },
@@ -234,6 +252,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('glass scaffold paints the resolved split Material background', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileDarkTheme(),
+        home: const AppGlassScaffold(body: SizedBox.expand()),
+      ),
+    );
+
+    final scaffold = tester.widget<GlassScaffold>(find.byType(GlassScaffold));
+    final background = scaffold.background! as ColoredBox;
+
+    expect(background.color, AppVisualTokens.darkBackground);
+    expect(scaffold.backgroundColor, isNull);
+    expect(scaffold.enableBackgroundSampling, isFalse);
+  });
+
   testWidgets('reduced motion resolves shared transitions to zero', (
     tester,
   ) async {
@@ -287,7 +323,7 @@ void main() {
     final tabs = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
     // ignore: experimental_member_use
     expect(find.byType(GlassAdaptiveScope), findsNothing);
-    expect(tabs.quality, GlassQuality.premium);
+    expect(tabs.quality, isNull);
     expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
     expect(tabs.selectedIconColor, AppVisualTokens.textPrimary);
     expect(tabs.selectedLabelColor, AppVisualTokens.textPrimary);

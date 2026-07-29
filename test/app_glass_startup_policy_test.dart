@@ -1,4 +1,4 @@
-import 'package:bilibili_player/app/design/app_glass_startup_policy.dart';
+import 'package:vesper_media/app/design/app_glass_startup_policy.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';

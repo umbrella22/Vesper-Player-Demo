@@ -1,31 +1,32 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/app/system_presentation.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
-import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_text.dart';
-import 'package:bilibili_player/bili/common/services/bili_ui_mode_resolver.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
-import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
-import 'package:bilibili_player/app/home_page.dart';
-import 'package:bilibili_player/download/download.dart';
-import 'package:bilibili_player/main.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/models/bili_region_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/services/bili_text.dart';
+import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
+import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
+import 'package:vesper_media/app/home_page.dart';
+import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/main.dart';
 
 enum _TvNavItem { recommend, regions, search, history, mine, settings }
 
@@ -33,8 +34,138 @@ const _tvGridMaxCrossAxisExtent = 184.0;
 const _tvGridMainAxisSpacing = 14.0;
 const _tvGridCrossAxisSpacing = 16.0;
 const _tvGridChildAspectRatio = 1.14;
-const _tvCardFocusPadding = 14.0;
-const _tvGridFocusInset = _tvCardFocusPadding * 2;
+const _tvCardFocusPadding = 12.0;
+const _tvGridFocusInset = 32.0;
+const _tvHeroFocusDelay = Duration(milliseconds: 120);
+const _tvHeroCrossFadeDuration = Duration(milliseconds: 260);
+
+enum _TvHeroSource { history, feed, region, search }
+
+@immutable
+final class _TvHeroItem {
+  const _TvHeroItem({
+    required this.identity,
+    required this.source,
+    required this.eyebrow,
+    required this.title,
+    required this.author,
+    required this.coverUrl,
+    required this.description,
+    required this.durationLabel,
+    required this.bvid,
+    this.aid = 0,
+    this.cid = 0,
+    this.episodeId = 0,
+    this.initialPositionMs = 0,
+    this.durationMs,
+    this.playCountLabel = '',
+    this.regionItem,
+  });
+
+  factory _TvHeroItem.feed(BiliFeedVideo item) {
+    return _TvHeroItem(
+      identity: 'feed:${item.bvid}',
+      source: _TvHeroSource.feed,
+      eyebrow: '为你推荐',
+      title: item.title,
+      author: item.author,
+      coverUrl: item.coverUrl,
+      description: item.description?.trim().isNotEmpty == true
+          ? item.description!.trim()
+          : '发现值得继续观看的内容。',
+      durationLabel: item.durationLabel,
+      playCountLabel: item.playCountLabel,
+      bvid: item.bvid,
+      aid: item.aid,
+    );
+  }
+
+  factory _TvHeroItem.history(BiliPlaybackHistoryEntry entry) {
+    return _TvHeroItem(
+      identity:
+          'history:${entry.episodeId > 0 ? entry.episodeId : entry.bvid}:${entry.cid}',
+      source: _TvHeroSource.history,
+      eyebrow: '继续观看',
+      title: entry.videoTitle,
+      author: entry.ownerName,
+      coverUrl: entry.coverUrl,
+      description: entry.pageTitle.isEmpty ? '从上次离开的地方继续。' : entry.pageTitle,
+      durationLabel: entry.durationMs == null
+          ? ''
+          : biliFormatDurationSeconds(entry.durationMs! ~/ 1000),
+      bvid: entry.bvid,
+      aid: entry.aid,
+      cid: entry.cid,
+      episodeId: entry.episodeId,
+      initialPositionMs: entry.lastPositionMs,
+      durationMs: entry.durationMs,
+    );
+  }
+
+  factory _TvHeroItem.region(BiliRegionVideo item) {
+    return _TvHeroItem(
+      identity: 'region:${item.id}',
+      source: _TvHeroSource.region,
+      eyebrow: '分区精选',
+      title: item.title,
+      author: item.subtitle ?? item.followCountLabel ?? '',
+      coverUrl: item.coverUrl,
+      description: item.description?.trim().isNotEmpty == true
+          ? item.description!.trim()
+          : '来自当前分区的内容。',
+      durationLabel: item.indexLabel ?? item.scoreLabel ?? '',
+      playCountLabel: item.followCountLabel ?? '',
+      bvid: item.bvid ?? '',
+      aid: item.aid ?? 0,
+      cid: item.cid ?? 0,
+      episodeId: item.epId ?? 0,
+      regionItem: item,
+    );
+  }
+
+  factory _TvHeroItem.search(BiliSearchResult item) {
+    return _TvHeroItem(
+      identity: 'search:${item.bvid}',
+      source: _TvHeroSource.search,
+      eyebrow: '搜索结果',
+      title: item.title,
+      author: item.author,
+      coverUrl: item.coverUrl,
+      description: item.description?.trim().isNotEmpty == true
+          ? item.description!.trim()
+          : '来自当前搜索结果。',
+      durationLabel: item.durationLabel,
+      playCountLabel: item.playCountLabel,
+      bvid: item.bvid,
+      aid: item.aid,
+    );
+  }
+
+  final String identity;
+  final _TvHeroSource source;
+  final String eyebrow;
+  final String title;
+  final String author;
+  final String coverUrl;
+  final String description;
+  final String durationLabel;
+  final String playCountLabel;
+  final String bvid;
+  final int aid;
+  final int cid;
+  final int episodeId;
+  final int initialPositionMs;
+  final int? durationMs;
+  final BiliRegionVideo? regionItem;
+
+  double get progress {
+    final duration = durationMs;
+    if (duration == null || duration <= 0) {
+      return 0;
+    }
+    return (initialPositionMs / duration).clamp(0.0, 1.0);
+  }
+}
 
 @visibleForTesting
 double biliTvVideoGridTileWidthForCrossAxisExtent(double crossAxisExtent) {
@@ -96,6 +227,7 @@ class BiliTvHomePage extends StatefulWidget {
     this.offlineController,
     this.appSettings,
     this.initialFeedItems = const <BiliFeedVideo>[],
+    this.initialHistoryEntries = const <BiliPlaybackHistoryEntry>[],
     this.skipBootstrap = false,
   });
 
@@ -103,9 +235,11 @@ class BiliTvHomePage extends StatefulWidget {
   final BiliHistoryStore? historyStore;
   final BiliSessionStore? sessionStore;
   final BiliOfflineDownloadController? offlineController;
-  final BiliAppSettings? appSettings;
+  final AppSettingsStore? appSettings;
   @visibleForTesting
   final List<BiliFeedVideo> initialFeedItems;
+  @visibleForTesting
+  final List<BiliPlaybackHistoryEntry> initialHistoryEntries;
   @visibleForTesting
   final bool skipBootstrap;
 
@@ -115,9 +249,11 @@ class BiliTvHomePage extends StatefulWidget {
 
 class _BiliTvHomePageState extends State<BiliTvHomePage> {
   late final BiliHubViewModel _viewModel;
-  late final BiliAppSettings _appSettings;
+  late final AppSettingsStore _appSettings;
   late final TextEditingController _searchController;
   final ScrollController _contentScrollController = ScrollController();
+  final ScrollController _continueShelfController = ScrollController();
+  final ScrollController _recommendShelfController = ScrollController();
 
   _TvNavItem _selectedNav = _TvNavItem.recommend;
   bool _forceTvMode = false;
@@ -136,13 +272,17 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   String? _regionErrorMessage;
   bool _restorePresentationOnDispose = true;
   bool _exitDialogVisible = false;
+  TvFocusArea? _activeFocusArea = TvFocusArea.rail;
+  _TvHeroItem? _heroItem;
+  Timer? _heroUpdateTimer;
+  bool _heroHasUserSelection = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_enterTvHomePresentation());
     _searchController = TextEditingController();
-    _appSettings = widget.appSettings ?? const BiliAppSettings();
+    _appSettings = widget.appSettings ?? const AppSettingsStore();
     _viewModel = BiliHubViewModel(
       client: widget.client,
       historyStore: widget.historyStore,
@@ -151,6 +291,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     );
     if (widget.initialFeedItems.isNotEmpty || widget.skipBootstrap) {
       _viewModel.seedFeedForTesting(widget.initialFeedItems);
+    }
+    _history = widget.initialHistoryEntries;
+    if (widget.initialHistoryEntries.isNotEmpty) {
+      _heroItem = _TvHeroItem.history(widget.initialHistoryEntries.first);
+    } else if (widget.initialFeedItems.isNotEmpty) {
+      _heroItem = _TvHeroItem.feed(widget.initialFeedItems.first);
     }
     if (!widget.skipBootstrap) {
       unawaited(_bootstrap());
@@ -161,6 +307,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   void dispose() {
     _searchController.dispose();
     _contentScrollController.dispose();
+    _continueShelfController.dispose();
+    _recommendShelfController.dispose();
+    _heroUpdateTimer?.cancel();
     _viewModel.dispose();
     if (_restorePresentationOnDispose) {
       unawaited(_restoreAppPresentation());
@@ -215,6 +364,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   Future<void> _bootstrap() async {
     await _viewModel.bootstrap();
+    await _loadHistory();
     final forceTvMode = await _appSettings.getForceTvMode();
     _forceTvMode = forceTvMode;
     _initialForceTvMode = forceTvMode;
@@ -269,9 +419,149 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         // is unavailable or the session has expired.
       }
     }
-    _history = merged;
-    if (mounted) {
-      setState(() {});
+    if (!mounted) {
+      return;
+    }
+    final preferredHero = !_heroHasUserSelection && merged.isNotEmpty
+        ? _TvHeroItem.history(merged.first)
+        : null;
+    setState(() {
+      _history = merged;
+      if (preferredHero != null) {
+        _heroItem = preferredHero;
+      }
+    });
+    if (preferredHero != null) {
+      _precacheHeroCover(preferredHero);
+    }
+  }
+
+  void _handleFocusAreaChanged(TvFocusArea? area) {
+    if (!mounted || _activeFocusArea == area) {
+      return;
+    }
+    setState(() => _activeFocusArea = area);
+  }
+
+  void _ensureInitialHero(List<BiliFeedVideo> feedItems) {
+    if (_heroItem != null || feedItems.isEmpty) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _heroItem != null) {
+        return;
+      }
+      final item = _history.isNotEmpty
+          ? _TvHeroItem.history(_history.first)
+          : _TvHeroItem.feed(feedItems.first);
+      setState(() => _heroItem = item);
+      _precacheHeroCover(item);
+    });
+  }
+
+  void _scheduleHeroUpdate(_TvHeroItem item, bool focused) {
+    if (!focused || _heroItem?.identity == item.identity) {
+      return;
+    }
+    _heroUpdateTimer?.cancel();
+    final delay = AppVisualTokens.motionDuration(context, _tvHeroFocusDelay);
+    if (delay == Duration.zero) {
+      _applyFocusedHero(item);
+      return;
+    }
+    _heroUpdateTimer = Timer(delay, () => _applyFocusedHero(item));
+  }
+
+  void _applyFocusedHero(_TvHeroItem item) {
+    if (!mounted || _heroItem?.identity == item.identity) {
+      return;
+    }
+    _precacheHeroCover(item);
+    setState(() {
+      _heroItem = item;
+      _heroHasUserSelection = true;
+    });
+  }
+
+  void _precacheHeroCover(_TvHeroItem item) {
+    if (!mounted || item.coverUrl.isEmpty) {
+      return;
+    }
+    unawaited(
+      precacheImage(NetworkImage(item.coverUrl), context, onError: (_, _) {}),
+    );
+  }
+
+  Future<void> _playHero(_TvHeroItem item) async {
+    final regionItem = item.regionItem;
+    if (regionItem != null) {
+      await _openRegionVideo(regionItem);
+      return;
+    }
+    await _openPlayback(
+      item.bvid,
+      aid: item.aid > 0 ? item.aid : null,
+      cid: item.cid > 0 ? item.cid : null,
+      episodeId: item.episodeId > 0 ? item.episodeId : null,
+      initialPositionMs: item.initialPositionMs,
+    );
+  }
+
+  Future<void> _openHeroDetails(_TvHeroItem item) async {
+    late final BiliVideoDetail detail;
+    try {
+      final regionItem = item.regionItem;
+      if (regionItem?.seasonId case final seasonId?) {
+        detail = await _viewModel.client.fetchPgcSeasonFirstEpisodeDetail(
+          seasonId,
+        );
+      } else if (regionItem != null) {
+        if (item.bvid.isEmpty) {
+          throw const BiliHubException('无法识别该视频。');
+        }
+        detail = await _viewModel.client.fetchVideoDetail(item.bvid);
+      } else {
+        final target = await _viewModel.resolvePlaybackTarget(
+          item.bvid,
+          aid: item.aid > 0 ? item.aid : null,
+          cid: item.cid > 0 ? item.cid : null,
+          episodeId: item.episodeId > 0 ? item.episodeId : null,
+        );
+        detail = target.detail;
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage('加载详情失败：$error');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final shouldPlay = await showBiliTvGlassDialog<bool>(
+      context: context,
+      maxWidth: 690,
+      title: detail.title,
+      message: detail.description.isEmpty
+          ? '${detail.ownerName} · ${detail.playCountLabel} 播放'
+          : detail.description,
+      icon: Icons.info_outline_rounded,
+      actions: const [
+        BiliTvDialogAction(
+          label: '返回',
+          value: false,
+          icon: Icons.arrow_back_rounded,
+          autofocus: true,
+        ),
+        BiliTvDialogAction(
+          label: '开始播放',
+          value: true,
+          icon: Icons.play_arrow_rounded,
+        ),
+      ],
+    );
+    if (shouldPlay == true && mounted) {
+      await _playHero(item);
     }
   }
 
@@ -549,7 +839,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: AppVisualTokens.darkTheme(),
+      data: AppVisualTokens.tvTheme(),
       child: TvGlassQualityScope(
         maxQuality: GlassQuality.standard,
         child: PopScope(
@@ -562,22 +852,50 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           child: TvDirectionalFocusScope(
             debugLabel: 'tv_home',
             onBack: () => unawaited(_confirmExitApp()),
+            onFocusAreaChanged: _handleFocusAreaChanged,
             child: Scaffold(
               resizeToAvoidBottomInset: false,
-              backgroundColor: AppVisualTokens.tvBackground,
+              backgroundColor: Colors.transparent,
               body: LayoutBuilder(
                 builder: (context, constraints) {
-                  final railWidth = constraints.maxWidth < 900 ? 184.0 : 216.0;
-                  return Row(
+                  final wide = constraints.maxWidth >= 1440;
+                  final railExpanded = _activeFocusArea == TvFocusArea.rail;
+                  final railWidth = railExpanded
+                      ? (wide ? 300.0 : 260.0)
+                      : (wide ? 88.0 : 80.0);
+                  final margin = wide ? 28.0 : 20.0;
+                  final contentInset = railWidth + margin + (wide ? 52 : 36);
+                  final duration = AppVisualTokens.motionDuration(
+                    context,
+                    AppVisualTokens.overlayDuration,
+                  );
+                  return Stack(
+                    fit: StackFit.expand,
                     children: [
-                      TvFocusAreaScope(
-                        area: TvFocusArea.rail,
-                        child: _buildLeftRail(railWidth),
-                      ),
-                      Expanded(
+                      _buildTvBackdrop(constraints),
+                      AnimatedPositioned(
+                        key: const ValueKey<String>('bili-tv-content-area'),
+                        duration: duration,
+                        curve: Curves.easeOutCubic,
+                        left: contentInset,
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
                         child: TvFocusAreaScope(
                           area: TvFocusArea.content,
                           child: _buildContentArea(),
+                        ),
+                      ),
+                      AnimatedPositioned(
+                        duration: duration,
+                        curve: Curves.easeOutCubic,
+                        left: margin,
+                        top: margin,
+                        bottom: margin,
+                        width: railWidth,
+                        child: TvFocusAreaScope(
+                          area: TvFocusArea.rail,
+                          child: _buildLeftRail(expanded: railExpanded),
                         ),
                       ),
                     ],
@@ -600,18 +918,19 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     try {
       shouldExit = await showBiliTvGlassDialog<bool>(
         context: context,
-        title: '退出应用？',
-        message: '将结束当前会话并返回系统桌面。',
-        icon: Icons.power_settings_new_rounded,
+        maxWidth: 690,
+        title: '退出 Vesper？',
+        message: '播放进度已经保存，下次打开时可以继续观看。',
+        icon: Icons.logout_rounded,
         actions: const [
           BiliTvDialogAction(
-            label: '继续使用',
+            label: '继续观看',
             value: false,
             icon: Icons.play_arrow_rounded,
             autofocus: true,
           ),
           BiliTvDialogAction(
-            label: '退出',
+            label: '退出应用',
             value: true,
             icon: Icons.power_settings_new_rounded,
             isDestructive: true,
@@ -626,82 +945,314 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     }
   }
 
-  Widget _buildLeftRail(double width) {
-    return AdaptiveLiquidGlassLayer(
-      quality: TvGlassQualityScope.of(context),
-      settings: const LiquidGlassSettings(
-        blur: 9,
-        thickness: 18,
-        glassColor: Color(0x16000000),
-        saturation: 1.12,
-      ),
-      child: Container(
-        key: const ValueKey<String>('bili-tv-left-rail'),
-        width: width,
-        decoration: const BoxDecoration(
-          color: Color(0x660A0A0E),
-          border: Border(
-            right: BorderSide(color: Color(0x22409EFF), width: 0.5),
+  Widget _buildTvBackdrop(BoxConstraints constraints) {
+    final hero = _heroItem;
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      _tvHeroCrossFadeDuration,
+    );
+    final cacheWidth =
+        (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
+            .ceil()
+            .clamp(960, 2560)
+            .toInt();
+    return RepaintBoundary(
+      key: const ValueKey<String>('bili-tv-hero-backdrop'),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          AnimatedSwitcher(
+            duration: duration,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              fit: StackFit.expand,
+              children: [...previousChildren, ?currentChild],
+            ),
+            child: hero == null || hero.coverUrl.isEmpty
+                ? const ColoredBox(
+                    key: ValueKey<String>('tv-hero-empty'),
+                    color: AppVisualTokens.tvBackground,
+                  )
+                : Image.network(
+                    hero.coverUrl,
+                    key: ValueKey<String>('tv-hero-${hero.identity}'),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    cacheWidth: cacheWidth,
+                    filterQuality: FilterQuality.medium,
+                    errorBuilder: (_, _, _) =>
+                        const ColoredBox(color: AppVisualTokens.tvBackground),
+                  ),
           ),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compactHeight = constraints.maxHeight < 360;
-            return ListView(
-              padding: EdgeInsets.only(
-                top: compactHeight ? 20 : 32,
-                bottom: compactHeight ? 10 : 18,
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: [0, 0.42, 1],
+                colors: [
+                  Color(0xF2111318),
+                  Color(0xA6111318),
+                  Color(0x33111318),
+                ],
               ),
-              children: [
-                _buildRailProfile(compact: compactHeight),
-                SizedBox(height: compactHeight ? 12 : 18),
-                ..._TvNavItem.values.map(
-                  (item) => _buildRailItem(item, compact: compactHeight),
-                ),
-              ],
-            );
-          },
-        ),
+            ),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0, 0.46, 0.78, 1],
+                colors: [
+                  Color(0x1A111318),
+                  Color(0x4D111318),
+                  Color(0xE6111318),
+                  AppVisualTokens.tvBackground,
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildRailProfile({bool compact = false}) {
+  Widget _buildLeftRail({required bool expanded}) {
+    final quality = TvGlassQualityScope.of(context);
+    final highContrast = MediaQuery.highContrastOf(context);
+    final contents = LayoutBuilder(
+      builder: (context, constraints) {
+        final compactHeight = constraints.maxHeight < 620;
+        final showLabels = expanded && constraints.maxWidth >= 180;
+        return Column(
+          children: [
+            _buildRailProfile(expanded: showLabels, compact: compactHeight),
+            SizedBox(height: compactHeight ? 6 : 12),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compactHeight ? 8 : 10,
+                ),
+                children: [
+                  for (final item in _TvNavItem.values)
+                    _buildRailItem(
+                      item,
+                      expanded: showLabels,
+                      compact: compactHeight,
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                showLabels ? 20 : 0,
+                4,
+                showLabels ? 20 : 0,
+                compactHeight ? 10 : 18,
+              ),
+              child: Row(
+                mainAxisAlignment: showLabels
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 40,
+                    child: Center(
+                      child: Icon(
+                        Icons.help_outline_rounded,
+                        size: 16,
+                        color: Color(0x73FFFFFF),
+                      ),
+                    ),
+                  ),
+                  if (showLabels) ...[
+                    const SizedBox(width: 12),
+                    const Flexible(
+                      child: Text(
+                        '按返回键退出',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0x73FFFFFF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    final surface = DecoratedBox(
+      key: const ValueKey<String>('bili-tv-left-rail'),
+      decoration: BoxDecoration(
+        color: highContrast ? const Color(0xFF17191F) : const Color(0xB317191F),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: highContrast
+              ? const Color(0xB3FFFFFF)
+              : const Color(0x2EFFFFFF),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: contents,
+      ),
+    );
+    if (highContrast) {
+      return surface;
+    }
+    return AdaptiveLiquidGlassLayer(
+      quality: quality,
+      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+      settings: const LiquidGlassSettings(
+        blur: 11,
+        thickness: 18,
+        glassColor: Color(0x2417191F),
+        lightIntensity: 0.62,
+        saturation: 1.05,
+      ),
+      child: GlassContainer(
+        useOwnLayer: false,
+        quality: quality,
+        shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+        clipBehavior: Clip.hardEdge,
+        child: surface,
+      ),
+    );
+  }
+
+  Widget _buildRailProfile({required bool expanded, bool compact = false}) {
     return SignalBuilder(
       builder: (context) {
         final profile = _viewModel.profile.value;
         return Padding(
-          padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 16),
-          child: Row(
+          padding: EdgeInsets.fromLTRB(
+            expanded ? 20 : 0,
+            compact ? 12 : 18,
+            expanded ? 20 : 0,
+            0,
+          ),
+          child: Column(
             children: [
-              CircleAvatar(
-                radius: compact ? 17 : 19,
-                backgroundColor: const Color(0x33FFFFFF),
-                backgroundImage: profile.avatarUrl.isNotEmpty
-                    ? NetworkImage(profile.avatarUrl)
-                    : null,
-                child: profile.avatarUrl.isEmpty
-                    ? Icon(
-                        profile.isLoggedIn
-                            ? Icons.person_rounded
-                            : Icons.person_outline_rounded,
-                        color: const Color(0x99FFFFFF),
-                        size: compact ? 18 : 20,
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  profile.isLoggedIn ? profile.name : '未登录',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: compact ? 14 : 15,
-                    fontWeight: FontWeight.w600,
+              Row(
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    key: const ValueKey<String>('bili-tv-rail-logo'),
+                    width: 40,
+                    child: Center(
+                      child: Container(
+                        width: compact ? 36 : 40,
+                        height: compact ? 36 : 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4F6FA),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 2),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Color(0xFF111318),
+                            size: 25,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (expanded) ...[
+                    const SizedBox(width: 13),
+                    const Expanded(
+                      child: Text(
+                        'VESPER',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(height: compact ? 10 : 16),
+              const Divider(height: 1, color: Color(0x24FFFFFF)),
+              SizedBox(height: compact ? 10 : 16),
+              Row(
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    key: const ValueKey<String>('bili-tv-rail-avatar'),
+                    width: 40,
+                    child: Center(
+                      child: CircleAvatar(
+                        radius: compact ? 17 : 19,
+                        backgroundColor: const Color(0x33FFFFFF),
+                        backgroundImage: profile.avatarUrl.isNotEmpty
+                            ? NetworkImage(profile.avatarUrl)
+                            : null,
+                        child: profile.avatarUrl.isEmpty
+                            ? Icon(
+                                profile.isLoggedIn
+                                    ? Icons.person_rounded
+                                    : Icons.person_outline_rounded,
+                                color: const Color(0xB3FFFFFF),
+                                size: compact ? 18 : 20,
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                  if (expanded) ...[
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            profile.isLoggedIn ? profile.name : '未登录',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xF2FFFFFF),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            profile.isLoggedIn ? '已同步播放记录' : '登录后同步内容',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0x80FFFFFF),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -710,19 +1261,20 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     );
   }
 
-  Widget _buildRailItem(_TvNavItem item, {bool compact = false}) {
+  Widget _buildRailItem(
+    _TvNavItem item, {
+    required bool expanded,
+    bool compact = false,
+  }) {
     final selected = _selectedNav == item;
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 8,
-        vertical: compact ? 1 : 2,
-      ),
+      padding: EdgeInsets.symmetric(vertical: compact ? 1 : 3),
       child: TvGlassSelectable(
         autofocus: item == _TvNavItem.recommend,
         selected: selected,
         useOwnLayer: false,
-        scale: 1.035,
-        borderRadius: 10,
+        scale: 1,
+        borderRadius: 12,
         focusArea: TvFocusArea.rail,
         debugLabel: 'nav_${item.name}',
         onTap: () => unawaited(_handleNavTap(item)),
@@ -730,47 +1282,76 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           final focused =
               state == TvGlassSelectableState.focused ||
               state == TvGlassSelectableState.pressed;
-          return Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 10 : 12,
-              vertical: compact ? 8 : 10,
-            ),
-            child: Row(
+          return SizedBox(
+            height: compact ? 42 : 50,
+            child: Stack(
+              alignment: Alignment.centerLeft,
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 3,
-                  height: compact ? 22 : 26,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppVisualTokens.primaryBlue
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(99),
+                Positioned(
+                  left: 0,
+                  child: AnimatedContainer(
+                    duration: AppVisualTokens.motionDuration(
+                      context,
+                      AppVisualTokens.tvFocusDuration,
+                    ),
+                    width: 3,
+                    height: compact ? 20 : 24,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppVisualTokens.primaryBlue
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
                   ),
                 ),
-                SizedBox(width: compact ? 8 : 10),
-                Icon(
-                  item.icon(),
-                  color: focused || selected
-                      ? Colors.white
-                      : const Color(0x99FFFFFF),
-                  size: focused ? (compact ? 21 : 22) : (compact ? 19 : 20),
-                ),
-                SizedBox(width: compact ? 8 : 10),
-                Expanded(
-                  child: Text(
-                    item.label(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 14 : 15,
-                      fontWeight: focused || selected
-                          ? FontWeight.w800
-                          : FontWeight.w500,
-                      color: focused || selected
-                          ? Colors.white
-                          : const Color(0x88FFFFFF),
-                    ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: expanded ? 10 : 0),
+                  child: Row(
+                    mainAxisAlignment: expanded
+                        ? MainAxisAlignment.start
+                        : MainAxisAlignment.center,
+                    children: [
+                      Transform.translate(
+                        offset: Offset(expanded ? -1 : 0, 0),
+                        child: SizedBox(
+                          key: ValueKey<String>(
+                            'bili-tv-rail-icon-${item.name}',
+                          ),
+                          width: 40,
+                          child: Center(
+                            child: Icon(
+                              item.icon(),
+                              color: focused || selected
+                                  ? Colors.white
+                                  : const Color(0x99FFFFFF),
+                              size: focused
+                                  ? (compact ? 21 : 23)
+                                  : (compact ? 20 : 22),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (expanded) ...[
+                        SizedBox(width: compact ? 9 : 11),
+                        Expanded(
+                          child: Text(
+                            item.label(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: compact ? 14 : 15,
+                              fontWeight: focused || selected
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                              color: focused || selected
+                                  ? Colors.white
+                                  : const Color(0x99FFFFFF),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                    ],
                   ),
                 ),
               ],
@@ -782,16 +1363,19 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Widget _buildContentArea() {
+    if (_selectedNav == _TvNavItem.recommend) {
+      return _buildRecommendPage();
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(28, 30, 28, 0),
+          padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
           child: Text(
             _selectedNav.label(),
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 28,
+              fontSize: 30,
               fontWeight: FontWeight.w800,
               height: 1.15,
             ),
@@ -800,7 +1384,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         const SizedBox(height: 14),
         Expanded(
           child: switch (_selectedNav) {
-            _TvNavItem.recommend => _buildRecommendPage(),
+            _TvNavItem.recommend => const SizedBox.shrink(),
             _TvNavItem.regions => _buildRegionsPage(),
             _TvNavItem.search => _buildSearchPage(),
             _TvNavItem.history => _buildHistoryPage(),
@@ -850,6 +1434,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     return SignalBuilder(
       builder: (context) {
         final items = _viewModel.feedItems.value;
+        _ensureInitialHero(items);
         if (_viewModel.isBootstrapping.value) {
           return const Center(
             child: CircularProgressIndicator(color: Color(0x88FFFFFF)),
@@ -905,50 +1490,285 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             child: CircularProgressIndicator(color: Color(0x88FFFFFF)),
           );
         }
-        return NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification.metrics.extentAfter < 720) {
-              _requestMoreFeed();
-            }
-            return false;
-          },
-          child: _TvGridOverlayScope(
-            child: CustomScrollView(
-              controller: _contentScrollController,
-              clipBehavior: Clip.none,
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    28,
-                    _tvGridFocusInset,
-                    28,
-                    _tvGridFocusInset,
-                  ),
-                  sliver: _TvVideoGrid(
-                    items: items,
-                    onTapItem: (item) => _openPlayback(item.bvid),
-                    onNearEnd: _requestMoreFeed,
-                  ),
-                ),
-                if (_viewModel.isLoadingMoreFeed.value)
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 24),
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0x88FFFFFF),
-                          ),
-                        ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final heroHeight = (constraints.maxHeight * 0.48)
+                .clamp(280.0, 480.0)
+                .toDouble();
+            final cardWidth = (constraints.maxWidth * 0.19)
+                .clamp(220.0, 310.0)
+                .toDouble();
+            return NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (notification.metrics.axis == Axis.vertical &&
+                    notification.metrics.extentAfter < 720) {
+                  _requestMoreFeed();
+                }
+                return false;
+              },
+              child: CustomScrollView(
+                key: const ValueKey<String>('bili-tv-recommend-scroll'),
+                controller: _contentScrollController,
+                clipBehavior: Clip.hardEdge,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: heroHeight,
+                      child: _buildHeroPanel(
+                        _heroItem ?? _TvHeroItem.feed(items.first),
+                        compact: constraints.maxWidth < 840,
                       ),
                     ),
                   ),
+                  if (_history.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildHistoryShelf(
+                        entries: _history.take(20).toList(growable: false),
+                        cardWidth: cardWidth,
+                      ),
+                    ),
+                  SliverToBoxAdapter(
+                    child: _buildFeedShelf(items: items, cardWidth: cardWidth),
+                  ),
+                  if (_viewModel.isLoadingMoreFeed.value)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 4, bottom: 28),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0x88FFFFFF),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildHeroPanel(_TvHeroItem item, {required bool compact}) {
+    final title = biliStripHtmlTags(item.title);
+    final metadata = <String>[
+      if (item.author.isNotEmpty) item.author,
+      if (item.durationLabel.isNotEmpty) item.durationLabel,
+      if (item.playCountLabel.isNotEmpty) '${item.playCountLabel} 播放',
+    ].join(' · ');
+    final progress = item.progress;
+    final progressLabel = item.durationMs == null
+        ? null
+        : '已观看 ${biliFormatDurationSeconds(item.initialPositionMs ~/ 1000)} / ${biliFormatDurationSeconds(item.durationMs! ~/ 1000)}';
+    return Padding(
+      padding: EdgeInsets.fromLTRB(0, compact ? 30 : 46, 36, 18),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: compact ? 560 : 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 22,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: AppVisualTokens.primaryBlue,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    item.eyebrow,
+                    style: const TextStyle(
+                      color: Color(0xCCFFFFFF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: compact ? 12 : 16),
+              Text(
+                title,
+                key: const ValueKey<String>('bili-tv-hero-title'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 34 : 44,
+                  fontWeight: FontWeight.w800,
+                  height: 1.08,
+                ),
+              ),
+              if (metadata.isNotEmpty) ...[
+                const SizedBox(height: 9),
+                Text(
+                  metadata,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xD9FFFFFF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
-            ),
+              if (!compact && item.description.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  biliStripHtmlTags(item.description),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xA6FFFFFF),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+              if (progressLabel != null && progress > 0) ...[
+                SizedBox(height: compact ? 10 : 14),
+                Text(
+                  progressLabel,
+                  style: const TextStyle(
+                    color: Color(0xA6FFFFFF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      key: const ValueKey<String>('bili-tv-hero-progress'),
+                      value: progress,
+                      minHeight: 4,
+                      backgroundColor: const Color(0x3DFFFFFF),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppVisualTokens.primaryBlue,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              SizedBox(height: compact ? 14 : 20),
+              TvFocusGroupScope(
+                key: const ValueKey<String>('bili-tv-hero-actions'),
+                group: const ValueKey<String>('tv-hero-actions-focus'),
+                child: AdaptiveLiquidGlassLayer(
+                  quality: TvGlassQualityScope.of(context),
+                  settings: const LiquidGlassSettings(
+                    blur: 8,
+                    thickness: 16,
+                    glassColor: Color(0x14FFFFFF),
+                    lightIntensity: 0.6,
+                  ),
+                  child: Row(
+                    children: [
+                      _TvHeroAction(
+                        label: item.source == _TvHeroSource.history
+                            ? '继续播放'
+                            : '开始播放',
+                        icon: Icons.play_arrow_rounded,
+                        primary: true,
+                        debugLabel: 'tv_hero_play',
+                        onTap: () => unawaited(_playHero(item)),
+                      ),
+                      const SizedBox(width: 12),
+                      _TvHeroAction(
+                        label: '详情',
+                        icon: Icons.info_outline_rounded,
+                        debugLabel: 'tv_hero_details',
+                        onTap: () => unawaited(_openHeroDetails(item)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryShelf({
+    required List<BiliPlaybackHistoryEntry> entries,
+    required double cardWidth,
+  }) {
+    final coverCacheWidth = biliTvCoverCacheWidth(
+      tileWidth: cardWidth,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
+    return _TvMediaShelf(
+      key: const ValueKey<String>('bili-tv-continue-shelf'),
+      title: '继续观看',
+      controller: _continueShelfController,
+      itemCount: entries.length,
+      cardWidth: cardWidth,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        final hero = _TvHeroItem.history(entry);
+        return _TvHistoryCard(
+          key: ValueKey<String>('history_${hero.identity}'),
+          coverUrl: entry.coverUrl,
+          coverCacheWidth: coverCacheWidth,
+          title: entry.videoTitle,
+          subtitle: entry.pageTitle,
+          ownerName: entry.ownerName,
+          progress: hero.progress,
+          onFocusChange: (focused) => _scheduleHeroUpdate(hero, focused),
+          onTap: () => unawaited(_playHero(hero)),
+        );
+      },
+    );
+  }
+
+  Widget _buildFeedShelf({
+    required List<BiliFeedVideo> items,
+    required double cardWidth,
+  }) {
+    final coverCacheWidth = biliTvCoverCacheWidth(
+      tileWidth: cardWidth,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
+    return _TvMediaShelf(
+      key: const ValueKey<String>('bili-tv-recommend-shelf'),
+      title: '为你推荐',
+      controller: _recommendShelfController,
+      itemCount: items.length,
+      cardWidth: cardWidth,
+      itemBuilder: (context, index) {
+        if (index >= items.length - 8) {
+          _requestMoreFeed();
+        }
+        final item = items[index];
+        final hero = _TvHeroItem.feed(item);
+        return _TvVideoCard(
+          key: ValueKey<String>('feed_${item.bvid}'),
+          coverUrl: item.coverUrl,
+          coverCacheWidth: coverCacheWidth,
+          title: item.title,
+          author: item.author,
+          duration: item.durationLabel,
+          playCount: item.playCountLabel,
+          onFocusChange: (focused) => _scheduleHeroUpdate(hero, focused),
+          onTap: () => unawaited(_playHero(hero)),
         );
       },
     );
@@ -1070,6 +1890,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               sliver: _TvRegionVideoGrid(
                 items: _regionItems,
                 onTapItem: _openRegionVideo,
+                onFocusItem: (item, focused) =>
+                    _scheduleHeroUpdate(_TvHeroItem.region(item), focused),
                 onNearEnd: _requestMoreRegion,
               ),
             ),
@@ -1234,6 +2056,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                             author: result.author,
                             duration: result.durationLabel,
                             playCount: result.playCountLabel,
+                            onFocusChange: (focused) => _scheduleHeroUpdate(
+                              _TvHeroItem.search(result),
+                              focused,
+                            ),
                             onTap: () => _openPlayback(result.bvid),
                           );
                         },
@@ -1337,6 +2163,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 subtitle: entry.pageTitle,
                 ownerName: entry.ownerName,
                 progress: progress,
+                onFocusChange: (focused) =>
+                    _scheduleHeroUpdate(_TvHeroItem.history(entry), focused),
                 onTap: () => _openPlayback(
                   entry.bvid,
                   aid: entry.aid,
@@ -1489,6 +2317,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   Widget _buildMineLibraryActions({required bool compact}) {
+    final visualTheme = AppVisualTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1501,30 +2330,44 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _TvLibraryAction(
-                key: const ValueKey<String>('bili-tv-mine-history'),
-                icon: Icons.history_rounded,
-                label: '历史播放',
-                compact: compact,
-                onTap: () =>
-                    unawaited(_openLibrary(BiliLibrarySection.history)),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: visualTheme.surface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: visualTheme.imageOutline),
+            boxShadow: [
+              BoxShadow(
+                color: visualTheme.shadow,
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _TvLibraryAction(
-                key: const ValueKey<String>('bili-tv-mine-watch-later'),
-                icon: Icons.watch_later_outlined,
-                label: '稍后再看',
-                compact: compact,
-                onTap: () =>
-                    unawaited(_openLibrary(BiliLibrarySection.watchLater)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _TvLibraryAction(
+                  key: const ValueKey<String>('bili-tv-mine-history'),
+                  icon: Icons.history_rounded,
+                  label: '历史播放',
+                  compact: compact,
+                  onTap: () =>
+                      unawaited(_openLibrary(BiliLibrarySection.history)),
+                ),
               ),
-            ),
-          ],
+              Container(width: 1, height: 54, color: visualTheme.divider),
+              Expanded(
+                child: _TvLibraryAction(
+                  key: const ValueKey<String>('bili-tv-mine-watch-later'),
+                  icon: Icons.watch_later_outlined,
+                  label: '稍后再看',
+                  compact: compact,
+                  onTap: () =>
+                      unawaited(_openLibrary(BiliLibrarySection.watchLater)),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1555,6 +2398,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   Widget _buildSettingsPanelContent({required bool compact}) {
     final modeChanged = _forceTvMode != _initialForceTvMode;
+    final visualTheme = AppVisualTheme.of(context);
     return Container(
       padding: EdgeInsets.all(compact ? 22 : 36),
       child: Column(
@@ -1570,88 +2414,98 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             ),
           ),
           SizedBox(height: compact ? 14 : 24),
-          GlassContainer(
-            width: double.infinity,
-            padding: EdgeInsets.all(compact ? 18 : 24),
-            useOwnLayer: true,
-            quality: TvGlassQualityScope.of(context),
-            shape: const LiquidRoundedSuperellipse(
-              borderRadius: AppVisualTokens.controlRadius,
-            ),
-            child: TvFocusable(
-              autofocus: true,
-              scale: 1.035,
-              focusCornerRadius: 16,
-              baseCornerRadius: 16,
-              showGlow: false,
-              onTap: () => _toggleForceTvMode(!_forceTvMode),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '强制 TV 模式',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
+          TvGlassSelectable(
+            key: const ValueKey<String>('bili-tv-settings-force-mode-card'),
+            autofocus: true,
+            scale: 1.025,
+            borderRadius: AppVisualTokens.controlRadius,
+            focusArea: TvFocusArea.content,
+            debugLabel: 'tv_settings_force_mode',
+            onTap: () => _toggleForceTvMode(!_forceTvMode),
+            builder: (context, state) => DecoratedBox(
+              decoration: BoxDecoration(
+                color: visualTheme.surface.withValues(alpha: 0.96),
+                borderRadius: BorderRadius.circular(
+                  AppVisualTokens.controlRadius,
+                ),
+                border: Border.all(color: visualTheme.imageOutline),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(compact ? 18 : 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '强制 TV 模式',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _forceTvMode ? '当前：TV 模式' : '当前：自动检测（根据设备）',
-                          style: const TextStyle(
-                            color: Color(0x88FFFFFF),
-                            fontSize: 13,
+                          const SizedBox(height: 4),
+                          Text(
+                            _forceTvMode ? '当前：TV 模式' : '当前：自动检测（根据设备）',
+                            style: const TextStyle(
+                              color: Color(0x88FFFFFF),
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 20),
-                  IgnorePointer(
-                    child: Switch(
-                      value: _forceTvMode,
-                      onChanged: _toggleForceTvMode,
-                      activeThumbColor: AppVisualTokens.primaryBlue,
-                      activeTrackColor: const Color(0x66409EFF),
-                      inactiveThumbColor: const Color(0xDDFFFFFF),
-                      inactiveTrackColor: const Color(0x22FFFFFF),
+                    const SizedBox(width: 20),
+                    IgnorePointer(
+                      child: Switch(
+                        value: _forceTvMode,
+                        onChanged: _toggleForceTvMode,
+                        activeThumbColor: AppVisualTokens.primaryBlue,
+                        activeTrackColor: const Color(0x66409EFF),
+                        inactiveThumbColor: const Color(0xDDFFFFFF),
+                        inactiveTrackColor: const Color(0x22FFFFFF),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
           SizedBox(height: compact ? 12 : 20),
-          GlassContainer(
-            key: const ValueKey<String>('bili-tv-settings-about-card'),
+          SizedBox(
             width: double.infinity,
-            padding: EdgeInsets.all(compact ? 18 : 24),
-            useOwnLayer: true,
-            quality: GlassQuality.minimal,
-            shape: const LiquidRoundedSuperellipse(
-              borderRadius: AppVisualTokens.controlRadius,
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '关于',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
+            child: DecoratedBox(
+              key: const ValueKey<String>('bili-tv-settings-about-card'),
+              decoration: BoxDecoration(
+                color: visualTheme.surface.withValues(alpha: 0.96),
+                borderRadius: BorderRadius.circular(
+                  AppVisualTokens.controlRadius,
                 ),
-                SizedBox(height: 6),
-                Text(
-                  'bilibili_player 0.1.0 - TV Preview',
-                  style: TextStyle(color: Color(0x88FFFFFF), fontSize: 13),
+                border: Border.all(color: visualTheme.imageOutline),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(compact ? 18 : 24),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '关于 Vesper',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Vesper 1.2.0 · TV',
+                      style: TextStyle(color: Color(0x88FFFFFF), fontSize: 13),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           if (modeChanged) ...[
@@ -1803,6 +2657,198 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 }
 
+class _TvHeroAction extends StatelessWidget {
+  const _TvHeroAction({
+    required this.label,
+    required this.icon,
+    required this.debugLabel,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final String debugLabel;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvGlassSelectable(
+      useOwnLayer: false,
+      scale: 1.025,
+      borderRadius: AppVisualTokens.controlRadius,
+      focusArea: TvFocusArea.content,
+      debugLabel: debugLabel,
+      onTap: onTap,
+      builder: (context, state) {
+        final focused = state == TvGlassSelectableState.focused;
+        final pressed = state == TvGlassSelectableState.pressed;
+        return AnimatedContainer(
+          duration: AppVisualTokens.motionDuration(
+            context,
+            AppVisualTokens.buttonPressDuration,
+          ),
+          width: primary ? 174 : 142,
+          height: 52,
+          decoration: BoxDecoration(
+            color: primary
+                ? AppVisualTokens.primaryBlue
+                : focused || pressed
+                ? const Color(0x3DFFFFFF)
+                : const Color(0x24FFFFFF),
+            borderRadius: BorderRadius.circular(AppVisualTokens.controlRadius),
+            boxShadow: primary
+                ? const [
+                    BoxShadow(
+                      color: Color(0x33409EFF),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
+                : const [],
+          ),
+          padding: const EdgeInsets.only(left: 17, right: 19),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(
+                  left: icon == Icons.play_arrow_rounded ? 2 : 0,
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TvMediaShelf extends StatelessWidget {
+  const _TvMediaShelf({
+    super.key,
+    required this.title,
+    required this.controller,
+    required this.itemCount,
+    required this.cardWidth,
+    required this.itemBuilder,
+  });
+
+  final String title;
+  final ScrollController controller;
+  final int itemCount;
+  final double cardWidth;
+  final IndexedWidgetBuilder itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardHeight = cardWidth / (16 / 9) + 58;
+    return TvFocusGroupScope(
+      group: ValueKey<String>('tv-shelf-focus-$title'),
+      onDirectionalEdge: (direction) {
+        if (!controller.hasClients ||
+            (direction != TraversalDirection.left &&
+                direction != TraversalDirection.right)) {
+          return false;
+        }
+        final position = controller.position;
+        final delta = cardWidth + 14;
+        final target = switch (direction) {
+          TraversalDirection.left => (position.pixels - delta).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+          TraversalDirection.right => (position.pixels + delta).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+          _ => position.pixels,
+        };
+        if ((target - position.pixels).abs() < 1) {
+          return false;
+        }
+        unawaited(
+          controller.animateTo(
+            target,
+            duration: AppVisualTokens.motionDuration(
+              context,
+              const Duration(milliseconds: 160),
+            ),
+            curve: Curves.easeOutCubic,
+          ),
+        );
+        return true;
+      },
+      child: RepaintBoundary(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: cardHeight + _tvGridFocusInset * 2,
+                child: Overlay.wrap(
+                  clipBehavior: Clip.none,
+                  child: ListView.separated(
+                    key: ValueKey<String>('tv-shelf-list-$title'),
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    clipBehavior: Clip.none,
+                    scrollCacheExtent: ScrollCacheExtent.pixels(
+                      cardWidth * 2.5,
+                    ),
+                    padding: const EdgeInsets.fromLTRB(
+                      _tvGridFocusInset,
+                      _tvGridFocusInset,
+                      34,
+                      _tvGridFocusInset,
+                    ),
+                    itemCount: itemCount,
+                    separatorBuilder: (_, _) => const SizedBox(width: 14),
+                    itemBuilder: (context, index) => SizedBox(
+                      width: cardWidth,
+                      height: cardHeight,
+                      child: itemBuilder(context, index),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TvGridOverlayScope extends StatelessWidget {
   const _TvGridOverlayScope({required this.child});
 
@@ -1868,66 +2914,17 @@ class _TvSearchSuffixIcon extends StatelessWidget {
   }
 }
 
-class _TvVideoGrid extends StatelessWidget {
-  const _TvVideoGrid({
-    required this.items,
-    required this.onTapItem,
-    required this.onNearEnd,
-  });
-
-  final List<BiliFeedVideo> items;
-  final void Function(BiliFeedVideo item) onTapItem;
-  final VoidCallback onNearEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        final coverCacheWidth = biliTvCoverCacheWidth(
-          tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-            constraints.crossAxisExtent,
-          ),
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-        );
-        return SliverGrid.builder(
-          itemCount: items.length,
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: _tvGridMaxCrossAxisExtent,
-            mainAxisSpacing: _tvGridMainAxisSpacing,
-            crossAxisSpacing: _tvGridCrossAxisSpacing,
-            childAspectRatio: _tvGridChildAspectRatio,
-          ),
-          itemBuilder: (context, index) {
-            if (index >= items.length - 8) {
-              onNearEnd();
-            }
-            final item = items[index];
-            return _TvVideoCard(
-              key: ValueKey('feed_${item.bvid}'),
-              coverUrl: item.coverUrl,
-              coverCacheWidth: coverCacheWidth,
-              title: item.title,
-              author: item.author,
-              duration: item.durationLabel,
-              playCount: item.playCountLabel,
-              onTap: () => onTapItem(item),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 class _TvRegionVideoGrid extends StatelessWidget {
   const _TvRegionVideoGrid({
     required this.items,
     required this.onTapItem,
+    required this.onFocusItem,
     required this.onNearEnd,
   });
 
   final List<BiliRegionVideo> items;
   final void Function(BiliRegionVideo item) onTapItem;
+  final void Function(BiliRegionVideo item, bool focused) onFocusItem;
   final VoidCallback onNearEnd;
 
   @override
@@ -1969,6 +2966,7 @@ class _TvRegionVideoGrid extends StatelessWidget {
               author: subtitle,
               duration: duration,
               playCount: item.followCountLabel ?? '',
+              onFocusChange: (focused) => onFocusItem(item, focused),
               onTap: () => onTapItem(item),
             );
           },
@@ -2051,6 +3049,7 @@ class _TvVideoCard extends StatelessWidget {
     required this.duration,
     required this.playCount,
     required this.onTap,
+    this.onFocusChange,
   });
 
   final String coverUrl;
@@ -2060,15 +3059,17 @@ class _TvVideoCard extends StatelessWidget {
   final String duration;
   final String playCount;
   final VoidCallback onTap;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusableSurface(
-      scale: 1.12,
+      scale: 1.07,
       focusPadding: _tvCardFocusPadding,
       useOverlayLift: true,
       focusArea: TvFocusArea.content,
       debugLabel: 'video_$title',
+      onFocusChange: onFocusChange,
       onTap: onTap,
       builder: (context, focused) => LayoutBuilder(
         builder: (context, constraints) {
@@ -2182,6 +3183,7 @@ class _TvSearchResultCard extends StatelessWidget {
     required this.duration,
     required this.playCount,
     required this.onTap,
+    this.onFocusChange,
   });
 
   final String coverUrl;
@@ -2191,6 +3193,7 @@ class _TvSearchResultCard extends StatelessWidget {
   final String duration;
   final String playCount;
   final VoidCallback onTap;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   Widget build(BuildContext context) {
@@ -2201,6 +3204,7 @@ class _TvSearchResultCard extends StatelessWidget {
       author: author,
       duration: duration,
       playCount: playCount,
+      onFocusChange: onFocusChange,
       onTap: onTap,
     );
   }
@@ -2208,6 +3212,7 @@ class _TvSearchResultCard extends StatelessWidget {
 
 class _TvHistoryCard extends StatelessWidget {
   const _TvHistoryCard({
+    super.key,
     required this.coverUrl,
     required this.coverCacheWidth,
     required this.title,
@@ -2216,6 +3221,7 @@ class _TvHistoryCard extends StatelessWidget {
     required this.progress,
     required this.onTap,
     this.autofocus = false,
+    this.onFocusChange,
   });
 
   final String coverUrl;
@@ -2226,16 +3232,18 @@ class _TvHistoryCard extends StatelessWidget {
   final double progress;
   final VoidCallback onTap;
   final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusableSurface(
       autofocus: autofocus,
-      scale: 1.12,
+      scale: 1.07,
       focusPadding: _tvCardFocusPadding,
       useOverlayLift: true,
       focusArea: TvFocusArea.content,
       debugLabel: 'history_$title',
+      onFocusChange: onFocusChange,
       onTap: onTap,
       builder: (context, focused) => LayoutBuilder(
         builder: (context, constraints) {

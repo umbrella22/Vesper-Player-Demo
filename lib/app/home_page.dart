@@ -1,4 +1,4 @@
-import 'package:bilibili_player/bili/bili.dart';
+import 'package:vesper_media/bili/bili.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../main.dart';

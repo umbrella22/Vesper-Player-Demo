@@ -1,5 +1,5 @@
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_external_playback_manager.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/view_models/bili_external_playback_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,13 +11,13 @@ void main() {
 
   group('BiliExternalPlaybackManager', () {
     const channel = MethodChannel(
-      'dev.ikaros.bilibili_player_test/external_playback',
+      'dev.ikaros.vesper_player_test/external_playback',
     );
     const routesChannel = EventChannel(
-      'dev.ikaros.bilibili_player_test/external_playback/routes',
+      'dev.ikaros.vesper_player_test/external_playback/routes',
     );
     const eventsChannel = EventChannel(
-      'dev.ikaros.bilibili_player_test/external_playback/events',
+      'dev.ikaros.vesper_player_test/external_playback/events',
     );
     late _ExternalPlaybackHarness externalPlayback;
     late BiliExternalPlaybackManager manager;

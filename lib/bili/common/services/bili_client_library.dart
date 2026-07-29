@@ -821,7 +821,7 @@ extension BiliClientLibrary on BiliClient {
       throw const BiliApiException('字幕响应为空。');
     }
     final directory = Directory(
-      '${Directory.systemTemp.path}/bilibili-player-subtitles',
+      '${Directory.systemTemp.path}/vesper/subtitles',
     );
     await directory.create(recursive: true);
     final file = File(

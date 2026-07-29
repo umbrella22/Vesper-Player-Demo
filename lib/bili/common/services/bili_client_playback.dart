@@ -365,7 +365,7 @@ extension BiliClientPlayback on BiliClient {
     required String manifestText,
   }) async {
     final directory = Directory(
-      '${Directory.systemTemp.path}/bilibili-player-dash',
+      '${Directory.systemTemp.path}/vesper/dash',
     );
     await directory.create(recursive: true);
     final file = File('${directory.path}/${sanitizeAssetPart(bvid)}-$cid.mpd');

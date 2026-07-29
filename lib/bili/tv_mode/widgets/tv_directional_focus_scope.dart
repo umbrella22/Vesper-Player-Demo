@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import 'tv_focusable.dart';
 
-class TvDirectionalFocusScope extends StatelessWidget {
+class TvDirectionalFocusScope extends StatefulWidget {
   const TvDirectionalFocusScope({
     super.key,
     required this.child,
@@ -11,6 +11,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
     this.handleGoBackKey = true,
     this.onBack,
     this.onMenu,
+    this.onFocusAreaChanged,
     this.debugLabel,
   });
 
@@ -19,7 +20,41 @@ class TvDirectionalFocusScope extends StatelessWidget {
   final bool handleGoBackKey;
   final VoidCallback? onBack;
   final VoidCallback? onMenu;
+  final ValueChanged<TvFocusArea?>? onFocusAreaChanged;
   final String? debugLabel;
+
+  @override
+  State<TvDirectionalFocusScope> createState() =>
+      _TvDirectionalFocusScopeState();
+}
+
+class _TvDirectionalFocusScopeState extends State<TvDirectionalFocusScope> {
+  TvFocusArea? _lastFocusArea;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_handlePrimaryFocusChanged);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _handlePrimaryFocusChanged(),
+    );
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_handlePrimaryFocusChanged);
+    super.dispose();
+  }
+
+  void _handlePrimaryFocusChanged() {
+    final primaryFocus = FocusManager.instance.primaryFocus;
+    final area = primaryFocus == null ? null : tvFocusAreaOf(primaryFocus);
+    if (_lastFocusArea == area) {
+      return;
+    }
+    _lastFocusArea = area;
+    widget.onFocusAreaChanged?.call(area);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +68,7 @@ class TvDirectionalFocusScope extends StatelessWidget {
             const _TvFocusLeftIntent(),
         const SingleActivator(LogicalKeyboardKey.arrowRight):
             const _TvFocusRightIntent(),
-        if (handleGoBackKey)
+        if (widget.handleGoBackKey)
           const SingleActivator(LogicalKeyboardKey.goBack):
               const _TvFocusBackIntent(),
         const SingleActivator(LogicalKeyboardKey.browserBack):
@@ -59,8 +94,8 @@ class TvDirectionalFocusScope extends StatelessWidget {
           ),
           _TvFocusBackIntent: CallbackAction<_TvFocusBackIntent>(
             onInvoke: (_) {
-              if (onBack != null) {
-                onBack!.call();
+              if (widget.onBack != null) {
+                widget.onBack!.call();
               } else {
                 Navigator.maybePop(context);
               }
@@ -69,8 +104,8 @@ class TvDirectionalFocusScope extends StatelessWidget {
           ),
           _TvFocusMenuIntent: CallbackAction<_TvFocusMenuIntent>(
             onInvoke: (_) {
-              onMenu?.call();
-              return onMenu == null
+              widget.onMenu?.call();
+              return widget.onMenu == null
                   ? KeyEventResult.ignored
                   : KeyEventResult.handled;
             },
@@ -79,10 +114,10 @@ class TvDirectionalFocusScope extends StatelessWidget {
         child: FocusTraversalGroup(
           policy: ReadingOrderTraversalPolicy(),
           child: Focus(
-            autofocus: autofocus,
-            debugLabel: debugLabel,
+            autofocus: widget.autofocus,
+            debugLabel: widget.debugLabel,
             onKeyEvent: (_, event) => _handleKeyEvent(context, event),
-            child: child,
+            child: widget.child,
           ),
         ),
       ),
@@ -106,18 +141,18 @@ class TvDirectionalFocusScope extends StatelessWidget {
     if (key == LogicalKeyboardKey.arrowRight) {
       return _moveFocus(TraversalDirection.right);
     }
-    if ((handleGoBackKey && key == LogicalKeyboardKey.goBack) ||
+    if ((widget.handleGoBackKey && key == LogicalKeyboardKey.goBack) ||
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape) {
-      if (onBack != null) {
-        onBack!.call();
+      if (widget.onBack != null) {
+        widget.onBack!.call();
       } else {
         Navigator.maybePop(context);
       }
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.contextMenu && onMenu != null) {
-      onMenu!.call();
+    if (key == LogicalKeyboardKey.contextMenu && widget.onMenu != null) {
+      widget.onMenu!.call();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

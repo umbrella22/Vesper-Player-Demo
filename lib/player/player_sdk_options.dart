@@ -47,7 +47,7 @@ VesperBenchmarkConfiguration biliPlayerBenchmarkConfiguration() {
 final class BiliPlayerPluginResolver {
   const BiliPlayerPluginResolver({
     MethodChannel channel = const MethodChannel(
-      'dev.ikaros.bilibili_player/player_plugins',
+      'dev.ikaros.vesper_player/player_plugins',
     ),
   }) : _channel = channel;
 

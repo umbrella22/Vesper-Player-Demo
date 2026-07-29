@@ -1,19 +1,18 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
-import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
-import 'package:bilibili_player/download/download.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
+import 'package:vesper_media/download/download.dart';
 
 enum BiliLibrarySection { following, history, watchLater }
 
@@ -517,11 +516,12 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   Widget _buildPhonePage(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final topPadding = MediaQuery.paddingOf(context).top;
-    const appBarContentHeight = 110.0;
+    const appBarContentHeight = 118.0;
     final appBarSurfaceHeight = topPadding + appBarContentHeight;
     return AppGlassScaffold(
-      backgroundColor: AppVisualTokens.mobileBackground,
+      backgroundColor: visualTheme.background,
       extendBody: false,
       appBarHeight: appBarContentHeight,
       appBar: SizedBox(
@@ -531,15 +531,9 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
             if (topPadding > 0) SizedBox(height: topPadding),
             SizedBox(
               height: 44,
-              child: GlassContainer(
+              child: Padding(
                 key: const ValueKey<String>('bili-library-phone-toolbar'),
-                useOwnLayer: true,
-                quality: GlassQuality.standard,
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                padding: EdgeInsets.zero,
-                shape: const LiquidRoundedSuperellipse(
-                  borderRadius: AppVisualTokens.controlRadius,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   children: [
                     IconButton(
@@ -562,7 +556,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
             SizedBox(
               height: AppGlassSectionTabs.height,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: AnimatedBuilder(
                   animation: _tabController,
                   builder: (context, _) {
@@ -602,7 +596,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
                 ),
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -622,7 +616,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       onBack: () => Navigator.of(context).maybePop(),
       child: Scaffold(
         key: const ValueKey<String>('bili-tv-library-root'),
-        backgroundColor: const Color(0xFF0A0A0E),
+        backgroundColor: AppVisualTokens.tvBackground,
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -650,6 +644,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   Widget _buildTvHeader(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 22, 28, 12),
       child: Row(
@@ -661,13 +656,13 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
             onTap: () => Navigator.of(context).maybePop(),
           ),
           const SizedBox(width: 18),
-          const Expanded(
+          Expanded(
             child: Text(
               '我的内容',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Colors.white,
+                color: visualTheme.textPrimary,
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
                 height: 1.1,
@@ -969,7 +964,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       itemCount: state.following.length + (state.hasMore ? 1 : 0),
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
@@ -991,7 +986,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       itemCount: state.history.length + (state.hasMore ? 1 : 0),
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
@@ -1026,7 +1021,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       itemCount: state.watchLater.length + (state.hasMore ? 1 : 0),
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
@@ -1112,13 +1107,18 @@ class _FollowingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      color: visualTheme.surface,
+      borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       child: ListTile(
         leading: CircleAvatar(
           radius: 24,
-          backgroundColor: const Color(0xFFFFDCE7),
+          backgroundColor: AppVisualTokens.biliSourcePink.withValues(
+            alpha: Theme.of(context).brightness == Brightness.dark
+                ? 0.18
+                : 0.12,
+          ),
           backgroundImage: user.avatarUrl.isEmpty
               ? null
               : NetworkImage(user.avatarUrl),
@@ -1166,14 +1166,15 @@ class _LibraryVideoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final progress = durationMs <= 0
         ? 0.0
         : (progressMs / durationMs).clamp(0.0, 1.0).toDouble();
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      color: visualTheme.surface,
+      borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -1188,13 +1189,24 @@ class _LibraryVideoTile extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       coverUrl.isEmpty
-                          ? const ColoredBox(color: Color(0xFFE9ECF2))
+                          ? ColoredBox(color: visualTheme.surfaceRaised)
                           : Image.network(
                               coverUrl,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) =>
-                                  const ColoredBox(color: Color(0xFFE9ECF2)),
+                                  ColoredBox(color: visualTheme.surfaceRaised),
                             ),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: visualTheme.imageOutline,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                       if (progress > 0)
                         Align(
                           alignment: Alignment.bottomCenter,
@@ -1220,8 +1232,8 @@ class _LibraryVideoTile extends StatelessWidget {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF20232B),
+                      style: TextStyle(
+                        color: visualTheme.textPrimary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1230,8 +1242,8 @@ class _LibraryVideoTile extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF858A94),
+                      style: TextStyle(
+                        color: visualTheme.textSecondary,
                         fontSize: 12,
                       ),
                     ),
@@ -1284,16 +1296,17 @@ class _LibraryEmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         const SizedBox(height: 120),
-        Icon(Icons.inbox_outlined, size: 42, color: Colors.grey.shade400),
+        Icon(Icons.inbox_outlined, size: 42, color: visualTheme.textTertiary),
         const SizedBox(height: 12),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600),
+          style: TextStyle(color: visualTheme.textSecondary),
         ),
       ],
     );
@@ -1770,6 +1783,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final progress = durationMs <= 0
         ? 0.0
         : (progressMs / durationMs).clamp(0.0, 1.0).toDouble();
@@ -1785,10 +1799,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
             Positioned.fill(
               child: TvFocusableSurface(
                 autofocus: autofocus,
-                useOverlayLift: false,
-                focusPadding: 0,
-                scale: 1.045,
-                borderRadius: 12,
+                scale: 1.07,
+                borderRadius: AppVisualTokens.contentRadius,
                 focusArea: TvFocusArea.content,
                 debugLabel: debugLabel,
                 onTap: onTap,
@@ -1802,40 +1814,38 @@ class _TvLibraryVideoCard extends StatelessWidget {
                           duration: const Duration(milliseconds: 160),
                           curve: Curves.easeOutCubic,
                           foregroundDecoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: focused
-                                  ? AppVisualTokens.primaryBlue
-                                  : const Color(0x1AFFFFFF),
-                              width: focused ? 2 : 1,
+                            borderRadius: BorderRadius.circular(
+                              AppVisualTokens.contentRadius,
                             ),
+                            border: Border.all(color: visualTheme.imageOutline),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(
+                              AppVisualTokens.contentRadius,
+                            ),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
                                 ColoredBox(
-                                  color: const Color(0xFF1A1A24),
+                                  color: visualTheme.surfaceRaised,
                                   child: coverUrl.isEmpty
-                                      ? const Icon(
+                                      ? Icon(
                                           Icons.video_library_outlined,
-                                          color: Color(0x55FFFFFF),
+                                          color: visualTheme.textTertiary,
                                           size: 42,
                                         )
                                       : Image.network(
                                           coverUrl,
                                           fit: BoxFit.cover,
                                           cacheWidth: cacheWidth,
-                                          errorBuilder: (_, _, _) =>
-                                              const ColoredBox(
-                                                color: Color(0xFF1A1A24),
-                                                child: Icon(
-                                                  Icons.broken_image_outlined,
-                                                  color: Color(0x55FFFFFF),
-                                                  size: 36,
-                                                ),
-                                              ),
+                                          errorBuilder: (_, _, _) => ColoredBox(
+                                            color: visualTheme.surfaceRaised,
+                                            child: Icon(
+                                              Icons.broken_image_outlined,
+                                              color: visualTheme.textTertiary,
+                                              size: 36,
+                                            ),
+                                          ),
                                         ),
                                 ),
                                 if (progress > 0)
@@ -1862,8 +1872,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: focused
-                              ? Colors.white
-                              : const Color(0xE6FFFFFF),
+                              ? visualTheme.textPrimary
+                              : visualTheme.textSecondary,
                           fontSize: 14,
                           fontWeight: focused
                               ? FontWeight.w800
@@ -1876,8 +1886,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0x77FFFFFF),
+                        style: TextStyle(
+                          color: visualTheme.textTertiary,
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           height: 1.15,
@@ -1908,6 +1918,7 @@ class _TvLibraryRemoveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return SizedBox(
       width: 42,
       height: 42,
@@ -1927,13 +1938,13 @@ class _TvLibraryRemoveButton extends StatelessWidget {
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 color: focused
-                    ? AppVisualTokens.primaryBlue
-                    : Colors.black.withValues(alpha: 0.74),
+                    ? visualTheme.destructive.withValues(alpha: 0.92)
+                    : visualTheme.scrim.withValues(alpha: 0.82),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: focused
-                      ? Colors.white.withValues(alpha: 0.88)
-                      : Colors.white.withValues(alpha: 0.22),
+                      ? visualTheme.destructive
+                      : visualTheme.glassBorder,
                 ),
               ),
               child: const Icon(
@@ -1961,58 +1972,61 @@ class _TvLibraryLoadMoreTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return TvFocusableSurface(
-      useOverlayLift: false,
-      focusPadding: 0,
-      scale: 1.04,
-      borderRadius: 12,
+      scale: 1.07,
+      borderRadius: AppVisualTokens.contentRadius,
       focusArea: TvFocusArea.content,
       debugLabel: 'tv_library_load_more',
       onTap: loading ? () {} : onTap,
       builder: (context, focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            color: focused
-                ? Colors.white.withValues(alpha: 0.18)
-                : Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: focused
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : const Color(0x16FFFFFF),
+        return Material(
+          color: visualTheme.surface,
+          borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
+          clipBehavior: Clip.antiAlias,
+          child: AnimatedContainer(
+            duration: AppVisualTokens.motionDuration(
+              context,
+              AppVisualTokens.tvFocusDuration,
             ),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (loading)
-                  const SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: AppVisualTokens.primaryBlue,
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(
+                AppVisualTokens.contentRadius,
+              ),
+              border: Border.all(color: visualTheme.imageOutline),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (loading)
+                    const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: AppVisualTokens.primaryBlue,
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.expand_more_rounded,
+                      color: visualTheme.textSecondary,
+                      size: 32,
                     ),
-                  )
-                else
-                  const Icon(
-                    Icons.expand_more_rounded,
-                    color: Color(0xCCFFFFFF),
-                    size: 32,
+                  const SizedBox(height: 10),
+                  Text(
+                    loading ? '加载中' : '加载更多',
+                    style: TextStyle(
+                      color: visualTheme.textSecondary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                const SizedBox(height: 10),
-                Text(
-                  loading ? '加载中' : '加载更多',
-                  style: const TextStyle(
-                    color: Color(0xCCFFFFFF),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

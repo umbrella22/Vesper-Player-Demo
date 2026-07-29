@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/app_mode/pages/bili_library_page.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
-import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -114,7 +114,7 @@ void main() {
 
     expect(find.byType(AppGlassSectionTabs), findsOneWidget);
     final tabs = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
-    expect(tabs.quality, GlassQuality.premium);
+    expect(tabs.quality, isNull);
     expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
     expect(tabs.selectedLabelColor, AppVisualTokens.textPrimary);
 
@@ -127,7 +127,7 @@ void main() {
     );
     expect(toolbarRect.top, 24);
     expect(sectionTabsRect.top - toolbarRect.bottom, 12);
-    expect(contentRect.top - sectionTabsRect.bottom, 2);
+    expect(contentRect.top - sectionTabsRect.bottom, 10);
     expect(tester.takeException(), isNull);
   });
 
@@ -185,6 +185,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
         home: BiliLibraryPage(
           client: client,
           initialSection: BiliLibrarySection.history,
@@ -197,11 +198,12 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('bili-tv-library-card-history-cid:11')),
     );
+    await tester.pump(AppVisualTokens.tvFocusDuration);
 
     final root = tester.widget<Scaffold>(
       find.byKey(const ValueKey<String>('bili-tv-library-root')),
     );
-    expect(root.backgroundColor, const Color(0xFF0A0A0E));
+    expect(root.backgroundColor, AppVisualTokens.tvBackground);
     expect(
       find.byKey(const ValueKey<String>('bili-tv-library-grid-history')),
       findsOneWidget,
@@ -229,6 +231,14 @@ void main() {
     );
     final markerDecoration = marker.decoration! as BoxDecoration;
     expect(markerDecoration.color, AppVisualTokens.primaryBlue);
+    expect(
+      find.byKey(const ValueKey<String>('tv-content-glass-overlay')),
+      findsOneWidget,
+    );
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_library_history_cid:11',
+    );
   });
 
   testWidgets('tv watch later removal requires confirmation', (
@@ -249,6 +259,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
         home: BiliLibraryPage(
           client: client,
           initialSection: BiliLibrarySection.watchLater,

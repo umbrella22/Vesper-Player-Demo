@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:bilibili_player/bili/app_mode/pages/bili_hub_page.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_hub_view_model.dart';
-import 'package:bilibili_player/download/download.dart';
-import 'package:bilibili_player/download/services/offline_media_exporter.dart';
-import 'package:bilibili_player/download/view_models/offline_cache_view_model.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
+import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/download/services/offline_media_exporter.dart';
+import 'package:vesper_media/download/view_models/offline_cache_view_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_player/vesper_player.dart';
 

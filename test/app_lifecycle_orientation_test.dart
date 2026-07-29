@@ -1,5 +1,5 @@
-import 'package:bilibili_player/app/app.dart';
-import 'package:bilibili_player/app/system_presentation.dart';
+import 'package:vesper_media/app/app.dart';
+import 'package:vesper_media/app/system_presentation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -11,7 +11,7 @@ void main() {
     'app resume follows auto rotate without overriding a fixed landscape',
     (tester) async {
       const platformChannel = MethodChannel(
-        'dev.ikaros.bilibili_player/platform',
+        'dev.ikaros.vesper_player/platform',
       );
       var autoRotateEnabled = false;
       final platformMethods = <String>[];
@@ -71,7 +71,7 @@ void main() {
         }
       }
 
-      await tester.pumpWidget(const BilibiliPlayerApp());
+      await tester.pumpWidget(const VesperApp());
       await flushOrientationRequest();
 
       expect(platformMethods, contains('isAutoRotateEnabled'));

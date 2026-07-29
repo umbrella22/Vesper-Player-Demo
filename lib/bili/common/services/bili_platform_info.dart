@@ -5,7 +5,7 @@ final class BiliPlatformInfo {
 
   static final instance = BiliPlatformInfo._();
   static const MethodChannel _channel = MethodChannel(
-    'dev.ikaros.bilibili_player/platform',
+    'dev.ikaros.vesper_player/platform',
   );
 
   bool? _cachedIsTv;

@@ -1,4 +1,4 @@
-import 'package:bilibili_player/player/player_sdk_options.dart';
+import 'package:vesper_media/player/player_sdk_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_player/vesper_player.dart';
 

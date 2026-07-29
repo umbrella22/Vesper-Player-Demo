@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_player/vesper_player.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 
@@ -14,10 +14,11 @@ class OfflineSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Text(
       title,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        color: const Color(0xFF20232B),
+        color: visualTheme.textPrimary,
         fontWeight: FontWeight.w900,
       ),
     );
@@ -39,10 +40,11 @@ class OfflineStorageSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final usage = this.usage;
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        color: visualTheme.surface,
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -60,7 +62,7 @@ class OfflineStorageSummary extends StatelessWidget {
                 Text(
                   '存储空间',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFF20232B),
+                    color: visualTheme.textPrimary,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -89,7 +91,7 @@ class OfflineStorageSummary extends StatelessWidget {
                     child: OfflineStorageStat(
                       label: '剩余空间',
                       value: biliFormatDownloadBytes(usage.freeBytes),
-                      valueColor: const Color(0xFF20232B),
+                      valueColor: visualTheme.textPrimary,
                       alignRight: true,
                     ),
                   ),
@@ -101,7 +103,7 @@ class OfflineStorageSummary extends StatelessWidget {
                 child: SizedBox(
                   height: 10,
                   child: DecoratedBox(
-                    decoration: const BoxDecoration(color: Color(0xFFF0F2F6)),
+                    decoration: BoxDecoration(color: visualTheme.surfaceRaised),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: FractionallySizedBox(
@@ -119,14 +121,14 @@ class OfflineStorageSummary extends StatelessWidget {
                 ),
               ),
             ] else if (loading)
-              const SizedBox(
+              SizedBox(
                 height: 10,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.all(Radius.circular(999)),
+                  borderRadius: const BorderRadius.all(Radius.circular(999)),
                   child: LinearProgressIndicator(
                     minHeight: 10,
                     color: AppVisualTokens.primaryBlue,
-                    backgroundColor: Color(0xFFF0F2F6),
+                    backgroundColor: visualTheme.surfaceRaised,
                   ),
                 ),
               )
@@ -134,7 +136,7 @@ class OfflineStorageSummary extends StatelessWidget {
               Text(
                 '无法读取设备存储空间',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFFD94868),
+                  color: visualTheme.destructive,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -143,7 +145,7 @@ class OfflineStorageSummary extends StatelessWidget {
               Text(
                 errorMessage!,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFFD94868),
+                  color: visualTheme.destructive,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -171,6 +173,7 @@ class OfflineStorageStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final crossAxisAlignment = alignRight
         ? CrossAxisAlignment.end
         : CrossAxisAlignment.start;
@@ -180,7 +183,7 @@ class OfflineStorageStat extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: const Color(0xFF7E8591),
+            color: visualTheme.textSecondary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -211,23 +214,26 @@ class OfflineInvalidCacheSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3F5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFD2DB)),
+        color: visualTheme.destructive.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
+        border: Border.all(
+          color: visualTheme.destructive.withValues(alpha: 0.24),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 11, 8, 11),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 1),
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
               child: Icon(
                 Icons.warning_amber_rounded,
                 size: 20,
-                color: Color(0xFFE84A67),
+                color: visualTheme.destructive,
               ),
             ),
             const SizedBox(width: 8),
@@ -235,7 +241,7 @@ class OfflineInvalidCacheSummary extends StatelessWidget {
               child: Text(
                 '发现 $count 条失效缓存：视频信息已丢失，无法播放。',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF9B2F4D),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w800,
                   height: 1.35,
                 ),
@@ -245,8 +251,11 @@ class OfflineInvalidCacheSummary extends StatelessWidget {
               key: const ValueKey<String>('offline-clean-invalid-cache'),
               onPressed: onCleanup,
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFE84A67),
-                minimumSize: const Size(0, 36),
+                foregroundColor: visualTheme.destructive,
+                minimumSize: const Size(
+                  AppVisualTokens.minimumTapTarget,
+                  AppVisualTokens.minimumTapTarget,
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
               child: const Text('清理'),
@@ -284,6 +293,7 @@ class OfflineEntryGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Column(
       children: [
         for (final entry in entries) ...[
@@ -293,8 +303,10 @@ class OfflineEntryGroup extends StatelessWidget {
             confirmDismiss: (_) => onDelete(entry),
             background: const OfflineDeleteBackground(),
             child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              color: visualTheme.surface,
+              borderRadius: BorderRadius.circular(
+                AppVisualTokens.contentRadius,
+              ),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: deletingAssetIds.contains(entry.metadata.assetId)
@@ -343,6 +355,7 @@ class OfflineCacheTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final metadata = entry.metadata;
     final progress = entry.isCompleted
         ? 1.0
@@ -365,12 +378,12 @@ class OfflineCacheTile extends StatelessWidget {
               width: 126,
               height: 78,
               child: metadata.coverUrl.isEmpty
-                  ? const ColoredBox(color: Color(0xFFD9DDE5))
+                  ? ColoredBox(color: visualTheme.surfaceRaised)
                   : Image.network(
                       metadata.coverUrl,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) =>
-                          const ColoredBox(color: Color(0xFFD9DDE5)),
+                          ColoredBox(color: visualTheme.surfaceRaised),
                     ),
             ),
           ),
@@ -384,7 +397,7 @@ class OfflineCacheTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFF20232B),
+                    color: visualTheme.textPrimary,
                     fontWeight: FontWeight.w900,
                     height: 1.1,
                   ),
@@ -395,7 +408,7 @@ class OfflineCacheTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: const Color(0xFF858A94),
+                    color: visualTheme.textSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -414,8 +427,8 @@ class OfflineCacheTile extends StatelessWidget {
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: error == null
-                                    ? const Color(0xFF7E8591)
-                                    : const Color(0xFFD94868),
+                                    ? visualTheme.textSecondary
+                                    : visualTheme.destructive,
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
@@ -449,7 +462,7 @@ class OfflineCacheTile extends StatelessWidget {
                     minHeight: 3,
                     value: progress,
                     color: AppVisualTokens.primaryBlue,
-                    backgroundColor: const Color(0xFFF0F2F6),
+                    backgroundColor: visualTheme.surfaceRaised,
                   ),
                 ),
               ],
@@ -466,10 +479,11 @@ class OfflineDeleteBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFE84A67),
-        borderRadius: BorderRadius.circular(14),
+        color: visualTheme.destructive,
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Align(
         alignment: Alignment.centerLeft,
@@ -574,17 +588,21 @@ class OfflineEntryMoreButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Tooltip(
       message: '更多',
       child: IconButton(
         onPressed: enabled ? onTap : null,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+        constraints: const BoxConstraints.tightFor(
+          width: AppVisualTokens.minimumTapTarget,
+          height: AppVisualTokens.minimumTapTarget,
+        ),
         visualDensity: VisualDensity.compact,
-        icon: const Icon(
+        icon: Icon(
           Icons.more_vert_rounded,
           size: 20,
-          color: Color(0xFF6D7482),
+          color: visualTheme.textSecondary,
         ),
       ),
     );
@@ -603,19 +621,20 @@ class OfflineInlineError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFEEF4),
-        borderRadius: BorderRadius.circular(12),
+        color: visualTheme.destructive.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.error_outline_rounded,
               size: 19,
-              color: AppVisualTokens.primaryBlue,
+              color: visualTheme.destructive,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -624,7 +643,7 @@ class OfflineInlineError extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF9B2F4D),
+                  color: visualTheme.textPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -642,20 +661,21 @@ class OfflineEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 96),
       child: Column(
         children: [
-          const Icon(
+          Icon(
             Icons.download_for_offline_outlined,
             size: 46,
-            color: Color(0xFFB6BBC4),
+            color: visualTheme.textTertiary,
           ),
           const SizedBox(height: 14),
           Text(
             '还没有离线缓存',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: const Color(0xFF20232B),
+              color: visualTheme.textPrimary,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -663,7 +683,7 @@ class OfflineEmptyState extends StatelessWidget {
           Text(
             '在播放设置里选择缓存后，任务会显示在这里。',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF858A94),
+              color: visualTheme.textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),

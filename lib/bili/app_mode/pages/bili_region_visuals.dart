@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_region_models.dart';
 
 final class BiliRegionVisual {
   const BiliRegionVisual({required this.icon, required this.color});

@@ -1,7 +1,9 @@
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+
+enum BiliGlassSheetAppearance { translucent, readable }
 
 Future<T?> showBiliGlassSheet<T>({
   required BuildContext context,
@@ -9,6 +11,7 @@ Future<T?> showBiliGlassSheet<T>({
   double maxContentHeightFactor = 0.74,
   EdgeInsetsGeometry contentPadding = const EdgeInsets.fromLTRB(18, 8, 18, 8),
   GlassQuality? quality,
+  BiliGlassSheetAppearance appearance = BiliGlassSheetAppearance.translucent,
   bool barrierDismissible = true,
 }) {
   assert(maxContentHeightFactor > 0 && maxContentHeightFactor <= 1);
@@ -44,12 +47,32 @@ Future<T?> showBiliGlassSheet<T>({
       );
     },
     pageBuilder: (sheetContext, animation, secondaryAnimation) {
+      final visualTheme = AppVisualTheme.of(sheetContext);
+      final readable = appearance == BiliGlassSheetAppearance.readable;
       return SafeArea(
         top: false,
         child: Align(
           alignment: Alignment.bottomCenter,
           child: GlassSheet(
+            key: readable
+                ? const ValueKey<String>('bili-readable-glass-sheet')
+                : null,
             quality: quality,
+            settings: readable
+                ? LiquidGlassSettings(
+                    glassColor: visualTheme.surface.withValues(alpha: 0.96),
+                    thickness: 8,
+                    blur: 12,
+                    lightIntensity: 0.5,
+                    chromaticAberration: 0,
+                    refractiveIndex: 0.1,
+                    saturation: 1,
+                    ambientStrength: 0.28,
+                  )
+                : null,
+            dragIndicatorColor: readable
+                ? visualTheme.textSecondary.withValues(alpha: 0.42)
+                : null,
             topBorderRadius: AppVisualTokens.sheetRadius,
             bottomBorderRadius: AppVisualTokens.sheetRadius,
             margin: const EdgeInsets.all(8),

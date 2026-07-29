@@ -1,27 +1,28 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:bilibili_player/app/app.dart';
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
-import 'package:bilibili_player/bili/app_mode/pages/bili_region_hub_page.dart';
-import 'package:bilibili_player/bili/app_mode/pages/bili_region_video_page.dart';
-import 'package:bilibili_player/bili/app_mode/pages/bili_settings_page.dart';
-import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
-import 'package:bilibili_player/bili/common/services/bili_app_settings.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_session_store.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_qr_login_sheet.dart';
-import 'package:bilibili_player/bili/tv_mode/pages/bili_tv_home_page.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
-import 'package:bilibili_player/download/download.dart';
+import 'package:vesper_media/app/app.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_theme_controller.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/models/bili_region_models.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_region_hub_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_region_video_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_settings_page.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
+import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/download/download.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
@@ -1153,12 +1154,31 @@ List<BiliFeedVideo> _tvFeedItems([int count = 18]) {
   );
 }
 
+List<BiliPlaybackHistoryEntry> _tvHistoryEntries([int count = 18]) {
+  return List<BiliPlaybackHistoryEntry>.generate(
+    count,
+    (index) => BiliPlaybackHistoryEntry(
+      bvid: 'BVHISTORY${index.toString().padLeft(6, '0')}',
+      aid: 7000 + index,
+      cid: 8000 + index,
+      videoTitle: '历史视频 $index',
+      pageTitle: '第 ${index + 1} 集',
+      coverUrl: '',
+      ownerName: '历史 UP $index',
+      playedAtMs: 1000 - index,
+      lastPositionMs: 30 * 1000,
+      durationMs: 180 * 1000,
+    ),
+  );
+}
+
 final class _FakeTvHomeClient extends BiliClient {
   _FakeTvHomeClient({List<BiliFeedVideo>? feedItems})
     : feedItems = feedItems ?? _tvFeedItems();
 
   final List<BiliFeedVideo> feedItems;
   final List<BiliRegionSection> requestedSections = <BiliRegionSection>[];
+  final List<String> requestedVideoDetails = <String>[];
   Completer<List<BiliSearchResult>>? searchCompleter;
   bool loggedIn = false;
   int generatedQrTickets = 0;
@@ -1210,6 +1230,7 @@ final class _FakeTvHomeClient extends BiliClient {
 
   @override
   Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
+    requestedVideoDetails.add(bvid);
     return _playbackDetail();
   }
 
@@ -1360,7 +1381,7 @@ final class _TvHomeHarness {
   final BiliHistoryStore historyStore;
   final BiliSessionStore sessionStore;
   final _FakeOfflineController offlineController;
-  final BiliAppSettings appSettings;
+  final AppSettingsStore appSettings;
 }
 
 Future<_PlaybackHarness> _pumpPlaybackPage(
@@ -1374,6 +1395,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   VesperPlayerSnapshot? initialSnapshot,
   int initialPositionMs = 0,
   void Function(_FakePlaybackClient client)? configureClient,
+  ThemeData? theme,
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
   final platform = _FakePlaybackVesperPlatform(
@@ -1385,7 +1407,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   });
   addTearDown(platform.closeEvents);
   const playerPluginsChannel = MethodChannel(
-    'dev.ikaros.bilibili_player/player_plugins',
+    'dev.ikaros.vesper_player/player_plugins',
   );
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     playerPluginsChannel,
@@ -1425,6 +1447,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
 
   await tester.pumpWidget(
     MaterialApp(
+      theme: theme,
       home: BiliPlaybackPage(
         detail: playbackDetail,
         initialPage: page,
@@ -1448,13 +1471,15 @@ Future<_TvHomeHarness> _pumpTvHomePage(
   Size surfaceSize = const Size(1280, 720),
   double viewInsetsBottom = 0,
   List<BiliFeedVideo>? initialFeedItems,
+  List<BiliPlaybackHistoryEntry> initialHistoryEntries =
+      const <BiliPlaybackHistoryEntry>[],
   bool skipBootstrap = false,
   bool loggedIn = false,
 }) async {
   final root = Directory(
     '${Directory.systemTemp.path}/bili-tv-home-widget-test-${DateTime.now().microsecondsSinceEpoch}',
   );
-  final settings = BiliAppSettings(baseDirectory: root);
+  final settings = AppSettingsStore(baseDirectory: root);
   await tester.runAsync(() => settings.setForceTvMode(initialForceTvMode));
 
   final harness = _TvHomeHarness(
@@ -1487,6 +1512,7 @@ Future<_TvHomeHarness> _pumpTvHomePage(
     surfaceSize: surfaceSize,
     viewInsetsBottom: viewInsetsBottom,
     initialFeedItems: initialFeedItems,
+    initialHistoryEntries: initialHistoryEntries,
     skipBootstrap: skipBootstrap,
   );
   await _flushRealAsync(tester);
@@ -1555,6 +1581,8 @@ Future<void> _pumpTvHomeFrame(
   required Size surfaceSize,
   double viewInsetsBottom = 0,
   List<BiliFeedVideo>? initialFeedItems,
+  List<BiliPlaybackHistoryEntry> initialHistoryEntries =
+      const <BiliPlaybackHistoryEntry>[],
   bool skipBootstrap = false,
 }) async {
   await tester.pumpWidget(
@@ -1572,6 +1600,7 @@ Future<void> _pumpTvHomeFrame(
           offlineController: harness.offlineController,
           appSettings: harness.appSettings,
           initialFeedItems: initialFeedItems ?? const <BiliFeedVideo>[],
+          initialHistoryEntries: initialHistoryEntries,
           skipBootstrap: skipBootstrap,
         ),
       ),
@@ -1629,7 +1658,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('renders bilibili product shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const BilibiliPlayerApp());
+    await tester.pumpWidget(const VesperApp());
     await tester.pump();
 
     expect(find.text('搜索视频、BV 号或链接'), findsOneWidget);
@@ -1652,7 +1681,7 @@ void main() {
         ..resetPadding();
     });
 
-    await tester.pumpWidget(const BilibiliPlayerApp());
+    await tester.pumpWidget(const VesperApp());
     await tester.pump();
 
     final contentRect = tester.getRect(find.byType(CustomScrollView).first);
@@ -1671,8 +1700,11 @@ void main() {
     expect(topClearance.height, 44 + 44);
     // ignore: experimental_member_use
     expect(find.byType(GlassAdaptiveScope), findsNothing);
-    expect(bottomBar.quality, GlassQuality.premium);
-    expect(bottomBar.settings, isNull);
+    expect(bottomBar.quality, isNull);
+    expect(bottomBar.settings, isNotNull);
+    expect(bottomBar.settings!.blur, 12);
+    expect(bottomBar.settings!.thickness, 14);
+    expect(bottomBar.settings!.glassColor, AppVisualTheme.light.glassTint);
     expect(bottomBar.indicatorSettings, isNull);
     expect(bottomBar.indicatorColor, AppVisualTokens.neutralSelection);
     expect(bottomBar.selectedIconColor, AppVisualTokens.textPrimary);
@@ -1695,7 +1727,7 @@ void main() {
   testWidgets('mobile mine uses neutral glass shortcuts and solid settings', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const BilibiliPlayerApp());
+    await tester.pumpWidget(const VesperApp());
     await tester.pump();
 
     await tester.tapAt(tester.getCenter(find.text('我的').last));
@@ -1865,16 +1897,90 @@ void main() {
   ) async {
     await _pumpTvHomePage(tester, surfaceSize: const Size(760, 430));
 
-    await tester.tap(find.text('设置'));
-    await tester.pump();
+    for (var index = 0; index < 5; index += 1) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 180));
+    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_settings');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 240));
 
     final aboutCard = find.byKey(
       const ValueKey<String>('bili-tv-settings-about-card'),
     );
+    final forceModeCard = find.byKey(
+      const ValueKey<String>('bili-tv-settings-force-mode-card'),
+    );
     expect(aboutCard, findsOneWidget);
+    expect(forceModeCard, findsOneWidget);
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(aboutCard).width, greaterThan(0));
+    expect(
+      tester.getSize(aboutCard).width,
+      closeTo(tester.getSize(forceModeCard).width, 0.5),
+    );
+  });
+
+  testWidgets('tv rail keeps logo avatar and navigation icons on one axis', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    double centerX(String key) =>
+        tester.getCenter(find.byKey(ValueKey<String>(key))).dx;
+    void expectAligned() {
+      final logoX = centerX('bili-tv-rail-logo');
+      expect(centerX('bili-tv-rail-avatar'), closeTo(logoX, 0.5));
+      expect(centerX('bili-tv-rail-icon-recommend'), closeTo(logoX, 0.5));
+      expect(centerX('bili-tv-rail-icon-settings'), closeTo(logoX, 0.5));
+    }
+
+    expectAligned();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 240));
+    expectAligned();
+  });
+
+  testWidgets('tv shelf reserves unclipped focus clearance', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    final list = tester.widget<ListView>(
+      find.byKey(const ValueKey<String>('tv-shelf-list-为你推荐')),
+    );
+    final padding = list.padding! as EdgeInsets;
+
+    expect(list.clipBehavior, Clip.none);
+    expect(padding.top, 32);
+    expect(padding.bottom, 32);
+  });
+
+  testWidgets('tv hero keeps progress separated from playback actions', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      initialHistoryEntries: _tvHistoryEntries(1),
+      skipBootstrap: true,
+    );
+
+    final progressRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-tv-hero-progress')),
+    );
+    final actionsRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-tv-hero-actions')),
+    );
+
+    expect(actionsRect.top - progressRect.bottom, greaterThanOrEqualTo(14));
   });
 
   testWidgets('tv search keyboard inset keeps left rail width stable', (
@@ -1958,7 +2064,7 @@ void main() {
     expect(find.text('搜索结果 1'), findsOneWidget);
   });
 
-  testWidgets('tv home moves focus from rail into video grid', (
+  testWidgets('tv rail collapses for content and restores the last focus', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
@@ -1967,16 +2073,73 @@ void main() {
       skipBootstrap: true,
     );
 
-    expect(find.text('推荐视频 0'), findsOneWidget);
+    expect(find.text('推荐视频 0'), findsWidgets);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_recommend');
+    final rail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
+    expect(tester.getSize(rail).width, 260);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
 
-    expect(
-      FocusManager.instance.primaryFocus?.debugLabel?.startsWith('video_'),
-      isTrue,
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_hero_play');
+    expect(tester.getSize(rail).width, 80);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_hero_details');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_recommend');
+    expect(tester.getSize(rail).width, 260);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_hero_play');
+    expect(tester.getSize(rail).width, 80);
+  });
+
+  testWidgets('tv hero focus update is debounced and does not load details', (
+    WidgetTester tester,
+  ) async {
+    final harness = await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
     );
+    Text heroTitle() => tester.widget<Text>(
+      find.byKey(const ValueKey<String>('bili-tv-hero-title')),
+    );
+
+    expect(heroTitle().data, '推荐视频 0');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 0');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(heroTitle().data, '推荐视频 0');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 2');
+    await tester.pump(const Duration(milliseconds: 119));
+    expect(heroTitle().data, '推荐视频 0');
+    expect(harness.client.requestedVideoDetails, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 2));
+    expect(heroTitle().data, '推荐视频 2');
+    expect(harness.client.requestedVideoDetails, isEmpty);
   });
 
   testWidgets('tv mine hides following and keeps library actions aligned', (
@@ -2066,19 +2229,20 @@ void main() {
     );
   });
 
-  testWidgets('tv home grid scrolls focus in both vertical directions', (
+  testWidgets('tv shelves scroll and restore focus in all directions', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
       tester,
       surfaceSize: const Size(900, 520),
       initialFeedItems: _tvFeedItems(60),
+      initialHistoryEntries: _tvHistoryEntries(24),
       skipBootstrap: true,
     );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 0');
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_hero_play');
 
     Future<void> move(LogicalKeyboardKey key, int count) async {
       for (var index = 0; index < count; index++) {
@@ -2089,26 +2253,59 @@ void main() {
       }
     }
 
-    final scrollView = tester.widget<CustomScrollView>(
-      find.byType(CustomScrollView),
+    Future<List<String?>> moveUntil(
+      LogicalKeyboardKey key,
+      String debugLabel, {
+      int attempts = 24,
+    }) async {
+      final visited = <String?>[];
+      for (var index = 0; index < attempts; index += 1) {
+        final current = FocusManager.instance.primaryFocus?.debugLabel;
+        visited.add(current);
+        if (current == debugLabel) {
+          return visited;
+        }
+        await move(key, 1);
+      }
+      visited.add(FocusManager.instance.primaryFocus?.debugLabel);
+      return visited;
+    }
+
+    await move(LogicalKeyboardKey.arrowDown, 1);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'history_历史视频 0');
+
+    final historyList = tester.widget<ListView>(
+      find.byKey(const ValueKey<String>('tv-shelf-list-继续观看')),
     );
-    await move(LogicalKeyboardKey.arrowDown, 5);
+    await moveUntil(LogicalKeyboardKey.arrowRight, 'history_历史视频 12');
+    final rightwardOffset = historyList.controller!.offset;
+    expect(rightwardOffset, greaterThan(0));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'history_历史视频 12');
+
+    final leftVisited = await moveUntil(
+      LogicalKeyboardKey.arrowLeft,
+      'history_历史视频 0',
+    );
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'history_历史视频 0',
+      reason: 'Visited ${leftVisited.join(' -> ')}',
+    );
+    expect(historyList.controller!.offset, lessThan(rightwardOffset));
+
+    final scrollView = tester.widget<CustomScrollView>(
+      find.byKey(const ValueKey<String>('bili-tv-recommend-scroll')),
+    );
+    final beforeDown = scrollView.controller!.offset;
+    await move(LogicalKeyboardKey.arrowDown, 1);
     final downwardOffset = scrollView.controller!.offset;
 
-    expect(
-      FocusManager.instance.primaryFocus?.debugLabel?.startsWith('video_'),
-      isTrue,
-    );
-    expect(
-      FocusManager.instance.primaryFocus?.debugLabel?.startsWith('nav_'),
-      isFalse,
-    );
-    expect(downwardOffset, greaterThan(0));
-
-    await move(LogicalKeyboardKey.arrowUp, 5);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'video_推荐视频 0');
-    expect(scrollView.controller!.offset, lessThan(downwardOffset));
-    expect(scrollView.controller!.offset, lessThan(60));
+    expect(downwardOffset, greaterThan(beforeDown));
+
+    await move(LogicalKeyboardKey.arrowUp, 1);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'history_历史视频 0');
+    expect(scrollView.controller!.offset, lessThanOrEqualTo(downwardOffset));
   });
 
   testWidgets('tv home regions nav loads section videos', (
@@ -2182,7 +2379,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(GlassSheet), findsNothing);
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_qr_login_close');
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_qr_login_refresh',
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
@@ -2225,7 +2425,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('退出登录？'), findsNothing);
-    expect(find.text('退出应用？'), findsNothing);
+    expect(find.text('退出 Vesper？'), findsNothing);
     expect(find.text('退出登录'), findsOneWidget);
 
     await tester.tap(find.text('退出登录'));
@@ -2281,12 +2481,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_qr_login_close');
-    final closeRect = tester.getRect(
-      find.byKey(const ValueKey<String>('bili-tv-dialog-action-关闭')),
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_qr_login_refresh',
     );
-    expect(closeRect.top, greaterThanOrEqualTo(0));
-    expect(closeRect.bottom, lessThanOrEqualTo(360));
+    final refreshRect = tester.getRect(
+      find.byKey(const ValueKey<String>('bili-tv-dialog-action-刷新二维码')),
+    );
+    expect(refreshRect.top, greaterThanOrEqualTo(0));
+    expect(refreshRect.bottom, lessThanOrEqualTo(360));
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
@@ -2337,7 +2540,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('退出应用？'), findsOneWidget);
+    expect(find.text('退出 Vesper？'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('bili-tv-dialog-surface')),
       findsOneWidget,
@@ -2346,14 +2549,23 @@ void main() {
       find.byKey(const ValueKey('bili-tv-dialog-surface')),
     );
     final exitDecoration = exitSurface.decoration as BoxDecoration;
-    expect(exitDecoration.color, const Color(0xF01A1C22));
-    expect(tester.widget<Text>(find.text('退出应用？')).style?.color, Colors.white);
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_继续使用');
+    expect(exitDecoration.color, const Color(0xF21B1E24));
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('bili-tv-dialog-surface')))
+          .width,
+      690,
+    );
+    expect(
+      tester.widget<Text>(find.text('退出 Vesper？')).style?.color,
+      Colors.white,
+    );
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_继续观看');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
-    expect(find.text('退出应用？'), findsNothing);
+    expect(find.text('退出 Vesper？'), findsNothing);
     expect(
       platformCalls.where((call) => call.method == 'SystemNavigator.pop'),
       isEmpty,
@@ -2363,7 +2575,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump(const Duration(milliseconds: 200));
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_退出');
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_退出应用');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
@@ -2652,6 +2864,35 @@ void main() {
   );
 
   testWidgets(
+    'mobile playback surfaces and text follow the dark visual theme',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 640),
+        theme: AppVisualTokens.mobileDarkTheme(),
+      );
+
+      final bottomSurface = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey<String>('playback-bottom-surface')),
+      );
+      final bottomDecoration = bottomSurface.decoration as BoxDecoration;
+      final collapsedBar = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey<String>('playback-collapsed-bar')),
+      );
+      final collapsedDecoration = collapsedBar.decoration as BoxDecoration;
+      final title = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('playback-intro-title')),
+      );
+
+      expect(bottomDecoration.color, AppVisualTokens.darkSurface);
+      expect(collapsedDecoration.color, AppVisualTokens.darkSurface);
+      expect(title.style?.color, AppVisualTokens.darkTextPrimary);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback intro hides expand control for empty and fitting descriptions',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
@@ -2910,7 +3151,8 @@ void main() {
         of: find.text('共3条回复 >'),
         matching: find.byWidgetPredicate(
           (widget) =>
-              widget is Material && widget.color == const Color(0xFFF5F6FA),
+              widget is Material &&
+              widget.color == AppVisualTokens.mobileSurfaceMuted,
         ),
       );
       final commentRow = find.ancestor(
@@ -3974,7 +4216,7 @@ void main() {
       expect(find.text('1.25x'), findsNothing);
       expect(find.byType(BiliPlaybackPage), findsOneWidget);
       expect(find.byType(BiliTvHomePage), findsNothing);
-      expect(find.text('退出应用？'), findsNothing);
+      expect(find.text('退出 Vesper？'), findsNothing);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
@@ -4019,7 +4261,7 @@ void main() {
       expect(find.text('播放地址刷新失败'), findsNothing);
       expect(find.byType(BiliPlaybackPage), findsOneWidget);
       expect(find.byType(BiliTvHomePage), findsNothing);
-      expect(find.text('退出应用？'), findsNothing);
+      expect(find.text('退出 Vesper？'), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -4114,7 +4356,7 @@ void main() {
 
       expect(find.byType(BiliTvHomePage), findsOneWidget);
       expect(find.byType(BiliPlaybackPage), findsNothing);
-      expect(find.text('退出应用？'), findsNothing);
+      expect(find.text('退出 Vesper？'), findsNothing);
       expect(
         platformCalls.where((call) => call.method == 'SystemNavigator.pop'),
         isEmpty,
@@ -4369,7 +4611,7 @@ void main() {
     final root = Directory(
       '${Directory.systemTemp.path}/bili-settings-widget-test-${DateTime.now().microsecondsSinceEpoch}',
     );
-    final settings = BiliAppSettings(baseDirectory: root);
+    final settings = AppSettingsStore(baseDirectory: root);
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(() async {
@@ -4380,24 +4622,30 @@ void main() {
     });
 
     await tester.runAsync(() => settings.setForceTvMode(false));
+    final themeController = AppThemeController(settings: settings);
+    addTearDown(themeController.dispose);
     await tester.pumpWidget(
-      MaterialApp(
-        home: BiliSettingsPage(
-          appSettings: settings,
-          sessionStore: BiliSessionStore(baseDirectory: root),
+      AppThemeScope(
+        controller: themeController,
+        child: MaterialApp(
+          theme: AppVisualTokens.mobileLightTheme(),
+          home: BiliSettingsPage(
+            appSettings: settings,
+            sessionStore: BiliSessionStore(baseDirectory: root),
+          ),
         ),
       ),
     );
-    await _pumpUntilFound(tester, find.text('当前：根据设备自动选择'));
+    await _pumpUntilFound(tester, find.text('根据设备自动选择界面'));
 
     expect(find.text('设置'), findsOneWidget);
-    expect(find.text('当前：根据设备自动选择'), findsOneWidget);
+    expect(find.text('根据设备自动选择界面'), findsOneWidget);
     expect(find.text('返回首页并切换'), findsNothing);
 
     await tester.tap(find.text('强制 TV 模式'));
-    await _pumpUntilFound(tester, find.text('当前：TV 模式界面'));
+    await _pumpUntilFound(tester, find.text('返回首页后切换为 TV 界面'));
 
-    expect(find.text('当前：TV 模式界面'), findsOneWidget);
+    expect(find.text('返回首页后切换为 TV 界面'), findsOneWidget);
     expect(find.text('返回首页并切换'), findsOneWidget);
     expect(await tester.runAsync(settings.getForceTvMode), isTrue);
   });
@@ -4429,21 +4677,28 @@ void main() {
         'DedeUserID': '42',
       });
     });
+    final appSettings = AppSettingsStore(baseDirectory: root);
+    final themeController = AppThemeController(settings: appSettings);
+    addTearDown(themeController.dispose);
     await tester.pumpWidget(
-      MaterialApp(
-        home: BiliSettingsPage(
-          appSettings: BiliAppSettings(baseDirectory: root),
-          client: client,
-          sessionStore: sessionStore,
-          offlineController: offlineController,
+      AppThemeScope(
+        controller: themeController,
+        child: MaterialApp(
+          theme: AppVisualTokens.mobileLightTheme(),
+          home: BiliSettingsPage(
+            appSettings: appSettings,
+            client: client,
+            sessionStore: sessionStore,
+            offlineController: offlineController,
+          ),
         ),
       ),
     );
-    await _pumpUntilFound(tester, find.text('退出登录'));
+    await _pumpUntilFound(tester, find.widgetWithText(TextButton, '退出'));
 
-    expect(find.text('当前已保存本地登录 cookie'), findsOneWidget);
+    expect(find.text('登录信息仅保存在本机'), findsOneWidget);
 
-    await tester.tap(find.text('退出登录'));
+    await tester.tap(find.widgetWithText(TextButton, '退出'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 240));
     expect(find.byType(GlassDialog), findsOneWidget);
@@ -4452,12 +4707,12 @@ void main() {
       find.descendant(of: find.byType(GlassDialog), matching: find.text('退出')),
     );
     await _pumpUntil(tester, () => offlineController.pauseAllActiveCalls == 1);
-    await _pumpUntilFound(tester, find.text('当前未保存本地登录 cookie'));
+    await _pumpUntilFound(tester, find.text('可在“我的”页面扫码登录'));
 
     expect(offlineController.pauseAllActiveCalls, 1);
     expect(client.hasAuthenticatedSession, isFalse);
     expect(await tester.runAsync(sessionStore.loadCookies), isEmpty);
-    expect(find.widgetWithText(TextButton, '退出登录'), findsNothing);
+    expect(find.widgetWithText(TextButton, '退出'), findsNothing);
     expect(find.text('已退出登录，离线缓存任务已暂停'), findsOneWidget);
   });
 
@@ -4520,6 +4775,14 @@ void main() {
 
     expect(find.text('二维码已失效，刷新后重新扫码。'), findsOneWidget);
     expect(find.textContaining('状态更新时间'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('bili-readable-glass-sheet')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-qr-code-surface')),
+      findsOneWidget,
+    );
     expect(client.generatedTickets, 1);
 
     await tester.tap(find.text('刷新二维码'));
@@ -4532,6 +4795,62 @@ void main() {
     expect(find.text('已扫码，继续等待'), findsOneWidget);
     expect(client.generatedTickets, 2);
     expect(client.polledKeys, <String>['key-1', 'key-2']);
+  });
+
+  testWidgets('QR login sheet keeps readable contrast in dark mode', (
+    WidgetTester tester,
+  ) async {
+    final client = _FakeQrLoginClient();
+    final root = Directory(
+      '${Directory.systemTemp.path}/bili-qr-dark-widget-test-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() async {
+        if (await root.exists()) {
+          await root.delete(recursive: true);
+        }
+      });
+    });
+
+    await tester.binding.setSurfaceSize(const Size(800, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.darkTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () => showBiliQrLoginSheet(
+              context: context,
+              client: client,
+              sessionStore: BiliSessionStore(baseDirectory: root),
+            ),
+            child: const Text('登录'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('登录'));
+    await tester.pump();
+    await _flushRealAsync(tester);
+    await tester.pump(const Duration(milliseconds: 240));
+
+    final sheet = tester.widget<GlassSheet>(
+      find.byKey(const ValueKey<String>('bili-readable-glass-sheet')),
+    );
+    final title = tester.widget<Text>(find.text('扫码登录哔哩哔哩'));
+    final qrSurface = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('bili-qr-code-surface')),
+    );
+    final qrDecoration = qrSurface.decoration as BoxDecoration;
+
+    expect(
+      sheet.settings?.glassColor,
+      AppVisualTheme.dark.surface.withValues(alpha: 0.96),
+    );
+    expect(title.style?.color, AppVisualTheme.dark.textPrimary);
+    expect(qrDecoration.color, Colors.white);
   });
 
   testWidgets('QR login sheet pops profile after confirmed login', (

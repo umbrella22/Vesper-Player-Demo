@@ -4,17 +4,17 @@ import 'package:material_ui/material_ui.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/download/download.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/models/bili_region_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_api_core.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/models/bili_region_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_visuals.dart';
 
 class BiliRegionVideoPage extends StatefulWidget {
@@ -160,8 +160,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return AppGlassScaffold(
-      backgroundColor: AppVisualTokens.mobileBackground,
+      backgroundColor: visualTheme.background,
       extendBody: false,
       appBar: GlassAppBar(
         centerTitle: false,
@@ -173,7 +174,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             Text(
               widget.section.name,
               style: theme.textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF20232B),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -202,6 +203,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Widget _buildLoginRequired(ThemeData theme) {
+    final visualTheme = AppVisualTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -218,7 +220,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
               '需要登录后查看分区内容',
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium?.copyWith(
-                color: const Color(0xFF20232B),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -227,7 +229,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
               '请返回首页完成 Bilibili 登录，再重新进入分类。',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8B9098),
+                color: visualTheme.textSecondary,
               ),
             ),
             const SizedBox(height: 16),
@@ -243,6 +245,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Widget _buildError(ThemeData theme) {
+    final visualTheme = AppVisualTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -253,7 +256,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
               _errorMessage.value ?? '加载失败',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8B9098),
+                color: visualTheme.textSecondary,
               ),
             ),
             const SizedBox(height: 12),
@@ -265,11 +268,12 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Widget _buildEmpty(ThemeData theme) {
+    final visualTheme = AppVisualTheme.of(context);
     return Center(
       child: Text(
         '暂无内容',
         style: theme.textTheme.bodyLarge?.copyWith(
-          color: const Color(0xFF8B9098),
+          color: visualTheme.textSecondary,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -536,14 +540,15 @@ class _RegionCacheError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 26),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline_rounded,
-            color: Color(0xFFB33A59),
+            color: visualTheme.destructive,
             size: 28,
           ),
           const SizedBox(height: 10),
@@ -551,7 +556,7 @@ class _RegionCacheError extends StatelessWidget {
             message,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8B9098),
+              color: visualTheme.textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -575,6 +580,7 @@ class _RegionVideoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final isPgc = item.seasonId != null;
     final subtitle = isPgc
         ? item.indexLabel
@@ -587,7 +593,7 @@ class _RegionVideoCard extends StatelessWidget {
       children: [
         Expanded(
           child: Material(
-            color: const Color(0xFFE4E7EC),
+            color: visualTheme.surfaceRaised,
             borderRadius: BorderRadius.circular(7),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -609,7 +615,7 @@ class _RegionVideoCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF20232B),
+              color: visualTheme.textPrimary,
               fontWeight: FontWeight.w800,
               height: 1.1,
             ),
@@ -629,7 +635,7 @@ class _RegionVideoCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8B9098),
+                      color: visualTheme.textSecondary,
                       fontWeight: FontWeight.w700,
                       height: 1.0,
                     ),
@@ -753,13 +759,14 @@ class _RegionCardMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return SizedBox.square(
-      dimension: 32,
+      dimension: AppVisualTokens.minimumTapTarget,
       child: IconButton(
         onPressed: onTap,
         padding: EdgeInsets.zero,
         icon: const Icon(Icons.more_vert_rounded, size: 20),
-        color: const Color(0xFF9AA0AA),
+        color: visualTheme.textTertiary,
         tooltip: '缓存',
       ),
     );
@@ -779,6 +786,7 @@ class _CoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final uri = coverUrl.startsWith('http')
         ? Uri.tryParse(coverUrl)
         : Uri.tryParse('https:$coverUrl');
@@ -795,6 +803,15 @@ class _CoverImage extends StatelessWidget {
                       const _CoverPlaceholder(),
                 )
               : const _CoverPlaceholder(),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: visualTheme.imageOutline),
+                ),
+              ),
+            ),
+          ),
           if (overlay != null) Positioned.fill(child: overlay!),
         ],
       ),
@@ -807,8 +824,10 @@ class _CoverPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(color: Color(0xFFF0F0F4)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppVisualTheme.of(context).surfaceRaised,
+      ),
     );
   }
 }

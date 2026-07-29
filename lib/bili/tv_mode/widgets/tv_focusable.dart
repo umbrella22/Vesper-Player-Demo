@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
 
 const _tvWhiteRamp = Color(0xFFFFFFFF);
 const _tvBlackRamp = Color(0xFF000000);
@@ -55,6 +55,30 @@ class TvFocusAreaScope extends InheritedWidget {
   }
 }
 
+class TvFocusGroupScope extends InheritedWidget {
+  const TvFocusGroupScope({
+    super.key,
+    required this.group,
+    this.onDirectionalEdge,
+    required super.child,
+  });
+
+  final Object group;
+  final bool Function(TraversalDirection direction)? onDirectionalEdge;
+
+  static Object? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<TvFocusGroupScope>()
+        ?.group;
+  }
+
+  @override
+  bool updateShouldNotify(TvFocusGroupScope oldWidget) {
+    return oldWidget.group != group ||
+        oldWidget.onDirectionalEdge != onDirectionalEdge;
+  }
+}
+
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
@@ -97,6 +121,7 @@ class _TvFocusableState extends State<TvFocusable> {
   bool _hasFocus = false;
   bool _pressed = false;
   TvFocusArea? _lastFocusArea;
+  Object? _lastFocusGroup;
 
   @override
   void initState() {
@@ -118,12 +143,14 @@ class _TvFocusableState extends State<TvFocusable> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _applyFocusArea(widget.focusArea ?? TvFocusAreaScope.maybeOf(context));
+    _applyFocusGroup(TvFocusGroupScope.maybeOf(context));
   }
 
   @override
   void didUpdateWidget(TvFocusable oldWidget) {
     super.didUpdateWidget(oldWidget);
     _applyFocusArea(widget.focusArea ?? TvFocusAreaScope.maybeOf(context));
+    _applyFocusGroup(TvFocusGroupScope.maybeOf(context));
   }
 
   @override
@@ -141,6 +168,14 @@ class _TvFocusableState extends State<TvFocusable> {
     }
     _lastFocusArea = area;
     setTvFocusArea(_node, area);
+  }
+
+  void _applyFocusGroup(Object? group) {
+    if (_lastFocusGroup == group) {
+      return;
+    }
+    _lastFocusGroup = group;
+    setTvFocusGroup(_node, group);
   }
 
   void _handleFocusChange() {
@@ -456,11 +491,13 @@ class TvFocusableSurface extends StatefulWidget {
     this.focusNode,
     this.autofocus = false,
     this.debugLabel,
-    this.scale = 1.12,
+    this.scale = 1.07,
     this.borderRadius = 14,
     this.focusPadding = 8,
+    this.focusOffset = 8,
     this.useOverlayLift = true,
     this.focusArea,
+    this.onFocusChange,
   });
 
   final TvFocusableSurfaceBuilder builder;
@@ -471,8 +508,10 @@ class TvFocusableSurface extends StatefulWidget {
   final double scale;
   final double borderRadius;
   final double focusPadding;
+  final double focusOffset;
   final bool useOverlayLift;
   final TvFocusArea? focusArea;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   State<TvFocusableSurface> createState() => _TvFocusableSurfaceState();
@@ -499,6 +538,7 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
     setState(() {
       _focused = focused;
     });
+    widget.onFocusChange?.call(focused);
   }
 
   @override
@@ -557,7 +597,7 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
                       curve: Curves.easeOutCubic,
                       builder: (context, value, child) {
                         return Transform.translate(
-                          offset: Offset(0, -2 * value),
+                          offset: Offset(0, -widget.focusOffset * value),
                           child: Transform.scale(
                             scale: ui.lerpDouble(1, widget.scale, value)!,
                             alignment: Alignment.center,
@@ -598,6 +638,7 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
               scale: widget.scale,
               borderRadius: widget.borderRadius,
               padding: widget.focusPadding,
+              focusOffset: widget.focusOffset,
               builder: widget.builder,
             ),
           ),
@@ -613,6 +654,7 @@ class _TvFocusableSurfaceLift extends StatelessWidget {
     required this.scale,
     required this.borderRadius,
     required this.padding,
+    required this.focusOffset,
     required this.builder,
   });
 
@@ -620,6 +662,7 @@ class _TvFocusableSurfaceLift extends StatelessWidget {
   final double scale;
   final double borderRadius;
   final double padding;
+  final double focusOffset;
   final TvFocusableSurfaceBuilder builder;
 
   @override
@@ -632,14 +675,17 @@ class _TvFocusableSurfaceLift extends StatelessWidget {
     return SizedBox.fromSize(
       size: Size(size.width + padding * 2, size.height + padding * 2),
       child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(begin: 1, end: scale),
+        tween: Tween<double>(begin: 0, end: 1),
         duration: duration,
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
-          return Transform.scale(
-            scale: value,
-            alignment: Alignment.center,
-            child: child,
+          return Transform.translate(
+            offset: Offset(0, -focusOffset * value),
+            child: Transform.scale(
+              scale: ui.lerpDouble(1, scale, value)!,
+              alignment: Alignment.center,
+              child: child,
+            ),
           );
         },
         child: DecoratedBox(
@@ -777,6 +823,10 @@ class _TvFocusableSurfaceBody extends StatelessWidget {
 }
 
 final Expando<TvFocusArea> _tvFocusAreas = Expando<TvFocusArea>('tvFocusAreas');
+final Expando<Map<TvFocusArea, FocusNode>> _tvLastFocusedNodes =
+    Expando<Map<TvFocusArea, FocusNode>>('tvLastFocusedNodes');
+final Object _noTvFocusGroup = Object();
+final Expando<Object> _tvFocusGroups = Expando<Object>('tvFocusGroups');
 
 void setTvFocusArea(FocusNode node, TvFocusArea? area) {
   _tvFocusAreas[node] = area;
@@ -786,18 +836,58 @@ TvFocusArea? tvFocusAreaOf(FocusNode node) {
   return _tvFocusAreas[node];
 }
 
+void setTvFocusGroup(FocusNode node, Object? group) {
+  _tvFocusGroups[node] = group ?? _noTvFocusGroup;
+}
+
+Object? tvFocusGroupOf(FocusNode node) {
+  final group = _tvFocusGroups[node];
+  return identical(group, _noTvFocusGroup) ? null : group;
+}
+
 bool moveTvFocusSpatially(
   FocusNode current,
   TraversalDirection direction, {
   Set<TvFocusArea>? allowedAreas,
 }) {
   final currentArea = tvFocusAreaOf(current);
+  final currentGroup = tvFocusGroupOf(current);
+  _rememberTvFocus(current, currentArea);
   if (allowedAreas != null) {
     return _moveTvFocusSpatially(
       current,
       direction,
       allowedAreas: allowedAreas,
     );
+  }
+  final horizontal =
+      direction == TraversalDirection.left ||
+      direction == TraversalDirection.right;
+  if (horizontal && currentGroup != null) {
+    final movedWithinGroup = _moveTvFocusSpatially(
+      current,
+      direction,
+      allowedAreas: currentArea == null ? null : {currentArea},
+      allowedGroup: currentGroup,
+    );
+    if (movedWithinGroup) {
+      return true;
+    }
+    final groupScope = current.context
+        ?.getInheritedWidgetOfExactType<TvFocusGroupScope>();
+    if (groupScope?.onDirectionalEdge?.call(direction) == true) {
+      return true;
+    }
+    if (currentArea == TvFocusArea.content &&
+        direction == TraversalDirection.left) {
+      return _restoreRememberedTvFocus(current, TvFocusArea.rail) ||
+          _moveTvFocusSpatially(
+            current,
+            direction,
+            allowedAreas: {TvFocusArea.rail},
+          );
+    }
+    return false;
   }
   if (currentArea == TvFocusArea.content &&
       direction == TraversalDirection.left) {
@@ -812,11 +902,45 @@ bool moveTvFocusSpatially(
           allowedAreas: {TvFocusArea.rail},
         );
   }
+  if (currentArea == TvFocusArea.rail &&
+      direction == TraversalDirection.right) {
+    return _restoreRememberedTvFocus(current, TvFocusArea.content) ||
+        _moveTvFocusSpatially(
+          current,
+          direction,
+          allowedAreas: {TvFocusArea.content},
+        );
+  }
   return _moveTvFocusSpatially(
     current,
     direction,
     allowedAreas: _defaultAllowedAreas(currentArea, direction),
   );
+}
+
+void _rememberTvFocus(FocusNode node, TvFocusArea? area) {
+  final scope = node.nearestScope;
+  if (scope == null || area == null) {
+    return;
+  }
+  final remembered = _tvLastFocusedNodes[scope] ?? <TvFocusArea, FocusNode>{};
+  remembered[area] = node;
+  _tvLastFocusedNodes[scope] = remembered;
+}
+
+bool _restoreRememberedTvFocus(FocusNode current, TvFocusArea area) {
+  final scope = current.nearestScope;
+  final node = scope == null ? null : _tvLastFocusedNodes[scope]?[area];
+  if (scope == null ||
+      node == null ||
+      node == current ||
+      !node.canRequestFocus ||
+      node.context == null ||
+      !scope.traversalDescendants.contains(node)) {
+    return false;
+  }
+  node.requestFocus();
+  return true;
 }
 
 Set<TvFocusArea>? _defaultAllowedAreas(
@@ -839,6 +963,7 @@ bool _moveTvFocusSpatially(
   FocusNode current,
   TraversalDirection direction, {
   Set<TvFocusArea>? allowedAreas,
+  Object? allowedGroup,
 }) {
   final currentRect = tvGlobalRectFor(current);
   final scope = current.nearestScope;
@@ -856,6 +981,9 @@ bool _moveTvFocusSpatially(
     }
     if (allowedAreas != null &&
         !allowedAreas.contains(tvFocusAreaOf(candidate))) {
+      continue;
+    }
+    if (allowedGroup != null && tvFocusGroupOf(candidate) != allowedGroup) {
       continue;
     }
     final candidateRect = tvGlobalRectFor(candidate);

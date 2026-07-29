@@ -132,6 +132,7 @@ class _ProjectionPickerContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
@@ -142,7 +143,7 @@ class _ProjectionPickerContent extends StatelessWidget {
             Text(
               '投屏',
               style: theme.textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF20232B),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -172,18 +173,19 @@ class _ProjectionCastOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _ProjectionOptionShell(
+    final visualTheme = AppVisualTheme.of(context);
+    return _ProjectionOptionShell(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          VesperExternalRouteIconButton(size: 56),
-          SizedBox(height: 10),
+          const VesperExternalRouteIconButton(size: 56),
+          const SizedBox(height: 10),
           Text(
             'Cast',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Color(0xFF20232B),
+              color: visualTheme.textPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 14,
               height: 1.15,
@@ -208,6 +210,7 @@ class _ProjectionOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return _ProjectionOptionShell(
       onTap: onTap,
       child: Column(
@@ -219,8 +222,8 @@ class _ProjectionOptionCard extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF20232B),
+            style: TextStyle(
+              color: visualTheme.textPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 14,
               height: 1.15,
@@ -240,8 +243,9 @@ class _ProjectionOptionShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Material(
-      color: Colors.white,
+      color: visualTheme.surfaceRaised,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -326,6 +330,7 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final state = widget.manager.state;
     final routes = widget.manager.routes;
     final message = widget.manager.message;
@@ -340,24 +345,24 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
             Text(
               'DLNA 投屏',
               style: theme.textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF20232B),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(height: 16),
             if (state == BiliDlnaState.discovering) ...[
-              const Row(
+              Row(
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Text(
                     '正在搜索 DLNA 设备…',
                     style: TextStyle(
-                      color: Color(0xFF8B9098),
+                      color: visualTheme.textTertiary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -373,20 +378,20 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
               const SizedBox(height: 12),
             ],
             if (state == BiliDlnaState.connecting)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Text(
                       '正在连接设备…',
                       style: TextStyle(
-                        color: Color(0xFF8B9098),
+                        color: visualTheme.textTertiary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -396,10 +401,10 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
             if (state == BiliDlnaState.discovering &&
                 routes.isEmpty &&
                 (message == null || message.isEmpty))
-              const Text(
+              Text(
                 '未发现 DLNA 设备，请确保设备和手机在同一网络下。',
                 style: TextStyle(
-                  color: Color(0xFF8B9098),
+                  color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -437,10 +442,14 @@ class _DlnaStatusMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isError ? const Color(0xFFB3261E) : const Color(0xFF6B5C00);
-    final background = isError
-        ? const Color(0xFFFFEDEA)
-        : const Color(0xFFFFF7D6);
+    final visualTheme = AppVisualTheme.of(context);
+    final color = isError
+        ? visualTheme.destructive
+        : AppVisualTokens.primaryBlue;
+    final background = Color.alphaBlend(
+      color.withValues(alpha: 0.12),
+      visualTheme.surfaceRaised,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: background,
@@ -490,10 +499,11 @@ class _DlnaRouteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: Colors.white,
+        color: visualTheme.surfaceRaised,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: isLoading ? null : onTap,
@@ -516,8 +526,8 @@ class _DlnaRouteTile extends StatelessWidget {
                         route.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF20232B),
+                        style: TextStyle(
+                          color: visualTheme.textPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -529,8 +539,8 @@ class _DlnaRouteTile extends StatelessWidget {
                           ].whereType<String>().join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF8B9098),
+                          style: TextStyle(
+                            color: visualTheme.textTertiary,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -538,10 +548,10 @@ class _DlnaRouteTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
                   size: 22,
-                  color: Color(0xFF9AA3B2),
+                  color: visualTheme.textTertiary,
                 ),
               ],
             ),

@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
 const MethodChannel _storageChannel = MethodChannel(
-  'dev.ikaros.bilibili_player/storage_space',
+  'dev.ikaros.vesper_player/storage_space',
 );
 
 final class BiliDeviceStorageSpace {

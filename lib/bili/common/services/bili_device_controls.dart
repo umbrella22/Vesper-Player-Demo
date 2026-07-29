@@ -5,7 +5,7 @@ final class BiliDeviceControls {
 
   static const instance = BiliDeviceControls._();
   static const MethodChannel _channel = MethodChannel(
-    'dev.ikaros.bilibili_player/device_controls',
+    'dev.ikaros.vesper_player/device_controls',
   );
 
   Future<double?> getBrightness() => _invokeRatio('getBrightness');

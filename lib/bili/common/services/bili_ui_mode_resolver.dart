@@ -1,4 +1,4 @@
-import 'bili_app_settings.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'bili_platform_info.dart';
 
 enum BiliUiMode { phone, tv }
@@ -6,12 +6,12 @@ enum BiliUiMode { phone, tv }
 final class BiliUiModeResolver {
   BiliUiModeResolver({
     BiliPlatformInfo? platformInfo,
-    BiliAppSettings? appSettings,
+    AppSettingsStore? appSettings,
   }) : _platformInfo = platformInfo ?? BiliPlatformInfo.instance,
-       _appSettings = appSettings ?? const BiliAppSettings();
+       _appSettings = appSettings ?? const AppSettingsStore();
 
   final BiliPlatformInfo _platformInfo;
-  final BiliAppSettings _appSettings;
+  final AppSettingsStore _appSettings;
 
   BiliUiMode? _currentMode;
 

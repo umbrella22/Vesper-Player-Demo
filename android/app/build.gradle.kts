@@ -39,7 +39,7 @@ val playerFfmpegNativeWorkRootDirFile =
                 val projectHash = Integer.toHexString(
                     rootProject.layout.projectDirectory.asFile.absolutePath.hashCode(),
                 )
-                File(System.getProperty("java.io.tmpdir"), "bilibili-player/playerFfmpeg/$projectHash")
+                File(System.getProperty("java.io.tmpdir"), "vesper/playerFfmpeg/$projectHash")
             },
         )
         .get()
@@ -100,7 +100,7 @@ val vesperGradleUserHomeDir =
         .map { path -> file(path) }
 
 android {
-    namespace = "dev.ikaros.bilibili_player"
+    namespace = "dev.ikaros.vesper_player"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "29.0.14206865"
 
@@ -110,7 +110,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.ikaros.bilibili_player"
+        applicationId = "dev.ikaros.vesper_player"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

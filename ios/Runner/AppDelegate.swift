@@ -17,7 +17,7 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     let channel = FlutterMethodChannel(
-      name: "dev.ikaros.bilibili_player/download_plugin",
+      name: "dev.ikaros.vesper_player/download_plugin",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     channel.setMethodCallHandler { [weak self] call, result in
@@ -31,7 +31,7 @@ import UIKit
     downloadPluginChannel = channel
 
     let storageChannel = FlutterMethodChannel(
-      name: "dev.ikaros.bilibili_player/storage_space",
+      name: "dev.ikaros.vesper_player/storage_space",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     storageChannel.setMethodCallHandler { [weak self] call, result in
@@ -45,7 +45,7 @@ import UIKit
     storageSpaceChannel = storageChannel
 
     let mediaChannel = FlutterMethodChannel(
-      name: "dev.ikaros.bilibili_player/media_export",
+      name: "dev.ikaros.vesper_player/media_export",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     mediaChannel.setMethodCallHandler { [weak self] call, result in
@@ -167,16 +167,16 @@ import UIKit
 
   private func temporaryExportURL(displayName: String) throws -> URL {
     let directory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("bilibili-player-export", isDirectory: true)
+      .appendingPathComponent("vesper-export", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent(displayName)
   }
 
   private func sanitizedMp4Name(_ value: String?) -> String {
-    let raw = (value ?? "bilibili-offline-video.mp4").trimmingCharacters(in: .whitespacesAndNewlines)
+    let raw = (value ?? "vesper-offline-video.mp4").trimmingCharacters(in: .whitespacesAndNewlines)
     let replaced = raw
       .replacingOccurrences(of: "[\\\\/:*?\"<>|]+", with: "-", options: .regularExpression)
-    let name = replaced.isEmpty ? "bilibili-offline-video.mp4" : replaced
+    let name = replaced.isEmpty ? "vesper-offline-video.mp4" : replaced
     return name.lowercased().hasSuffix(".mp4") ? name : "\(name).mp4"
   }
 }

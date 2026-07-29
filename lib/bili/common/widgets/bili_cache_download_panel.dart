@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/download/download.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/download/download.dart';
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_history_store.dart';

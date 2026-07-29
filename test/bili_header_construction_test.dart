@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:bilibili_player/bili/common/services/bili_endpoints.dart';
-import 'package:bilibili_player/bili/common/services/bili_transport.dart';
+import 'package:vesper_media/bili/common/services/bili_endpoints.dart';
+import 'package:vesper_media/bili/common/services/bili_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 定向测试：锁定 `_buildBiliHeaders` 的外部 wire 契约。

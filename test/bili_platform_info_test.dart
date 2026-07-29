@@ -1,4 +1,4 @@
-import 'package:bilibili_player/bili/common/services/bili_platform_info.dart';
+import 'package:vesper_media/bili/common/services/bili_platform_info.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -6,7 +6,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('auto rotate status is read fresh from the Android platform', () async {
-    const channel = MethodChannel('dev.ikaros.bilibili_player/platform');
+    const channel = MethodChannel('dev.ikaros.vesper_player/platform');
     var enabled = false;
     final methods = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -26,7 +26,7 @@ void main() {
   });
 
   test('HCPP support is read from the Android platform', () async {
-    const channel = MethodChannel('dev.ikaros.bilibili_player/platform');
+    const channel = MethodChannel('dev.ikaros.vesper_player/platform');
     final methods = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {

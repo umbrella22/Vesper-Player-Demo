@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 final class BiliDownloadPluginResolver {
   const BiliDownloadPluginResolver({
     MethodChannel channel = const MethodChannel(
-      'dev.ikaros.bilibili_player/download_plugin',
+      'dev.ikaros.vesper_player/download_plugin',
     ),
   }) : _channel = channel;
 

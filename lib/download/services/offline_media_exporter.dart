@@ -12,7 +12,7 @@ final class BiliOfflineMediaExportException implements Exception {
 class BiliOfflineMediaExporter {
   const BiliOfflineMediaExporter({
     MethodChannel channel = const MethodChannel(
-      'dev.ikaros.bilibili_player/media_export',
+      'dev.ikaros.vesper_player/media_export',
     ),
   }) : _channel = channel;
 

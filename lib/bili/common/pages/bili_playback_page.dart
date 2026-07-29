@@ -9,21 +9,21 @@ import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/app/system_presentation.dart';
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_device_controls.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_text.dart';
-import 'package:bilibili_player/bili/tv_mode/pages/bili_tv_home_page.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_glass_dialog.dart';
-import 'package:bilibili_player/bili/tv_mode/widgets/tv_focusable.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_external_playback_manager.dart';
-import 'package:bilibili_player/bili/common/view_models/bili_playback_view_model.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
-import 'package:bilibili_player/download/services/offline_download_controller.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_device_controls.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_text.dart';
+import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/bili/common/view_models/bili_external_playback_manager.dart';
+import 'package:vesper_media/bili/common/view_models/bili_playback_view_model.dart';
+import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/download/services/offline_download_controller.dart';
 
 part 'bili_playback_panels.dart';
 part 'bili_playback_settings.dart';
@@ -917,14 +917,20 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: biliDarkSurfaceSystemUiStyle,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF4F4F8),
-        body: ListenableBuilder(
-          listenable: _viewModel,
-          builder: (context, _) {
-            return FutureBuilder<VesperPlayerController>(
+    final visualTheme = AppVisualTheme.of(context);
+    return Scaffold(
+      backgroundColor: visualTheme.background,
+      body: ListenableBuilder(
+        listenable: _viewModel,
+        builder: (context, _) {
+          final overlayStyle = _isTvMode || _viewModel.isFullscreen
+              ? biliDarkSurfaceSystemUiStyle
+              : playbackSystemUiStyleForBrightness(
+                  Theme.of(context).brightness,
+                );
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: overlayStyle,
+            child: FutureBuilder<VesperPlayerController>(
               future: _viewModel.controllerFuture,
               builder: (context, asyncSnapshot) {
                 if (asyncSnapshot.hasError) {
@@ -945,9 +951,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                   },
                 );
               },
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -960,6 +966,8 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     if (_isTvMode) {
       return _buildTvPlaybackLayout(context, controller, snapshot);
     }
+
+    final visualTheme = AppVisualTheme.of(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -998,7 +1006,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
           return PopScope(
             canPop: true,
             child: ColoredBox(
-              color: const Color(0xFFF4F4F8),
+              color: visualTheme.background,
               child: Row(
                 children: [
                   Expanded(
@@ -1023,7 +1031,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
         return PopScope(
           canPop: true,
           child: ColoredBox(
-            color: const Color(0xFFF4F4F8),
+            color: visualTheme.background,
             child: Builder(
               builder: (context) {
                 final stagePadding = stageCornerPadding.add(
@@ -1897,11 +1905,20 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final visualTheme = AppVisualTheme.of(context);
         final horizontalPadding = constraints.maxWidth >= 540 ? 34.0 : 16.0;
         return DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          key: const ValueKey<String>('playback-bottom-surface'),
+          decoration: BoxDecoration(
+            color: visualTheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: visualTheme.shadow,
+                blurRadius: 18,
+                offset: const Offset(0, -4),
+              ),
+            ],
           ),
           child: Padding(
             padding: EdgeInsets.fromLTRB(

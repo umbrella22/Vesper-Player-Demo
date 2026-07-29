@@ -4,9 +4,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:bilibili_player/app/design/app_glass_controls.dart';
-import 'package:bilibili_player/app/design/app_visual_theme.dart';
-import 'package:bilibili_player/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
 import '../../bili/common/pages/bili_playback_page.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_history_store.dart';
@@ -55,8 +55,9 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return AppGlassScaffold(
-      backgroundColor: AppVisualTokens.mobileBackground,
+      backgroundColor: visualTheme.background,
       extendBody: false,
       appBar: const GlassAppBar(
         centerTitle: false,
@@ -223,6 +224,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     final canExport = entry.isCompleted && !entry.isUnplayable;
     final action = await showBiliGlassSheet<_OfflineEntryAction>(
       context: context,
+      appearance: BiliGlassSheetAppearance.readable,
       maxContentHeightFactor: 0.5,
       builder: (context) {
         return SafeArea(
@@ -245,8 +247,8 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  textColor: const Color(0xFFE84A67),
-                  iconColor: const Color(0xFFE84A67),
+                  textColor: AppVisualTheme.of(context).destructive,
+                  iconColor: AppVisualTheme.of(context).destructive,
                   leading: const Icon(Icons.delete_outline_rounded),
                   title: const Text('删除'),
                   onTap: () =>

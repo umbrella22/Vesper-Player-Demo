@@ -1,10 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'package:bilibili_player/bili/common/models/bili_models.dart';
-import 'package:bilibili_player/bili/common/services/bili_client.dart';
-import 'package:bilibili_player/bili/common/services/bili_history_store.dart';
-import 'package:bilibili_player/bili/common/services/bili_text.dart';
-import 'package:bilibili_player/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_text.dart';
+import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 
 class BiliVideoDetailPage extends StatefulWidget {
   const BiliVideoDetailPage({
@@ -80,8 +81,10 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
 
     return Scaffold(
+      backgroundColor: visualTheme.background,
       body: FutureBuilder<BiliVideoDetail>(
         future: _detailFuture,
         builder: (context, snapshot) {
@@ -231,6 +234,7 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -238,7 +242,7 @@ class _SectionLabel extends StatelessWidget {
           title,
           style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF152337),
+            color: visualTheme.textPrimary,
           ),
         ),
         const SizedBox(height: 4),
@@ -268,6 +272,7 @@ class _PageLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final resumeText = historyEntry == null
         ? null
         : '上次播放 ${biliFormatDurationSeconds(historyEntry!.lastPositionMs ~/ 1000)}';
@@ -275,17 +280,17 @@ class _PageLine extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
         onTap: onPlay,
         child: Ink(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: const <BoxShadow>[
+            color: visualTheme.surface,
+            borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
+            boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Color(0x100A1628),
-                blurRadius: 24,
-                offset: Offset(0, 12),
+                color: visualTheme.shadow,
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -297,15 +302,15 @@ class _PageLine extends StatelessWidget {
                 Container(
                   width: 44,
                   height: 44,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFFE6EE),
+                  decoration: BoxDecoration(
+                    color: visualTheme.surfaceRaised,
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     '${page.pageNumber}',
                     style: theme.textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF8D3353),
+                      color: visualTheme.textPrimary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -321,7 +326,7 @@ class _PageLine extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF152337),
+                          color: visualTheme.textPrimary,
                           height: 1.25,
                         ),
                       ),
@@ -362,9 +367,10 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F8FC),
+        color: visualTheme.surfaceRaised,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -372,7 +378,7 @@ class _InfoPill extends StatelessWidget {
         child: Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: const Color(0xFF5D6C7F),
+            color: visualTheme.textSecondary,
             fontWeight: FontWeight.w600,
           ),
         ),

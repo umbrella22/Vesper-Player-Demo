@@ -1,5 +1,5 @@
-import 'package:bilibili_player/bili/app_mode/pages/bili_hub_page.dart';
-import 'package:bilibili_player/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
+import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

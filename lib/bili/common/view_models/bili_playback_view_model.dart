@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 
-import 'package:bilibili_player/download/services/offline_download_controller.dart';
+import 'package:vesper_media/download/services/offline_download_controller.dart';
 import '../../../player/player_sdk_options.dart';
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';

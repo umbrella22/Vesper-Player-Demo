@@ -43,9 +43,10 @@ class _InlineErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F4),
+        color: visualTheme.destructive.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
@@ -53,13 +54,13 @@ class _InlineErrorBanner extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, color: Color(0xFFB33A59)),
+            Icon(Icons.error_outline, color: visualTheme.destructive),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 message,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF8D2A46),
+                  color: visualTheme.textPrimary,
                   height: 1.45,
                 ),
               ),
@@ -81,9 +82,10 @@ class _EmptyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: visualTheme.surface,
         borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Padding(
@@ -94,7 +96,7 @@ class _EmptyPanel extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: const Color(0xFF20232B),
+                color: visualTheme.textPrimary,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -102,7 +104,7 @@ class _EmptyPanel extends StatelessWidget {
             Text(
               body,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF858A94),
+                color: visualTheme.textSecondary,
                 height: 1.5,
               ),
             ),
@@ -126,22 +128,31 @@ class _AvatarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      customBorder: const CircleBorder(),
-      onTap: onTap,
-      child: CircleAvatar(
-        radius: 16,
-        backgroundColor: const Color(0xFFFFDCE7),
-        backgroundImage: avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
-        child: avatarUrl.isEmpty
-            ? Text(
-                (name.isEmpty ? 'B' : name.characters.first).toUpperCase(),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppVisualTokens.biliSourcePink,
-                  fontWeight: FontWeight.w900,
-                ),
-              )
-            : null,
+    return SizedBox.square(
+      dimension: AppVisualTokens.minimumTapTarget,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Center(
+          child: CircleAvatar(
+            radius: 16,
+            backgroundColor: AppVisualTokens.biliSourcePink.withValues(
+              alpha: Theme.of(context).brightness == Brightness.dark
+                  ? 0.18
+                  : 0.12,
+            ),
+            backgroundImage: avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
+            child: avatarUrl.isEmpty
+                ? Text(
+                    (name.isEmpty ? 'B' : name.characters.first).toUpperCase(),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppVisualTokens.biliSourcePink,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  )
+                : null,
+          ),
+        ),
       ),
     );
   }
