@@ -47,4 +47,17 @@ final class BiliPlatformInfo {
       return false;
     }
   }
+
+  Future<bool> shouldPreferTextureViewForPlayback() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'shouldPreferTextureViewForPlayback',
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

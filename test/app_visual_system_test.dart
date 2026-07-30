@@ -252,7 +252,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('glass scaffold paints the resolved split Material background', (
+  testWidgets('glass scaffold passes the resolved split Material background', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -263,10 +263,8 @@ void main() {
     );
 
     final scaffold = tester.widget<GlassScaffold>(find.byType(GlassScaffold));
-    final background = scaffold.background! as ColoredBox;
-
-    expect(background.color, AppVisualTokens.darkBackground);
-    expect(scaffold.backgroundColor, isNull);
+    expect(scaffold.background, isNull);
+    expect(scaffold.backgroundColor, AppVisualTokens.darkBackground);
     expect(scaffold.enableBackgroundSampling, isFalse);
   });
 

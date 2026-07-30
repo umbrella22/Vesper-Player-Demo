@@ -294,6 +294,9 @@ class _BiliHubPageState extends State<BiliHubPage> {
         ),
       ),
     );
+    if (!mounted) {
+      return;
+    }
     await _viewModel.refreshProfile(
       clearInvalidSession: true,
       persistIfLoggedIn: true,

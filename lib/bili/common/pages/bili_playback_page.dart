@@ -186,10 +186,35 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     final isBackKey =
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape;
+    final route = ModalRoute.of(context);
+    if (!isBackKey &&
+        route?.isCurrent == true &&
+        !_playbackModalRouteOpen &&
+        !_tvPanelOpen &&
+        !_tvControlBarVisible) {
+      final controller = _viewModel.controller;
+      if (controller == null) {
+        return false;
+      }
+      final snapshot = controller.snapshot;
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        _seekTvBy(controller, snapshot, -10000);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.arrowRight) {
+        _seekTvBy(controller, snapshot, 10000);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.select ||
+          key == LogicalKeyboardKey.enter ||
+          key == LogicalKeyboardKey.space) {
+        _toggleTvPlayback(controller, snapshot);
+        return true;
+      }
+    }
     if (!isBackKey) {
       return false;
     }
-    final route = ModalRoute.of(context);
     if (route != null && !route.isCurrent) {
       if (_playbackModalRouteOpen) {
         _handleTvBack();
@@ -1197,7 +1222,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
             _TvPlaybackToggleBarIntent:
                 CallbackAction<_TvPlaybackToggleBarIntent>(
                   onInvoke: (_) {
-                    _handleTvSelect(controller, snapshot);
+                    _handleTvSelect();
                     return null;
                   },
                 ),
@@ -1215,41 +1240,25 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
             ),
             _TvPlaybackLeftIntent: CallbackAction<_TvPlaybackLeftIntent>(
               onInvoke: (_) {
-                _handleTvDirectionalIntent(
-                  TraversalDirection.left,
-                  controller,
-                  snapshot,
-                );
+                _handleTvDirectionalIntent(TraversalDirection.left);
                 return null;
               },
             ),
             _TvPlaybackRightIntent: CallbackAction<_TvPlaybackRightIntent>(
               onInvoke: (_) {
-                _handleTvDirectionalIntent(
-                  TraversalDirection.right,
-                  controller,
-                  snapshot,
-                );
+                _handleTvDirectionalIntent(TraversalDirection.right);
                 return null;
               },
             ),
             _TvPlaybackUpIntent: CallbackAction<_TvPlaybackUpIntent>(
               onInvoke: (_) {
-                _handleTvDirectionalIntent(
-                  TraversalDirection.up,
-                  controller,
-                  snapshot,
-                );
+                _handleTvDirectionalIntent(TraversalDirection.up);
                 return null;
               },
             ),
             _TvPlaybackDownIntent: CallbackAction<_TvPlaybackDownIntent>(
               onInvoke: (_) {
-                _handleTvDirectionalIntent(
-                  TraversalDirection.down,
-                  controller,
-                  snapshot,
-                );
+                _handleTvDirectionalIntent(TraversalDirection.down);
                 return null;
               },
             ),
@@ -1321,15 +1330,11 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     }
   }
 
-  void _handleTvSelect(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
+  void _handleTvSelect() {
     if (_tvPanelOpen) {
       return;
     }
     if (!_tvControlBarVisible) {
-      _toggleTvPlayback(controller, snapshot);
       return;
     }
     _hideTvControlsAndRestoreFocus();
@@ -1349,6 +1354,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       _restoreTvPlaybackFocusAfterFrame();
       return;
     }
+    _requestTvPlaybackFocus();
     setState(() {
       _tvControlBarVisible = false;
     });
@@ -1357,10 +1363,14 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   void _restoreTvPlaybackFocusAfterFrame() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _tvPlaybackFocusNode.canRequestFocus) {
-        _tvPlaybackFocusNode.requestFocus();
-      }
+      _requestTvPlaybackFocus();
     });
+  }
+
+  void _requestTvPlaybackFocus() {
+    if (mounted && _tvPlaybackFocusNode.canRequestFocus) {
+      _tvPlaybackFocusNode.requestFocus();
+    }
   }
 
   void _toggleTvPlayback(
@@ -1416,11 +1426,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     );
   }
 
-  void _handleTvDirectionalIntent(
-    TraversalDirection direction,
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
+  void _handleTvDirectionalIntent(TraversalDirection direction) {
     if (_tvPanelOpen) {
       _moveTvPanelFocus(direction);
       return;
@@ -1434,11 +1440,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       return;
     }
     if (direction == TraversalDirection.left) {
-      _seekTvBy(controller, snapshot, -10000);
       return;
     }
     if (direction == TraversalDirection.right) {
-      _seekTvBy(controller, snapshot, 10000);
       return;
     }
     _showTvControls();

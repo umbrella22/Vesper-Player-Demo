@@ -6,8 +6,8 @@ import 'package:material_ui/material_ui.dart';
 import 'app_visual_theme.dart';
 
 /// Keeps App-owned Material widgets on the split `material_ui` tree while
-/// `liquid_glass_widgets` still builds its scaffold with Flutter's legacy
-/// Material library. Remove this adapter once the package migrates.
+/// `liquid_glass_widgets` builds its scaffold with Flutter's legacy Material
+/// library. Remove this adapter once the package migrates.
 class AppGlassScaffold extends StatelessWidget {
   const AppGlassScaffold({
     super.key,
@@ -41,10 +41,9 @@ class AppGlassScaffold extends StatelessWidget {
         body: _materialSurface(body),
         appBar: appBar == null ? null : _materialAppBarSurface(appBar!),
         bottomBar: bottomBar == null ? null : _materialSurface(bottomBar!),
-        // GlassScaffold only makes its legacy Material scaffold transparent
-        // when a background widget is present. Passing backgroundColor leaks
-        // the legacy light fallback through material_ui dark themes.
-        background: ColoredBox(color: resolvedBackgroundColor),
+        // The explicit color is required because the legacy Material theme
+        // cannot read the split material_ui Theme inherited by the App.
+        backgroundColor: resolvedBackgroundColor,
         enableBackgroundSampling: false,
         statusBarStyle: statusBarStyle,
         extendBody: extendBody,

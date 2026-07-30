@@ -953,6 +953,8 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   VesperSourceNormalizerConfiguration? lastSourceNormalizerConfiguration;
   VesperFrameProcessorConfiguration? lastFrameProcessorConfiguration;
   VesperNativeFramePipelineConfiguration? lastNativeFramePipelineConfiguration;
+  VesperPlayerRenderSurfaceKind? lastRenderSurfaceKind;
+  VesperSystemPlaybackConfiguration? lastSystemPlaybackConfiguration;
   int playCalls = 0;
   int pauseCalls = 0;
   int refreshCalls = 0;
@@ -983,6 +985,7 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
     VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
         const VesperNativeFramePipelineConfiguration(),
   }) async {
+    lastRenderSurfaceKind = renderSurfaceKind;
     lastSourceNormalizerConfiguration = sourceNormalizerConfiguration;
     lastFrameProcessorConfiguration = frameProcessorConfiguration;
     lastNativeFramePipelineConfiguration = nativeFramePipelineConfiguration;
@@ -1122,7 +1125,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   Future<void> configureSystemPlayback(
     String playerId,
     VesperSystemPlaybackConfiguration configuration,
-  ) async {}
+  ) async {
+    lastSystemPlaybackConfiguration = configuration;
+  }
 
   @override
   Future<void> clearSystemPlayback(String playerId) async {
@@ -1397,6 +1402,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   int initialPositionMs = 0,
   void Function(_FakePlaybackClient client)? configureClient,
   ThemeData? theme,
+  bool externalPlaybackMockInstalled = false,
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
   final platform = _FakePlaybackVesperPlatform(
@@ -1426,6 +1432,22 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
       null,
     );
   });
+  const externalPlaybackEventsChannel = EventChannel(
+    'io.github.ikaros.vesper_player_external_playback/events',
+  );
+  if (!externalPlaybackMockInstalled &&
+      defaultTargetPlatform == TargetPlatform.android) {
+    tester.binding.defaultBinaryMessenger.setMockStreamHandler(
+      externalPlaybackEventsChannel,
+      MockStreamHandler.inline(onListen: (_, _) {}),
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockStreamHandler(
+        externalPlaybackEventsChannel,
+        null,
+      );
+    });
+  }
 
   final playbackDetail = detail ?? _playbackDetail();
   final page = initialPage ?? playbackDetail.pages.first;
@@ -1462,6 +1484,8 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
+  await _flushRealAsync(tester);
+  await tester.pump();
 
   return _PlaybackHarness(client: client, platform: platform);
 }
@@ -3751,7 +3775,10 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       });
 
-      await _pumpPlaybackPage(tester);
+      await _pumpPlaybackPage(
+        tester,
+        externalPlaybackMockInstalled: true,
+      );
 
       await tester.tap(find.byIcon(Icons.cast_outlined));
       await tester.pump();
@@ -3844,6 +3871,65 @@ void main() {
       expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'Android playback selects TextureView on flagged legacy devices',
+    (WidgetTester tester) async {
+      const channel = MethodChannel('dev.ikaros.vesper_player/platform');
+      const platformViewsChannel = MethodChannel('flutter/platform_views');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (call) async => call.method == 'shouldPreferTextureViewForPlayback',
+      );
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        platformViewsChannel,
+        (call) async {
+          switch (call.method) {
+            case 'create':
+              return 1;
+            case 'resize':
+              final arguments = call.arguments as Map<Object?, Object?>;
+              return <String, Object?>{
+                'width': arguments['width'],
+                'height': arguments['height'],
+              };
+            default:
+              return null;
+          }
+        },
+      );
+      final externalPlayback = _ExternalPlaybackHarness()..install();
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        );
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          platformViewsChannel,
+          null,
+        );
+        externalPlayback.uninstall();
+      });
+
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+        externalPlaybackMockInstalled: true,
+      );
+      await _flushRealAsync(tester);
+      await tester.pump();
+
+      expect(
+        harness.platform.lastRenderSurfaceKind,
+        VesperPlayerRenderSurfaceKind.textureView,
+      );
+      expect(
+        harness.platform.lastSystemPlaybackConfiguration?.backgroundMode,
+        VesperBackgroundPlaybackMode.disabled,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
 
   testWidgets(

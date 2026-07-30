@@ -114,8 +114,11 @@ VesperSystemPlaybackMetadata biliPlayerSystemPlaybackMetadata({
 
 VesperSystemPlaybackConfiguration biliPlayerSystemPlaybackConfiguration({
   required VesperSystemPlaybackMetadata metadata,
+  VesperBackgroundPlaybackMode backgroundMode =
+      VesperBackgroundPlaybackMode.continueAudio,
 }) {
   return VesperSystemPlaybackConfiguration(
+    backgroundMode: backgroundMode,
     showSystemControls: true,
     showSeekActions: true,
     metadata: metadata,

@@ -32,6 +32,8 @@ class MainActivity : FlutterFragmentActivity() {
                 "isTv" -> result.success(isTvDevice())
                 "isAutoRotateEnabled" -> result.success(isAutoRotateEnabled())
                 "isHcppPlatformSupported" -> result.success(isHcppPlatformSupported())
+                "shouldPreferTextureViewForPlayback" ->
+                    result.success(shouldPreferTextureViewForPlayback())
                 else -> result.notImplemented()
             }
         }
@@ -320,5 +322,19 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (_: PackageManager.NameNotFoundException) {
             false
         }
+    }
+
+    private fun shouldPreferTextureViewForPlayback(): Boolean {
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
+            return false
+        }
+        // Older MediaTek EGL drivers can crash while a SurfaceView is rebound.
+        val hardwareIdentity = listOf(
+            Build.HARDWARE,
+            Build.BOARD,
+            Build.DEVICE,
+        ).joinToString(separator = " ").lowercase()
+        return hardwareIdentity.contains("mt67") ||
+            hardwareIdentity.contains("mediatek")
     }
 }

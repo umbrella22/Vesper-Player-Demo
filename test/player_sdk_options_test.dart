@@ -49,6 +49,20 @@ void main() {
       });
     });
 
+    test('system playback can disable background audio on risk devices', () {
+      final metadata = biliPlayerSystemPlaybackMetadata(title: '测试视频');
+      final configuration = biliPlayerSystemPlaybackConfiguration(
+        metadata: metadata,
+        backgroundMode: VesperBackgroundPlaybackMode.disabled,
+      );
+
+      expect(
+        configuration.backgroundMode,
+        VesperBackgroundPlaybackMode.disabled,
+      );
+      expect(configuration.showSystemControls, isTrue);
+    });
+
     test('DLNA format adaptation enables DASH remux fallback', () {
       expect(biliDlnaFormatAdaptationConfig.enabled, isTrue);
       expect(

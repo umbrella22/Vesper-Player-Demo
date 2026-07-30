@@ -106,6 +106,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _switchHome() async {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     final nextMode = await refreshUiMode();
     await _applyPresentationFor(nextMode);
     if (!mounted) {

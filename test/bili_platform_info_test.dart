@@ -41,4 +41,24 @@ void main() {
     expect(await BiliPlatformInfo.instance.isHcppPlatformSupported(), isTrue);
     expect(methods, <String>['isHcppPlatformSupported']);
   });
+
+  test('playback surface compatibility is read from Android', () async {
+    const channel = MethodChannel('dev.ikaros.vesper_player/platform');
+    final methods = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          methods.add(call.method);
+          return call.method == 'shouldPreferTextureViewForPlayback';
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    expect(
+      await BiliPlatformInfo.instance.shouldPreferTextureViewForPlayback(),
+      isTrue,
+    );
+    expect(methods, <String>['shouldPreferTextureViewForPlayback']);
+  });
 }

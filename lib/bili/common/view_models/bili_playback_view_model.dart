@@ -10,6 +10,7 @@ import '../../../player/player_sdk_options.dart';
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_history_store.dart';
+import '../services/bili_platform_info.dart';
 import '../services/bili_text.dart';
 import 'bili_external_playback_manager.dart';
 
@@ -59,6 +60,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       _castEventsSubscription = _externalPlaybackForCast.events.listen(
         _handleExternalPlaybackEvent,
+        onError: (Object _) {},
       );
     }
     _controllerFuture = _createController();
@@ -140,6 +142,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   Timer? _playbackRecoverySuccessTimer;
   StreamSubscription<VesperExternalPlaybackSessionEvent>?
   _castEventsSubscription;
+  Future<bool>? _legacyAndroidPlaybackCompatibilityFuture;
   late final BiliExternalPlaybackManager _dlnaManager;
 
   Future<VesperPlayerController> get controllerFuture => _controllerFuture;
@@ -274,10 +277,13 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       _resolvedPlayback = resolved;
       _notify();
 
-      final sourceNormalizerConfiguration =
-          await biliPlayerSourceNormalizerConfiguration();
+      final sourceNormalizerFuture = biliPlayerSourceNormalizerConfiguration();
+      final renderSurfaceKindFuture = _resolveRenderSurfaceKind();
+      final sourceNormalizerConfiguration = await sourceNormalizerFuture;
+      final renderSurfaceKind = await renderSurfaceKindFuture;
       nextController = await VesperPlayerController.create(
         initialSource: resolved.toSource(),
+        renderSurfaceKind: renderSurfaceKind,
         resiliencePolicy: biliPlayerResiliencePolicy,
         trackPreferencePolicy: biliPlayerTrackPreferencePolicy,
         preloadBudgetPolicy: biliPlayerPreloadBudgetPolicy,
@@ -333,6 +339,23 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       }
       rethrow;
     }
+  }
+
+  Future<VesperPlayerRenderSurfaceKind> _resolveRenderSurfaceKind() async {
+    final useLegacyCompatibility =
+        await _usesLegacyAndroidPlaybackCompatibility();
+    return useLegacyCompatibility
+        ? VesperPlayerRenderSurfaceKind.textureView
+        : VesperPlayerRenderSurfaceKind.auto;
+  }
+
+  Future<bool> _usesLegacyAndroidPlaybackCompatibility() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return Future<bool>.value(false);
+    }
+    return _legacyAndroidPlaybackCompatibilityFuture ??= BiliPlatformInfo
+        .instance
+        .shouldPreferTextureViewForPlayback();
   }
 
   Future<void> reloadCurrentPage() async {
@@ -1100,12 +1123,17 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     BiliResolvedPlayback resolved,
   ) async {
     try {
+      final useLegacyCompatibility =
+          await _usesLegacyAndroidPlaybackCompatibility();
       _systemPlaybackPermissionStatus = await controller
           .getSystemPlaybackPermissionStatus();
       _notify();
       await controller.configureSystemPlayback(
         biliPlayerSystemPlaybackConfiguration(
           metadata: _systemPlaybackMetadataForResolved(resolved),
+          backgroundMode: useLegacyCompatibility
+              ? VesperBackgroundPlaybackMode.disabled
+              : VesperBackgroundPlaybackMode.continueAudio,
         ),
       );
     } catch (error) {
