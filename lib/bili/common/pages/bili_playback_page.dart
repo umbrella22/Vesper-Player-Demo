@@ -184,7 +184,6 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     }
     final key = event.logicalKey;
     final isBackKey =
-        key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape;
     if (!isBackKey) {
@@ -1198,7 +1197,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
             _TvPlaybackToggleBarIntent:
                 CallbackAction<_TvPlaybackToggleBarIntent>(
                   onInvoke: (_) {
-                    _handleTvSelect();
+                    _handleTvSelect(controller, snapshot);
                     return null;
                   },
                 ),
@@ -1210,13 +1209,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
             ),
             _TvPlayPauseIntent: CallbackAction<_TvPlayPauseIntent>(
               onInvoke: (_) {
-                if (!snapshot.isBuffering) {
-                  if (isPlaying) {
-                    controller.pause();
-                  } else {
-                    controller.play();
-                  }
-                }
+                _toggleTvPlayback(controller, snapshot);
                 return null;
               },
             ),
@@ -1301,7 +1294,9 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
                       width: 420,
                       child: IgnorePointer(
                         ignoring: !_tvPanelOpen,
-                        child: _buildTvPanel(controller, snapshot),
+                        child: _tvPanelOpen
+                            ? _buildTvPanel(controller, snapshot)
+                            : const SizedBox.shrink(),
                       ),
                     ),
                   ],
@@ -1316,16 +1311,28 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
 
   void _handleTvStageTap() {
     _tvPlaybackFocusNode.requestFocus();
-    _handleTvSelect();
-  }
-
-  void _handleTvSelect() {
     if (_tvPanelOpen) {
       return;
     }
-    setState(() {
-      _tvControlBarVisible = !_tvControlBarVisible;
-    });
+    if (_tvControlBarVisible) {
+      _hideTvControlsAndRestoreFocus();
+    } else {
+      _showTvControls();
+    }
+  }
+
+  void _handleTvSelect(
+    VesperPlayerController controller,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    if (_tvPanelOpen) {
+      return;
+    }
+    if (!_tvControlBarVisible) {
+      _toggleTvPlayback(controller, snapshot);
+      return;
+    }
+    _hideTvControlsAndRestoreFocus();
   }
 
   void _showTvControls() {
@@ -1335,6 +1342,39 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     setState(() {
       _tvControlBarVisible = true;
     });
+  }
+
+  void _hideTvControlsAndRestoreFocus() {
+    if (!_tvControlBarVisible) {
+      _restoreTvPlaybackFocusAfterFrame();
+      return;
+    }
+    setState(() {
+      _tvControlBarVisible = false;
+    });
+    _restoreTvPlaybackFocusAfterFrame();
+  }
+
+  void _restoreTvPlaybackFocusAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tvPlaybackFocusNode.canRequestFocus) {
+        _tvPlaybackFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _toggleTvPlayback(
+    VesperPlayerController controller,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    if (snapshot.isBuffering) {
+      return;
+    }
+    if (snapshot.playbackState == VesperPlaybackState.playing) {
+      unawaited(controller.pause());
+    } else {
+      unawaited(controller.play());
+    }
   }
 
   void _handleTvBack() {
@@ -1357,9 +1397,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       return;
     }
     if (_tvControlBarVisible) {
-      setState(() {
-        _tvControlBarVisible = false;
-      });
+      _hideTvControlsAndRestoreFocus();
       return;
     }
     final navigator = Navigator.of(context);
@@ -1642,11 +1680,21 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       _tvPanel = TvPlaybackPanelType.none;
       _lastOpenedTvPanel = null;
     });
-    if (panel != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _tvPanelButtonFocusNodes[panel]?.requestFocus();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final panelButton = panel == null
+          ? null
+          : _tvPanelButtonFocusNodes[panel];
+      if (_tvControlBarVisible &&
+          panelButton?.canRequestFocus == true &&
+          panelButton?.context != null) {
+        panelButton!.requestFocus();
+        return;
+      }
+      _tvPlaybackFocusNode.requestFocus();
+    });
   }
 
   Widget _buildTvControlBar(

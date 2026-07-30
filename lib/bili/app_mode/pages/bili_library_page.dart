@@ -613,6 +613,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   Widget _buildTvPage(BuildContext context) {
     return TvDirectionalFocusScope(
       debugLabel: 'tv_library',
+      handleGoBackKey: false,
       onBack: () => Navigator.of(context).maybePop(),
       child: Scaffold(
         key: const ValueKey<String>('bili-tv-library-root'),

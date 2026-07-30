@@ -7,6 +7,7 @@ import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_region_hub_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_region_video_page.dart';
@@ -1992,9 +1993,12 @@ void main() {
     await tester.tap(find.text('搜索'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 240));
 
     final rail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
     final initialRailWidth = tester.getSize(rail).width;
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
+    expect(initialRailWidth, 80);
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold)).resizeToAvoidBottomInset,
       isFalse,
@@ -2062,6 +2066,55 @@ void main() {
       findsNothing,
     );
     expect(find.text('搜索结果 1'), findsOneWidget);
+  });
+
+  testWidgets('tv search focuses the field and rail right restores it', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 180));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_search');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    final searchRailItem = find
+        .ancestor(
+          of: find.byKey(
+            const ValueKey<String>('tv-glass-selectable-state-nav_search'),
+          ),
+          matching: find.byType(TvFocusable),
+        )
+        .last;
+    tester
+        .widget<Focus>(
+          find
+              .descendant(of: searchRailItem, matching: find.byType(Focus))
+              .first,
+        )
+        .focusNode
+        ?.requestFocus();
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_search');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 180));
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
+    expect(tester.testTextInput.isVisible, isTrue);
   });
 
   testWidgets('tv rail collapses for content and restores the last focus', (
@@ -2583,6 +2636,66 @@ void main() {
       platformCalls.where((call) => call.method == 'SystemNavigator.pop'),
       isNotEmpty,
     );
+  });
+
+  testWidgets('tv home Android back opens one persistent exit dialog', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.sendKeyEvent(
+      LogicalKeyboardKey.goBack,
+      physicalKey: PhysicalKeyboardKey.escape,
+    );
+    await tester.pump();
+
+    expect(find.text('退出 Vesper？'), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('退出 Vesper？'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_继续观看');
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('退出 Vesper？'), findsOneWidget);
+  });
+
+  testWidgets('tv library Android back returns one level without exit dialog', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.tap(find.text('我的'));
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.tap(find.text('历史播放'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BiliLibraryPage), findsOneWidget);
+    expect(find.byType(BiliTvHomePage, skipOffstage: false), findsOneWidget);
+
+    await tester.sendKeyEvent(
+      LogicalKeyboardKey.goBack,
+      physicalKey: PhysicalKeyboardKey.escape,
+    );
+    await tester.pump();
+    expect(find.byType(BiliLibraryPage), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BiliLibraryPage), findsNothing);
+    expect(find.byType(BiliTvHomePage), findsOneWidget);
+    expect(find.text('退出 Vesper？'), findsNothing);
   });
 
   testWidgets(
@@ -4230,6 +4343,62 @@ void main() {
   );
 
   testWidgets(
+    'tv playback Android back closes one layer and restores focus',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+
+      await tester.tapAt(const Offset(600, 450));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .ancestor(
+              of: find.text('倍速').last,
+              matching: find.byType(TvFocusable),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1.25x'), findsOneWidget);
+
+      await tester.sendKeyEvent(
+        LogicalKeyboardKey.goBack,
+        physicalKey: PhysicalKeyboardKey.escape,
+      );
+      await tester.pump();
+      expect(find.text('1.25x'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('1.25x'), findsNothing);
+      expect(find.text('倍速'), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_speed_button');
+      expect(find.byType(BiliPlaybackPage), findsOneWidget);
+
+      await tester.sendKeyEvent(
+        LogicalKeyboardKey.goBack,
+        physicalKey: PhysicalKeyboardKey.escape,
+      );
+      await tester.pump();
+      expect(find.text('倍速'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('倍速'), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_playback');
+      expect(find.byType(BiliPlaybackPage), findsOneWidget);
+      expect(find.byType(BiliTvHomePage), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'tv playback back dismisses a modal notice without leaving playback',
     (WidgetTester tester) async {
       final harness = await _pumpPlaybackPage(
@@ -4380,6 +4549,49 @@ void main() {
         harness.platform.seekRatios.single,
         closeTo(10000 / 120000, 0.001),
       );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv playback hidden controls keep seek and play pause shortcuts invisible',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+
+      expect(find.text('播放'), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_playback');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+
+      expect(harness.platform.seekRatios, hasLength(2));
+      expect(harness.platform.seekRatios.first, closeTo(10000 / 120000, 0.001));
+      expect(harness.platform.seekRatios.last, 0);
+      expect(find.text('播放'), findsNothing);
+
+      final playCallsBeforeShortcut = harness.platform.playCalls;
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(harness.platform.playCalls, playCallsBeforeShortcut + 1);
+      expect(find.text('播放'), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_playback');
+
+      harness.platform.emitSnapshot(_playingPlaybackSnapshot);
+      await _flushRealAsync(tester);
+      await tester.pump();
+      final pauseCallsBeforeShortcut = harness.platform.pauseCalls;
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(harness.platform.pauseCalls, pauseCallsBeforeShortcut + 1);
+      expect(find.text('暂停'), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_playback');
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );

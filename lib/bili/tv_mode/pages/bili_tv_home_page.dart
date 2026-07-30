@@ -251,6 +251,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   late final BiliHubViewModel _viewModel;
   late final AppSettingsStore _appSettings;
   late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'tv_search_field');
   final ScrollController _contentScrollController = ScrollController();
   final ScrollController _continueShelfController = ScrollController();
   final ScrollController _recommendShelfController = ScrollController();
@@ -282,6 +283,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     super.initState();
     unawaited(_enterTvHomePresentation());
     _searchController = TextEditingController();
+    setTvFocusArea(_searchFocusNode, TvFocusArea.content);
+    _searchFocusNode.addListener(_handleSearchFocusChanged);
     _appSettings = widget.appSettings ?? const AppSettingsStore();
     _viewModel = BiliHubViewModel(
       client: widget.client,
@@ -305,6 +308,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
 
   @override
   void dispose() {
+    _searchFocusNode.removeListener(_handleSearchFocusChanged);
+    _searchFocusNode.dispose();
     _searchController.dispose();
     _contentScrollController.dispose();
     _continueShelfController.dispose();
@@ -851,6 +856,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           },
           child: TvDirectionalFocusScope(
             debugLabel: 'tv_home',
+            handleGoBackKey: false,
             onBack: () => unawaited(_confirmExitApp()),
             onFocusAreaChanged: _handleFocusAreaChanged,
             child: Scaffold(
@@ -1419,6 +1425,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     setState(() {
       _selectedNav = item;
     });
+    if (item == _TvNavItem.search) {
+      _requestSearchFocusAfterFrame();
+    }
     if (item == _TvNavItem.history) {
       unawaited(_loadHistory());
     }
@@ -1942,6 +1951,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 builder: (context) {
                   return TextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -2073,6 +2083,28 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         ],
       ),
     );
+  }
+
+  void _handleSearchFocusChanged() {
+    if (!_searchFocusNode.hasFocus) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _searchFocusNode.hasFocus) {
+        unawaited(
+          SystemChannels.textInput.invokeMethod<void>('TextInput.show'),
+        );
+      }
+    });
+  }
+
+  void _requestSearchFocusAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _selectedNav != _TvNavItem.search) {
+        return;
+      }
+      _searchFocusNode.requestFocus();
+    });
   }
 
   Widget _buildHistoryPage() {
