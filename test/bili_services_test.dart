@@ -214,6 +214,42 @@ void main() {
     });
   });
 
+  group('BiliApiException session classification', () {
+    test('classifies only code -101 as an invalid session error', () {
+      expect(
+        isBiliSessionInvalidError(const BiliApiException('未登录', code: -101)),
+        isTrue,
+      );
+    });
+
+    test('does not classify network or HTTP errors as session errors', () {
+      expect(
+        isBiliSessionInvalidError(const SocketException('offline')),
+        isFalse,
+      );
+      expect(
+        isBiliSessionInvalidError(const FormatException('bad json')),
+        isFalse,
+      );
+      expect(
+        isBiliSessionInvalidError(
+          const BiliApiException('HTTP 500 from Bilibili.', code: 500),
+        ),
+        isFalse,
+      );
+      expect(
+        isBiliSessionInvalidError(
+          const BiliApiException('风控', code: biliRiskControlCode),
+        ),
+        isFalse,
+      );
+      expect(
+        isBiliSessionInvalidError(const BiliApiException('unknown', code: -1)),
+        isFalse,
+      );
+    });
+  });
+
   group('BiliClient region videos', () {
     test('parses PGC season index payload after transport decoding', () async {
       final client = BiliClient(httpClient: _FakeRegionHttpClient());

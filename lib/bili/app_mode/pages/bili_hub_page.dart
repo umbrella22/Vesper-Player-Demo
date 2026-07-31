@@ -6,7 +6,10 @@ import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
@@ -31,12 +34,16 @@ class BiliHubPage extends StatefulWidget {
     this.historyStore,
     this.sessionStore,
     this.offlineController,
+    this.appSettings,
+    this.uiModeController,
   });
 
   final BiliClient? client;
   final BiliHistoryStore? historyStore;
   final BiliSessionStore? sessionStore;
   final BiliOfflineDownloadController? offlineController;
+  final AppSettingsStore? appSettings;
+  final BiliUiModeController? uiModeController;
 
   @override
   State<BiliHubPage> createState() => _BiliHubPageState();
@@ -128,7 +135,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
       target = await _viewModel.resolvePlaybackTarget(bvid, cid: cid);
     } catch (error) {
       if (mounted) {
-        _showMessage('打开视频失败：$error');
+        _showMessage('打开视频失败：${biliErrorMessage(error)}');
       }
       return;
     }
@@ -288,7 +295,10 @@ class _BiliHubPageState extends State<BiliHubPage> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => BiliSettingsPage(
+          appSettings: widget.appSettings,
           client: _viewModel.client,
+          historyStore: _viewModel.historyStore,
+          uiModeController: widget.uiModeController,
           sessionStore: _viewModel.sessionStore,
           offlineController: _viewModel.offlineController,
         ),

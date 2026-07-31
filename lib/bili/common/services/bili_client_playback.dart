@@ -364,9 +364,7 @@ extension BiliClientPlayback on BiliClient {
     required int cid,
     required String manifestText,
   }) async {
-    final directory = Directory(
-      '${Directory.systemTemp.path}/vesper/dash',
-    );
+    final directory = Directory('${Directory.systemTemp.path}/vesper/dash');
     await directory.create(recursive: true);
     final file = File('${directory.path}/${sanitizeAssetPart(bvid)}-$cid.mpd');
     final tempFile = File(
@@ -381,7 +379,35 @@ extension BiliClientPlayback on BiliClient {
       }
       await tempFile.rename(file.path);
     }
+    // Best-effort: keep the dash temp directory from growing unbounded across
+    // sessions. Cleanup must never break playback resolution.
+    unawaited(_cleanupStaleDashManifests(directory));
     return file;
+  }
+
+  Future<void> _cleanupStaleDashManifests(Directory directory) async {
+    try {
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      await for (final entity in directory.list()) {
+        if (entity is! File) {
+          continue;
+        }
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith('.mpd') && !name.contains('.tmp-')) {
+          continue;
+        }
+        try {
+          final stat = await entity.stat();
+          if (stat.modified.isBefore(cutoff)) {
+            await entity.delete();
+          }
+        } catch (_) {
+          // Ignore individual file failures.
+        }
+      }
+    } catch (_) {
+      // Cleanup must never break playback resolution.
+    }
   }
 
   Future<BiliResolvedPlayback?> _resolveProgressivePlayback({

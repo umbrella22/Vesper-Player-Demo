@@ -2,6 +2,7 @@ import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/download/download.dart';
 import '../models/bili_models.dart';
+import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
 import '../services/bili_history_store.dart';
 import '../services/bili_logout_service.dart';
@@ -156,7 +157,7 @@ final class BiliHubViewModel {
       _feedPage.value = 1;
       _hasMoreFeed.value = items.isNotEmpty;
     } catch (error) {
-      _feedErrorMessage.value = error.toString();
+      _feedErrorMessage.value = biliErrorMessage(error);
     } finally {
       _isRefreshingFeed.value = false;
     }
@@ -183,7 +184,7 @@ final class BiliHubViewModel {
       _hasMoreFeed.value = items.isNotEmpty && nextItems.isNotEmpty;
       return null;
     } catch (error) {
-      return '加载更多推荐失败：$error';
+      return '加载更多推荐失败：${biliErrorMessage(error)}';
     } finally {
       _isLoadingMoreFeed.value = false;
     }
@@ -207,7 +208,11 @@ final class BiliHubViewModel {
       }
       _profile.value = nextProfile;
     } catch (error) {
-      if (clearInvalidSession) {
+      // Only a definitive "session invalid" API error (code -101) may wipe
+      // persisted credentials. Transient network failures must keep the saved
+      // session: clearing cookies on a socket/timeout error would silently
+      // log the user out on the next launch.
+      if (clearInvalidSession && isBiliSessionInvalidError(error)) {
         client.clearSession();
         await sessionStore.clear();
       }
@@ -216,7 +221,7 @@ final class BiliHubViewModel {
         name: '未登录',
         avatarUrl: '',
       );
-      _profileErrorMessage.value = error.toString();
+      _profileErrorMessage.value = biliErrorMessage(error);
     } finally {
       _isRefreshingProfile.value = false;
     }
@@ -244,7 +249,7 @@ final class BiliHubViewModel {
       _results.value = nextResults;
       _hasMoreSearch.value = nextResults.isNotEmpty;
     } catch (error) {
-      _searchErrorMessage.value = error.toString();
+      _searchErrorMessage.value = biliErrorMessage(error);
     } finally {
       _isSearching.value = false;
     }
@@ -274,7 +279,7 @@ final class BiliHubViewModel {
       _hasMoreSearch.value = nextResults.isNotEmpty && uniqueResults.isNotEmpty;
       return null;
     } catch (error) {
-      return '加载更多搜索结果失败：$error';
+      return '加载更多搜索结果失败：${biliErrorMessage(error)}';
     } finally {
       _isLoadingMoreSearch.value = false;
     }

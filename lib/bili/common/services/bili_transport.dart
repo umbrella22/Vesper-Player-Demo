@@ -63,6 +63,9 @@ class BiliTransport {
   }
 
   Future<void> ensureReady() async {
+    // Preserve the visitor-identity dependency chain. Each step updates the
+    // shared cookie jar, and the WBI nav request must observe the cookies
+    // established by the preceding requests.
     if (_cookies.isEmpty) {
       await _primeCookies();
     }

@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:signals/signals_flutter.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 
 import 'package:vesper_media/download/services/offline_download_controller.dart';
 import '../../../player/player_sdk_options.dart';
 import '../models/bili_models.dart';
+import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
 import '../services/bili_history_store.dart';
 import '../services/bili_platform_info.dart';
@@ -37,7 +39,7 @@ final class BiliPlaybackRecoveryNotice {
   final String message;
 }
 
-final class BiliPlaybackViewModel extends ChangeNotifier {
+final class BiliPlaybackViewModel {
   BiliPlaybackViewModel({
     required this.detail,
     required BiliVideoPageEntry initialPage,
@@ -48,22 +50,23 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     int initialPositionMs = 0,
   }) : offlineController =
            offlineController ?? BiliOfflineDownloadController.instance,
-       _selectedPage = initialPage,
-       _coinCountLabel = detail.coinCountLabel,
-       _shareCountLabel = detail.shareCountLabel,
+       _selectedPage = signal(initialPage),
+       _coinCountLabel = signal(detail.coinCountLabel),
+       _shareCountLabel = signal(detail.shareCountLabel),
        _pendingInitialPositionMs = initialPositionMs > 0
            ? initialPositionMs
            : null,
        _initialResolvedPlayback = initialResolvedPlayback {
     _dlnaManager = BiliExternalPlaybackManager(detail: detail)
-      ..setOnChanged(_notify);
+      ..addListener(_handleDlnaChanged);
+    _handleDlnaChanged();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       _castEventsSubscription = _externalPlaybackForCast.events.listen(
         _handleExternalPlaybackEvent,
         onError: (Object _) {},
       );
     }
-    _controllerFuture = _createController();
+    _controllerFuture = signal(_createController());
     unawaited(loadEngagementState());
     unawaited(loadWatchLaterState());
     unawaited(loadComments());
@@ -87,49 +90,69 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   static const int _commentsPageSize = 20;
   static const int _commentRepliesPageSize = 20;
 
-  late Future<VesperPlayerController> _controllerFuture;
+  late final Signal<Future<VesperPlayerController>> _controllerFuture;
   VesperPlayerController? _controller;
   int? _pendingInitialPositionMs;
-  BiliVideoPageEntry _selectedPage;
-  String _coinCountLabel;
-  String _shareCountLabel;
-  BiliResolvedPlayback? _resolvedPlayback;
-  BiliVideoEngagement? _engagement;
-  List<BiliVideoComment> _comments = const <BiliVideoComment>[];
-  List<BiliVideoComment> _commentReplies = const <BiliVideoComment>[];
-  List<BiliFeedVideo> _relatedVideos = const <BiliFeedVideo>[];
-  bool _engagementLoading = false;
-  bool _commentsLoading = false;
-  bool _commentsLoadingMore = false;
-  bool _commentsHasMore = false;
-  bool _commentRepliesLoading = false;
-  bool _commentRepliesLoadingMore = false;
-  bool _commentRepliesHasMore = false;
-  bool _commentSubmitting = false;
-  bool _relatedVideosLoading = false;
-  bool _watchLaterLoading = false;
-  bool _isInWatchLater = false;
-  bool _watchLaterKnown = false;
+  late final Signal<BiliVideoPageEntry> _selectedPage;
+  late final Signal<String> _coinCountLabel;
+  late final Signal<String> _shareCountLabel;
+  final Signal<BiliResolvedPlayback?> _resolvedPlayback =
+      Signal<BiliResolvedPlayback?>(null);
+  final Signal<BiliVideoEngagement?> _engagement = Signal<BiliVideoEngagement?>(
+    null,
+  );
+  final Signal<List<BiliVideoComment>> _comments =
+      Signal<List<BiliVideoComment>>(const <BiliVideoComment>[]);
+  final Signal<List<BiliVideoComment>> _commentReplies =
+      Signal<List<BiliVideoComment>>(const <BiliVideoComment>[]);
+  final Signal<List<BiliFeedVideo>> _relatedVideos =
+      Signal<List<BiliFeedVideo>>(const <BiliFeedVideo>[]);
+  final Signal<bool> _engagementLoading = Signal<bool>(false);
+  final Signal<bool> _commentsLoading = Signal<bool>(false);
+  final Signal<bool> _commentsLoadingMore = Signal<bool>(false);
+  final Signal<bool> _commentsHasMore = Signal<bool>(false);
+  final Signal<bool> _commentRepliesLoading = Signal<bool>(false);
+  final Signal<bool> _commentRepliesLoadingMore = Signal<bool>(false);
+  final Signal<bool> _commentRepliesHasMore = Signal<bool>(false);
+  final Signal<bool> _commentSubmitting = Signal<bool>(false);
+  final Signal<bool> _relatedVideosLoading = Signal<bool>(false);
+  final Signal<bool> _watchLaterLoading = Signal<bool>(false);
+  final Signal<bool> _isInWatchLater = Signal<bool>(false);
+  final Signal<bool> _watchLaterKnown = Signal<bool>(false);
   int _watchLaterRequestGeneration = 0;
-  BiliEngagementAction? _pendingEngagementAction;
-  String? _commentsError;
-  String? _commentRepliesError;
-  String? _relatedVideosError;
-  int _sentCoinCount = 0;
+  final Signal<BiliEngagementAction?> _pendingEngagementAction =
+      Signal<BiliEngagementAction?>(null);
+  final Signal<String?> _commentsError = Signal<String?>(null);
+  final Signal<String?> _commentRepliesError = Signal<String?>(null);
+  final Signal<String?> _relatedVideosError = Signal<String?>(null);
+  final Signal<int> _sentCoinCount = Signal<int>(0);
   int _commentsPage = 0;
   int _commentRepliesPage = 0;
   int? _commentRepliesRootId;
-  int? _commentRepliesTotalCount;
+  final Signal<int?> _commentRepliesTotalCount = Signal<int?>(null);
   int _commentRepliesRequestGeneration = 0;
-  int? _selectedBiliQualityId;
-  BiliCodecStrategy _selectedCodecStrategy = BiliCodecStrategy.defaultStrategy;
-  VesperSystemPlaybackPermissionStatus _systemPlaybackPermissionStatus =
-      VesperSystemPlaybackPermissionStatus.notRequired;
-  String? _castMessage;
-  String? _pendingMessage;
-  BiliPlaybackRecoveryNotice? _pendingPlaybackRecoveryNotice;
+  final Signal<int?> _selectedBiliQualityId = Signal<int?>(null);
+  final Signal<BiliCodecStrategy> _selectedCodecStrategy =
+      Signal<BiliCodecStrategy>(BiliCodecStrategy.defaultStrategy);
+  final Signal<VesperSystemPlaybackPermissionStatus>
+  _systemPlaybackPermissionStatus =
+      Signal<VesperSystemPlaybackPermissionStatus>(
+        VesperSystemPlaybackPermissionStatus.notRequired,
+      );
+  final Signal<String?> _castMessage = Signal<String?>(null);
+  final Signal<BiliDlnaState> _dlnaState = Signal<BiliDlnaState>(
+    BiliDlnaState.idle,
+  );
+  final Signal<List<VesperExternalPlaybackRoute>> _dlnaRoutes =
+      Signal<List<VesperExternalPlaybackRoute>>(
+        const <VesperExternalPlaybackRoute>[],
+      );
+  final Signal<String?> _dlnaMessage = Signal<String?>(null);
+  final Signal<String?> _pendingMessage = Signal<String?>(null);
+  final Signal<BiliPlaybackRecoveryNotice?> _pendingPlaybackRecoveryNotice =
+      Signal<BiliPlaybackRecoveryNotice?>(null);
   bool _castPausedLocalPlayback = false;
-  bool _isFullscreen = false;
+  final Signal<bool> _isFullscreen = Signal<bool>(false);
   bool _isDisposed = false;
   bool _playbackRecoveryInFlight = false;
   bool _playbackRecoveryFailureReported = false;
@@ -145,80 +168,82 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   Future<bool>? _legacyAndroidPlaybackCompatibilityFuture;
   late final BiliExternalPlaybackManager _dlnaManager;
 
-  Future<VesperPlayerController> get controllerFuture => _controllerFuture;
+  Future<VesperPlayerController> get controllerFuture =>
+      _controllerFuture.value;
 
   VesperPlayerController? get controller => _controller;
 
-  BiliVideoPageEntry get selectedPage => _selectedPage;
+  BiliVideoPageEntry get selectedPage => _selectedPage.value;
 
-  String get coinCountLabel => _coinCountLabel;
+  String get coinCountLabel => _coinCountLabel.value;
 
-  String get shareCountLabel => _shareCountLabel;
+  String get shareCountLabel => _shareCountLabel.value;
 
-  BiliResolvedPlayback? get resolvedPlayback => _resolvedPlayback;
+  BiliResolvedPlayback? get resolvedPlayback => _resolvedPlayback.value;
 
-  BiliVideoEngagement? get engagement => _engagement;
+  BiliVideoEngagement? get engagement => _engagement.value;
 
-  List<BiliVideoComment> get comments => _comments;
+  List<BiliVideoComment> get comments => _comments.value;
 
-  List<BiliVideoComment> get commentReplies => _commentReplies;
+  List<BiliVideoComment> get commentReplies => _commentReplies.value;
 
-  List<BiliFeedVideo> get relatedVideos => _relatedVideos;
+  List<BiliFeedVideo> get relatedVideos => _relatedVideos.value;
 
-  bool get engagementLoading => _engagementLoading;
+  bool get engagementLoading => _engagementLoading.value;
 
-  bool get commentsLoading => _commentsLoading;
+  bool get commentsLoading => _commentsLoading.value;
 
-  bool get commentsLoadingMore => _commentsLoadingMore;
+  bool get commentsLoadingMore => _commentsLoadingMore.value;
 
-  bool get commentsHasMore => _commentsHasMore;
+  bool get commentsHasMore => _commentsHasMore.value;
 
-  bool get commentRepliesLoading => _commentRepliesLoading;
+  bool get commentRepliesLoading => _commentRepliesLoading.value;
 
-  bool get commentRepliesLoadingMore => _commentRepliesLoadingMore;
+  bool get commentRepliesLoadingMore => _commentRepliesLoadingMore.value;
 
-  bool get commentRepliesHasMore => _commentRepliesHasMore;
+  bool get commentRepliesHasMore => _commentRepliesHasMore.value;
 
-  bool get commentSubmitting => _commentSubmitting;
+  bool get commentSubmitting => _commentSubmitting.value;
 
-  bool get relatedVideosLoading => _relatedVideosLoading;
+  bool get relatedVideosLoading => _relatedVideosLoading.value;
 
-  BiliEngagementAction? get pendingEngagementAction => _pendingEngagementAction;
+  BiliEngagementAction? get pendingEngagementAction =>
+      _pendingEngagementAction.value;
 
-  bool get isInWatchLater => _isInWatchLater;
+  bool get isInWatchLater => _isInWatchLater.value;
 
-  bool get watchLaterLoading => _watchLaterLoading;
+  bool get watchLaterLoading => _watchLaterLoading.value;
 
-  bool get watchLaterKnown => _watchLaterKnown;
+  bool get watchLaterKnown => _watchLaterKnown.value;
 
-  String? get commentsError => _commentsError;
+  String? get commentsError => _commentsError.value;
 
-  String? get commentRepliesError => _commentRepliesError;
+  String? get commentRepliesError => _commentRepliesError.value;
 
-  int? get commentRepliesTotalCount => _commentRepliesTotalCount;
+  int? get commentRepliesTotalCount => _commentRepliesTotalCount.value;
 
-  String? get relatedVideosError => _relatedVideosError;
+  String? get relatedVideosError => _relatedVideosError.value;
 
-  int get sentCoinCount => _sentCoinCount;
+  int get sentCoinCount => _sentCoinCount.value;
 
-  int? get selectedBiliQualityId => _selectedBiliQualityId;
+  int? get selectedBiliQualityId => _selectedBiliQualityId.value;
 
-  BiliCodecStrategy get selectedCodecStrategy => _selectedCodecStrategy;
+  BiliCodecStrategy get selectedCodecStrategy => _selectedCodecStrategy.value;
 
   VesperSystemPlaybackPermissionStatus get systemPlaybackPermissionStatus =>
-      _systemPlaybackPermissionStatus;
+      _systemPlaybackPermissionStatus.value;
 
-  String? get castMessage => _castMessage;
+  String? get castMessage => _castMessage.value;
 
-  BiliDlnaState get dlnaState => _dlnaManager.state;
+  BiliDlnaState get dlnaState => _dlnaState.value;
 
-  List<VesperExternalPlaybackRoute> get dlnaRoutes => _dlnaManager.routes;
+  List<VesperExternalPlaybackRoute> get dlnaRoutes => _dlnaRoutes.value;
 
-  String? get dlnaMessage => _dlnaManager.message;
+  String? get dlnaMessage => _dlnaMessage.value;
 
   BiliExternalPlaybackManager get dlnaManager => _dlnaManager;
 
-  bool get isFullscreen => _isFullscreen;
+  bool get isFullscreen => _isFullscreen.value;
 
   String get ownerSubtitle {
     if (detail.ownerMid <= 0 && detail.ownerName == '番剧') {
@@ -235,29 +260,39 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     final parts = <String>[
       if (detail.playCountLabel != '--') '${detail.playCountLabel}播放',
       if (detail.publishedAtLabel != null) detail.publishedAtLabel!,
-      'P${_selectedPage.pageNumber}',
+      'P${_selectedPage.value.pageNumber}',
     ];
-    return parts.isEmpty ? 'P${_selectedPage.pageNumber}' : parts.join(' · ');
+    return parts.isEmpty
+        ? 'P${_selectedPage.value.pageNumber}'
+        : parts.join(' · ');
   }
 
   String? consumePendingMessage() {
-    final message = _pendingMessage;
-    _pendingMessage = null;
+    if (_isDisposed) {
+      return null;
+    }
+    final message = _pendingMessage.value;
+    _pendingMessage.value = null;
     return message;
   }
 
   BiliPlaybackRecoveryNotice? consumePendingPlaybackRecoveryNotice() {
-    final notice = _pendingPlaybackRecoveryNotice;
-    _pendingPlaybackRecoveryNotice = null;
+    if (_isDisposed) {
+      return null;
+    }
+    final notice = _pendingPlaybackRecoveryNotice.value;
+    _pendingPlaybackRecoveryNotice.value = null;
     return notice;
   }
 
   void setFullscreen(bool value) {
-    if (_isFullscreen == value) {
+    if (_isDisposed) {
       return;
     }
-    _isFullscreen = value;
-    _notify();
+    if (_isFullscreen.value == value) {
+      return;
+    }
+    _isFullscreen.value = value;
   }
 
   Future<VesperPlayerController> _createController() async {
@@ -267,15 +302,17 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       final initialResolved = _initialResolvedPlayback;
       _initialResolvedPlayback = null;
       final resolved =
-          initialResolved != null && initialResolved.cid == _selectedPage.cid
+          initialResolved != null &&
+              initialResolved.cid == _selectedPage.value.cid
           ? initialResolved
           : await client.resolvePlayback(
               detail: detail,
-              page: _selectedPage,
+              page: _selectedPage.value,
               platform: defaultTargetPlatform,
             );
-      _resolvedPlayback = resolved;
-      _notify();
+      if (!_isDisposed && generation == _controllerGeneration) {
+        _resolvedPlayback.value = resolved;
+      }
 
       final sourceNormalizerFuture = biliPlayerSourceNormalizerConfiguration();
       final renderSurfaceKindFuture = _resolveRenderSurfaceKind();
@@ -290,15 +327,23 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         benchmarkConfiguration: biliPlayerBenchmarkConfiguration(),
         sourceNormalizerConfiguration: sourceNormalizerConfiguration,
       );
+      if (_isDisposed || generation != _controllerGeneration) {
+        await nextController.dispose();
+        return nextController;
+      }
       _resetPlaybackRecoveryState(clearPendingNotice: true);
       await _replaceControllerEventSubscription(nextController, generation);
       await nextController.initialize();
+      if (_isDisposed || generation != _controllerGeneration) {
+        await nextController.dispose();
+        return nextController;
+      }
       final initialPositionMs = _pendingInitialPositionMs;
       if (initialPositionMs != null) {
         _pendingInitialPositionMs = null;
         final timeline = nextController.snapshot.timeline;
-        final fallbackDurationMs = _selectedPage.durationSeconds > 0
-            ? _selectedPage.durationSeconds * 1000
+        final fallbackDurationMs = _selectedPage.value.durationSeconds > 0
+            ? _selectedPage.value.durationSeconds * 1000
             : null;
         final durationMs = timeline.durationMs ?? fallbackDurationMs;
         final resumePositionMs =
@@ -313,21 +358,25 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
           try {
             await nextController.seekBy(resumePositionMs - timeline.positionMs);
           } catch (error) {
-            _emitMessage('恢复历史播放位置失败：$error');
+            if (!_isDisposed) {
+              _emitMessage('恢复历史播放位置失败：${biliErrorMessage(error)}');
+            }
           }
         }
       }
       await _configureSystemPlayback(nextController, resolved);
-      _controller = nextController;
+      if (_isDisposed || generation != _controllerGeneration) {
+        await nextController.dispose();
+        return nextController;
+      }
       await nextController.play();
+      if (_isDisposed || generation != _controllerGeneration) {
+        await nextController.dispose();
+        return nextController;
+      }
+      _controller = nextController;
       if (nextController.snapshot.lastError case final lastError?) {
         _handleControllerError(lastError, generation);
-      }
-
-      if (_isDisposed) {
-        await nextController.dispose();
-      } else {
-        _notify();
       }
       return nextController;
     } catch (_) {
@@ -359,6 +408,9 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   Future<void> reloadCurrentPage() async {
+    if (_isDisposed) {
+      return;
+    }
     _controllerGeneration += 1;
     _resetPlaybackRecoveryState(clearPendingNotice: true);
     final previous = _controller;
@@ -377,62 +429,76 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     if (_isDisposed) {
       return;
     }
-    _controllerFuture = _createController();
-    _notify();
+    _controllerFuture.value = _createController();
   }
 
   Future<void> loadEngagementState() async {
-    if (_engagementLoading) {
+    if (_isDisposed || _engagementLoading.value) {
       return;
     }
-    _engagementLoading = true;
-    _notify();
+    _engagementLoading.value = true;
     try {
-      _engagement = await client.fetchVideoEngagement(detail);
-      if (_engagement?.isAuthenticated ?? false) {
-        _sentCoinCount = await client.fetchVideoCoinCount(detail);
+      final engagement = await client.fetchVideoEngagement(detail);
+      if (_isDisposed) {
+        return;
+      }
+      _engagement.value = engagement;
+      if (engagement.isAuthenticated) {
+        final sentCoinCount = await client.fetchVideoCoinCount(detail);
+        if (_isDisposed) {
+          return;
+        }
+        _sentCoinCount.value = sentCoinCount;
       }
     } catch (_) {
       // Engagement is optional for guests and can fail independently of playback.
     } finally {
-      _engagementLoading = false;
-      _notify();
+      if (!_isDisposed) {
+        _engagementLoading.value = false;
+      }
     }
   }
 
   Future<void> loadComments() async {
-    if (_commentsLoading || _commentsLoadingMore) {
+    if (_isDisposed || _commentsLoading.value || _commentsLoadingMore.value) {
       return;
     }
-    _commentsLoading = true;
-    _commentsError = null;
+    _commentsLoading.value = true;
+    _commentsError.value = null;
     _commentsPage = 0;
-    _commentsHasMore = false;
-    _notify();
+    _commentsHasMore.value = false;
     try {
       final page = await client.fetchVideoCommentPage(
         detail,
         page: 1,
         pageSize: _commentsPageSize,
       );
-      _comments = page.comments;
+      if (_isDisposed) {
+        return;
+      }
+      _comments.value = page.comments;
       _commentsPage = page.page;
-      _commentsHasMore = page.hasMore;
+      _commentsHasMore.value = page.hasMore;
     } catch (error) {
-      _commentsError = '评论加载失败：$error';
+      if (!_isDisposed) {
+        _commentsError.value = '评论加载失败：${biliErrorMessage(error)}';
+      }
     } finally {
-      _commentsLoading = false;
-      _notify();
+      if (!_isDisposed) {
+        _commentsLoading.value = false;
+      }
     }
   }
 
   Future<void> loadMoreComments() async {
-    if (_commentsLoading || _commentsLoadingMore || !_commentsHasMore) {
+    if (_isDisposed ||
+        _commentsLoading.value ||
+        _commentsLoadingMore.value ||
+        !_commentsHasMore.value) {
       return;
     }
-    _commentsLoadingMore = true;
-    _commentsError = null;
-    _notify();
+    _commentsLoadingMore.value = true;
+    _commentsError.value = null;
     try {
       final nextPage = _commentsPage <= 0 ? 1 : _commentsPage + 1;
       final page = await client.fetchVideoCommentPage(
@@ -440,40 +506,48 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         page: nextPage,
         pageSize: _commentsPageSize,
       );
-      final seenIds = _comments.map((comment) => comment.id).toSet();
+      if (_isDisposed) {
+        return;
+      }
+      final seenIds = _comments.value.map((comment) => comment.id).toSet();
       final additions = page.comments
           .where((comment) => seenIds.add(comment.id))
           .toList(growable: false);
       if (additions.isEmpty) {
-        _commentsHasMore = false;
+        _commentsHasMore.value = false;
       } else {
-        _comments = <BiliVideoComment>[..._comments, ...additions];
+        _comments.value = <BiliVideoComment>[..._comments.value, ...additions];
         _commentsPage = page.page;
-        _commentsHasMore = page.hasMore;
+        _commentsHasMore.value = page.hasMore;
       }
     } catch (error) {
-      _commentsError = '加载更多评论失败：$error';
+      if (!_isDisposed) {
+        _commentsError.value = '加载更多评论失败：${biliErrorMessage(error)}';
+      }
     } finally {
-      _commentsLoadingMore = false;
-      _notify();
+      if (!_isDisposed) {
+        _commentsLoadingMore.value = false;
+      }
     }
   }
 
   Future<void> loadCommentReplies(BiliVideoComment rootComment) async {
+    if (_isDisposed) {
+      return;
+    }
     final rootReplyId = rootComment.id;
     final generation = ++_commentRepliesRequestGeneration;
     _commentRepliesRootId = rootReplyId;
-    _commentReplies = rootComment.replies;
+    _commentReplies.value = rootComment.replies;
     _commentRepliesPage = 0;
-    _commentRepliesTotalCount = rootComment.replyCount > 0
+    _commentRepliesTotalCount.value = rootComment.replyCount > 0
         ? rootComment.replyCount
         : rootComment.replies.length;
-    _commentRepliesHasMore =
-        _commentRepliesTotalCount! > rootComment.replies.length;
-    _commentRepliesLoading = true;
-    _commentRepliesLoadingMore = false;
-    _commentRepliesError = null;
-    _notify();
+    _commentRepliesHasMore.value =
+        _commentRepliesTotalCount.value! > rootComment.replies.length;
+    _commentRepliesLoading.value = true;
+    _commentRepliesLoadingMore.value = false;
+    _commentRepliesError.value = null;
     try {
       final page = await client.fetchVideoCommentReplyPage(
         detail,
@@ -484,39 +558,38 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
-      _commentReplies = page.replies;
+      _commentReplies.value = page.replies;
       _commentRepliesPage = page.page;
-      _commentRepliesTotalCount =
+      _commentRepliesTotalCount.value =
           page.totalCount ??
           (rootComment.replyCount > 0
               ? rootComment.replyCount
               : page.replies.length);
-      _commentRepliesHasMore = page.hasMore;
+      _commentRepliesHasMore.value = page.hasMore;
     } catch (error) {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
-      _commentRepliesError = '回复加载失败：$error';
+      _commentRepliesError.value = '回复加载失败：${biliErrorMessage(error)}';
     } finally {
       if (_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
-        _commentRepliesLoading = false;
-        _notify();
+        _commentRepliesLoading.value = false;
       }
     }
   }
 
   Future<void> loadMoreCommentReplies() async {
     final rootReplyId = _commentRepliesRootId;
-    if (rootReplyId == null ||
-        _commentRepliesLoading ||
-        _commentRepliesLoadingMore ||
-        !_commentRepliesHasMore) {
+    if (_isDisposed ||
+        rootReplyId == null ||
+        _commentRepliesLoading.value ||
+        _commentRepliesLoadingMore.value ||
+        !_commentRepliesHasMore.value) {
       return;
     }
     final generation = _commentRepliesRequestGeneration;
-    _commentRepliesLoadingMore = true;
-    _commentRepliesError = null;
-    _notify();
+    _commentRepliesLoadingMore.value = true;
+    _commentRepliesError.value = null;
     try {
       final nextPage = _commentRepliesPage <= 0 ? 1 : _commentRepliesPage + 1;
       final page = await client.fetchVideoCommentReplyPage(
@@ -528,27 +601,30 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
-      final seenIds = _commentReplies.map((reply) => reply.id).toSet();
+      final seenIds = _commentReplies.value.map((reply) => reply.id).toSet();
       final additions = page.replies
           .where((reply) => seenIds.add(reply.id))
           .toList(growable: false);
       if (additions.isEmpty) {
-        _commentRepliesHasMore = false;
+        _commentRepliesHasMore.value = false;
       } else {
-        _commentReplies = <BiliVideoComment>[..._commentReplies, ...additions];
+        _commentReplies.value = <BiliVideoComment>[
+          ..._commentReplies.value,
+          ...additions,
+        ];
         _commentRepliesPage = page.page;
-        _commentRepliesTotalCount = page.totalCount ?? _commentReplies.length;
-        _commentRepliesHasMore = page.hasMore;
+        _commentRepliesTotalCount.value =
+            page.totalCount ?? _commentReplies.value.length;
+        _commentRepliesHasMore.value = page.hasMore;
       }
     } catch (error) {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
-      _commentRepliesError = '加载更多回复失败：$error';
+      _commentRepliesError.value = '加载更多回复失败：${biliErrorMessage(error)}';
     } finally {
       if (_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
-        _commentRepliesLoadingMore = false;
-        _notify();
+        _commentRepliesLoadingMore.value = false;
       }
     }
   }
@@ -561,16 +637,18 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   void clearCommentReplies() {
+    if (_isDisposed) {
+      return;
+    }
     _commentRepliesRequestGeneration += 1;
     _commentRepliesRootId = null;
-    _commentReplies = const <BiliVideoComment>[];
+    _commentReplies.value = const <BiliVideoComment>[];
     _commentRepliesPage = 0;
-    _commentRepliesTotalCount = null;
-    _commentRepliesHasMore = false;
-    _commentRepliesLoading = false;
-    _commentRepliesLoadingMore = false;
-    _commentRepliesError = null;
-    _notify();
+    _commentRepliesTotalCount.value = null;
+    _commentRepliesHasMore.value = false;
+    _commentRepliesLoading.value = false;
+    _commentRepliesLoadingMore.value = false;
+    _commentRepliesError.value = null;
   }
 
   bool _isCurrentCommentRepliesRequest(int rootReplyId, int generation) {
@@ -580,63 +658,81 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   Future<String?> submitComment(String message) async {
+    if (_isDisposed) {
+      return null;
+    }
     final normalizedMessage = message.trim();
     if (normalizedMessage.isEmpty) {
       return '评论内容不能为空';
     }
-    if (_commentSubmitting) {
+    if (_commentSubmitting.value) {
       return null;
     }
 
-    _commentSubmitting = true;
-    _notify();
+    _commentSubmitting.value = true;
     try {
       final comment = await client.addVideoComment(
         detail: detail,
         message: normalizedMessage,
       );
+      if (_isDisposed) {
+        return null;
+      }
       if (comment == null) {
         await loadComments();
       } else {
-        _comments = <BiliVideoComment>[comment, ..._comments];
+        _comments.value = <BiliVideoComment>[comment, ..._comments.value];
       }
       return '已发送评论';
     } catch (error) {
-      return '评论发送失败：$error';
+      return _isDisposed ? null : '评论发送失败：${biliErrorMessage(error)}';
     } finally {
-      _commentSubmitting = false;
-      _notify();
+      if (!_isDisposed) {
+        _commentSubmitting.value = false;
+      }
     }
   }
 
   Future<void> loadRelatedVideos() async {
-    if (_relatedVideosLoading) {
+    if (_isDisposed || _relatedVideosLoading.value) {
       return;
     }
-    _relatedVideosLoading = true;
-    _relatedVideosError = null;
-    _notify();
+    _relatedVideosLoading.value = true;
+    _relatedVideosError.value = null;
     try {
       var videos = await client.fetchRelatedVideos(detail);
+      if (_isDisposed) {
+        return;
+      }
       if (videos.isEmpty) {
         videos = await _fetchFallbackRecommendedVideos();
+        if (_isDisposed) {
+          return;
+        }
       }
-      _relatedVideos = videos
+      _relatedVideos.value = videos
           .where((item) => item.bvid != detail.bvid)
           .take(12)
           .toList(growable: false);
     } catch (error) {
       try {
-        _relatedVideos = await _fetchFallbackRecommendedVideos();
-        if (_relatedVideos.isEmpty) {
-          _relatedVideosError = '相关视频加载失败：$error';
+        final fallbackVideos = await _fetchFallbackRecommendedVideos();
+        if (_isDisposed) {
+          return;
+        }
+        _relatedVideos.value = fallbackVideos;
+        if (_relatedVideos.value.isEmpty) {
+          _relatedVideosError.value = '相关视频加载失败：${biliErrorMessage(error)}';
         }
       } catch (_) {
-        _relatedVideosError = '相关视频加载失败：$error';
+        if (!_isDisposed) {
+          _relatedVideosError.value = '相关视频加载失败：${biliErrorMessage(error)}';
+        }
       }
     } finally {
-      _relatedVideosLoading = false;
-      _notify();
+      if (!_isDisposed) {
+        _relatedVideosLoading.value = false;
+      }
     }
   }
 
@@ -650,25 +746,47 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
 
   Future<String?> toggleLike() {
     return _runEngagementAction(BiliEngagementAction.like, () async {
-      final current = _engagement ?? await client.fetchVideoEngagement(detail);
+      var current = _engagement.value;
+      if (current == null) {
+        current = await client.fetchVideoEngagement(detail);
+        if (_isDisposed) {
+          return null;
+        }
+      }
       final nextLiked = !current.isLiked;
-      _engagement = await client.setVideoLike(
+      final nextEngagement = await client.setVideoLike(
         detail: detail,
         liked: nextLiked,
         current: current,
       );
-      return _engagement!.isLiked ? '已点赞' : '已取消点赞';
+      if (_isDisposed) {
+        return null;
+      }
+      _engagement.value = nextEngagement;
+      return nextEngagement.isLiked ? '已点赞' : '已取消点赞';
     });
   }
 
   Future<String?> addCoin() {
     return _runEngagementAction(BiliEngagementAction.coin, () async {
-      final current = _engagement ?? await client.fetchVideoEngagement(detail);
+      var current = _engagement.value;
+      if (current == null) {
+        current = await client.fetchVideoEngagement(detail);
+        if (_isDisposed) {
+          return null;
+        }
+      }
       final coinCount = await client.addVideoCoin(detail: detail);
-      _sentCoinCount = coinCount;
-      _engagement = current.copyWith(isAuthenticated: true, isLiked: true);
-      if (_coinCountLabel == '--') {
-        _coinCountLabel = detail.coinCountLabel;
+      if (_isDisposed) {
+        return null;
+      }
+      _sentCoinCount.value = coinCount;
+      _engagement.value = current.copyWith(
+        isAuthenticated: true,
+        isLiked: true,
+      );
+      if (_coinCountLabel.value == '--') {
+        _coinCountLabel.value = detail.coinCountLabel;
       }
       return coinCount > 1 ? '已投 $coinCount 个币' : '已投币';
     });
@@ -676,27 +794,47 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
 
   Future<String?> toggleFavorite() {
     return _runEngagementAction(BiliEngagementAction.favorite, () async {
-      final current = _engagement ?? await client.fetchVideoEngagement(detail);
+      var current = _engagement.value;
+      if (current == null) {
+        current = await client.fetchVideoEngagement(detail);
+        if (_isDisposed) {
+          return null;
+        }
+      }
       final nextFavorited = !current.isFavorited;
-      _engagement = await client.setVideoFavorite(
+      final nextEngagement = await client.setVideoFavorite(
         detail: detail,
         favorited: nextFavorited,
         current: current,
       );
-      return _engagement!.isFavorited ? '已收藏' : '已取消收藏';
+      if (_isDisposed) {
+        return null;
+      }
+      _engagement.value = nextEngagement;
+      return nextEngagement.isFavorited ? '已收藏' : '已取消收藏';
     });
   }
 
   Future<String?> toggleFollow() {
     return _runEngagementAction(BiliEngagementAction.follow, () async {
-      final current = _engagement ?? await client.fetchVideoEngagement(detail);
+      var current = _engagement.value;
+      if (current == null) {
+        current = await client.fetchVideoEngagement(detail);
+        if (_isDisposed) {
+          return null;
+        }
+      }
       final nextFollowing = !current.isFollowingOwner;
-      _engagement = await client.setOwnerFollow(
+      final nextEngagement = await client.setOwnerFollow(
         detail: detail,
         following: nextFollowing,
         current: current,
       );
-      return _engagement!.isFollowingOwner ? '已关注 UP 主' : '已取消关注';
+      if (_isDisposed) {
+        return null;
+      }
+      _engagement.value = nextEngagement;
+      return nextEngagement.isFollowingOwner ? '已关注 UP 主' : '已取消关注';
     });
   }
 
@@ -706,31 +844,29 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return;
     }
     if (!client.hasAuthenticatedSession) {
-      _watchLaterKnown = false;
+      _watchLaterKnown.value = false;
       return;
     }
-    _watchLaterLoading = true;
-    _notify();
+    _watchLaterLoading.value = true;
     try {
-      final bvid = _selectedPage.bvid ?? detail.bvid;
+      final bvid = _selectedPage.value.bvid ?? detail.bvid;
       final isInWatchLater = await client.isVideoInWatchLater(
         bvid: bvid,
-        aid: _selectedPage.aid ?? detail.aid,
+        aid: _selectedPage.value.aid ?? detail.aid,
       );
       if (_isDisposed || generation != _watchLaterRequestGeneration) {
         return;
       }
-      _isInWatchLater = isInWatchLater;
-      _watchLaterKnown = true;
+      _isInWatchLater.value = isInWatchLater;
+      _watchLaterKnown.value = true;
     } catch (_) {
       // Membership is optional; an unavailable list must not block playback.
       if (!_isDisposed && generation == _watchLaterRequestGeneration) {
-        _watchLaterKnown = false;
+        _watchLaterKnown.value = false;
       }
     } finally {
       if (!_isDisposed && generation == _watchLaterRequestGeneration) {
-        _watchLaterLoading = false;
-        _notify();
+        _watchLaterLoading.value = false;
       }
     }
   }
@@ -740,19 +876,22 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       if (!client.hasAuthenticatedSession) {
         return '请先登录 Bilibili 后使用稍后再看。';
       }
-      final bvid = _selectedPage.bvid ?? detail.bvid;
-      final aid = _selectedPage.aid ?? detail.aid;
+      final bvid = _selectedPage.value.bvid ?? detail.bvid;
+      final aid = _selectedPage.value.aid ?? detail.aid;
       if (bvid.trim().isEmpty && aid <= 0) {
         return '缺少视频 ID，无法操作稍后再看。';
       }
-      final next = !_isInWatchLater;
+      final next = !_isInWatchLater.value;
       if (next) {
         await client.addToWatchLater(bvid: bvid, aid: aid);
       } else {
         await client.removeFromWatchLater(bvid: bvid, aid: aid);
       }
-      _isInWatchLater = next;
-      _watchLaterKnown = true;
+      if (_isDisposed) {
+        return null;
+      }
+      _isInWatchLater.value = next;
+      _watchLaterKnown.value = true;
       return next ? '已加入稍后再看' : '已移出稍后再看';
     });
   }
@@ -763,14 +902,21 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       final shareCount = shouldRecordShare
           ? await client.recordVideoShare(detail: detail)
           : null;
+      if (_isDisposed) {
+        return null;
+      }
       await Clipboard.setData(
         ClipboardData(
           text:
-              'https://www.bilibili.com/video/${_selectedPage.bvid ?? detail.bvid}',
+              'https://www.bilibili.com/video/'
+              '${_selectedPage.value.bvid ?? detail.bvid}',
         ),
       );
+      if (_isDisposed) {
+        return null;
+      }
       if (shareCount != null) {
-        _shareCountLabel = biliFormatCount(shareCount.toDouble());
+        _shareCountLabel.value = biliFormatCount(shareCount.toDouble());
       }
       return shouldRecordShare ? '已分享并复制链接' : '已复制分享链接';
     });
@@ -780,24 +926,27 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     BiliEngagementAction action,
     Future<String?> Function() operation,
   ) async {
-    if (_pendingEngagementAction != null) {
+    if (_isDisposed || _pendingEngagementAction.value != null) {
       return null;
     }
-    _pendingEngagementAction = action;
-    _notify();
+    _pendingEngagementAction.value = action;
     try {
       return await operation();
     } catch (error) {
-      return '操作失败：$error';
+      return _isDisposed ? null : '操作失败：${biliErrorMessage(error)}';
     } finally {
-      _pendingEngagementAction = null;
-      _notify();
+      if (!_isDisposed) {
+        _pendingEngagementAction.value = null;
+      }
     }
   }
 
   Future<String?> switchPage(BiliVideoPageEntry page) async {
+    if (_isDisposed) {
+      return null;
+    }
     final controller = _controller;
-    if (controller == null || page.cid == _selectedPage.cid) {
+    if (controller == null || page.cid == _selectedPage.value.cid) {
       return null;
     }
 
@@ -817,44 +966,48 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       if (_isDisposed) {
         return null;
       }
-      _selectedPage = page;
-      _resolvedPlayback = resolved;
-      _selectedBiliQualityId = null;
-      _selectedCodecStrategy = BiliCodecStrategy.defaultStrategy;
-      _isInWatchLater = false;
-      _watchLaterKnown = false;
-      _notify();
+      _selectedPage.value = page;
+      _resolvedPlayback.value = resolved;
+      _selectedBiliQualityId.value = null;
+      _selectedCodecStrategy.value = BiliCodecStrategy.defaultStrategy;
+      _isInWatchLater.value = false;
+      _watchLaterKnown.value = false;
       unawaited(loadWatchLaterState());
       return null;
     } catch (error) {
-      return '切换分 P 失败：$error';
+      return '切换分 P 失败：${biliErrorMessage(error)}';
     } finally {
       _playbackSourceTransitionInFlight = false;
     }
   }
 
   Future<String?> loadCurrentPageToDlna() async {
+    if (_isDisposed) {
+      return null;
+    }
     try {
       final resolved = await _refreshCurrentResolvedPlayback();
+      if (_isDisposed) {
+        return null;
+      }
       return _dlnaManager.loadMedia(
         resolved: resolved,
-        selectedPage: _selectedPage,
+        selectedPage: _selectedPage.value,
         refreshResolved: _refreshCurrentResolvedPlayback,
       );
     } catch (error) {
-      return '投屏播放地址刷新失败：$error';
+      return '投屏播放地址刷新失败：${biliErrorMessage(error)}';
     }
   }
 
   Future<BiliResolvedPlayback> _refreshCurrentResolvedPlayback() async {
     final resolved = await client.resolvePlayback(
       detail: detail,
-      page: _selectedPage,
+      page: _selectedPage.value,
       platform: defaultTargetPlatform,
     );
     if (!_isDisposed) {
-      _resolvedPlayback = resolved;
-      _notify();
+      _resolvedPlayback.value = resolved;
     }
     return resolved;
   }
@@ -927,7 +1080,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   bool _shouldAutoRecoverPlaybackSource(VesperPlayerError error) {
-    final resolved = _resolvedPlayback;
+    final resolved = _resolvedPlayback.value;
     if (resolved == null || resolved.isLocalFile) {
       return false;
     }
@@ -973,7 +1126,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return;
     }
     final controller = _controller;
-    final recoveryPage = _selectedPage;
+    final recoveryPage = _selectedPage.value;
     if (controller == null) {
       return;
     }
@@ -1020,11 +1173,10 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
               controllerGeneration != _controllerGeneration ||
               recoveryGeneration != _playbackRecoveryGeneration ||
               _playbackSourceTransitionInFlight ||
-              recoveryPage.cid != _selectedPage.cid) {
+              recoveryPage.cid != _selectedPage.value.cid) {
             return;
           }
-          _resolvedPlayback = resolved;
-          _notify();
+          _resolvedPlayback.value = resolved;
           await controller.selectSource(resolved.toSource());
           await _configureSystemPlayback(controller, resolved);
           if (resumeRatio != null && resumeRatio > 0) {
@@ -1049,7 +1201,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
           );
           return;
         } catch (error) {
-          lastFailureMessage = '重新解析失败：$error';
+          lastFailureMessage = '重新解析失败：${biliErrorMessage(error)}';
         }
       }
     } finally {
@@ -1080,7 +1232,6 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         return;
       }
       _resetPlaybackRecoveryState(clearPendingNotice: false);
-      _notify();
     });
   }
 
@@ -1089,11 +1240,10 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return;
     }
     _playbackRecoveryFailureReported = true;
-    _pendingPlaybackRecoveryNotice = BiliPlaybackRecoveryNotice(
+    _pendingPlaybackRecoveryNotice.value = BiliPlaybackRecoveryNotice(
       title: '播放地址刷新失败',
       message: '已自动重新解析并重试 3 次，仍然无法恢复播放。\n\n$failureMessage',
     );
-    _notify();
   }
 
   void _resetPlaybackRecoveryState({required bool clearPendingNotice}) {
@@ -1105,7 +1255,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     _playbackRecoveryAttempts = 0;
     _deferredPlaybackRecoveryError = null;
     if (clearPendingNotice) {
-      _pendingPlaybackRecoveryNotice = null;
+      _pendingPlaybackRecoveryNotice.value = null;
     }
   }
 
@@ -1122,12 +1272,21 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     VesperPlayerController controller,
     BiliResolvedPlayback resolved,
   ) async {
+    if (_isDisposed) {
+      return;
+    }
     try {
       final useLegacyCompatibility =
           await _usesLegacyAndroidPlaybackCompatibility();
-      _systemPlaybackPermissionStatus = await controller
+      if (_isDisposed) {
+        return;
+      }
+      final permissionStatus = await controller
           .getSystemPlaybackPermissionStatus();
-      _notify();
+      if (_isDisposed) {
+        return;
+      }
+      _systemPlaybackPermissionStatus.value = permissionStatus;
       await controller.configureSystemPlayback(
         biliPlayerSystemPlaybackConfiguration(
           metadata: _systemPlaybackMetadataForResolved(resolved),
@@ -1138,7 +1297,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       );
     } catch (error) {
       if (!_isDisposed) {
-        _emitMessage('系统播放接入失败：$error');
+        _emitMessage('系统播放接入失败：${biliErrorMessage(error)}');
       }
     }
   }
@@ -1146,13 +1305,19 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   Future<String?> requestSystemPlaybackPermissions(
     VesperPlayerController controller,
   ) async {
+    if (_isDisposed) {
+      return null;
+    }
     try {
-      _systemPlaybackPermissionStatus = await controller
+      final permissionStatus = await controller
           .requestSystemPlaybackPermissions();
-      _notify();
+      if (_isDisposed) {
+        return null;
+      }
+      _systemPlaybackPermissionStatus.value = permissionStatus;
       return null;
     } catch (error) {
-      return '系统播放权限请求失败：$error';
+      return '系统播放权限请求失败：${biliErrorMessage(error)}';
     }
   }
 
@@ -1160,7 +1325,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     VesperExternalPlaybackSessionEvent event,
   ) async {
     final controller = _controller;
-    final resolved = _resolvedPlayback;
+    final resolved = _resolvedPlayback.value;
     if (controller == null || resolved == null || _isDisposed) {
       return;
     }
@@ -1178,10 +1343,9 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         );
         if (_isDisposed) return;
         _castPausedLocalPlayback = result.isSuccess;
-        _castMessage = result.isSuccess
+        _castMessage.value = result.isSuccess
             ? '投屏已连接：${event.routeName ?? '外部设备'}'
             : result.message ?? '当前资源暂不支持投屏。';
-        _notify();
       case VesperExternalPlaybackSessionEventKind.routeDisconnected:
         if (_castPausedLocalPlayback) {
           final positionMs = event.positionMs;
@@ -1194,12 +1358,10 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
         }
         if (_isDisposed) return;
         _castPausedLocalPlayback = false;
-        _castMessage = '投屏已断开，本地播放已恢复。';
-        _notify();
+        _castMessage.value = '投屏已断开，本地播放已恢复。';
       case VesperExternalPlaybackSessionEventKind.suspended:
         if (_isDisposed) return;
-        _castMessage = '投屏连接已暂停。';
-        _notify();
+        _castMessage.value = '投屏连接已暂停。';
       default:
     }
   }
@@ -1214,7 +1376,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       title: resolved.title,
       subtitle: resolved.subtitle,
       artist: detail.ownerName,
-      artworkUri: _selectedPage.coverUrl ?? detail.coverUrl,
+      artworkUri: _selectedPage.value.coverUrl ?? detail.coverUrl,
       contentUri: resolved.uri,
       durationMs: durationMs,
     );
@@ -1229,17 +1391,21 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     return null;
   }
 
-  Future<void> _persistHistory(VesperPlayerSnapshot snapshot) {
+  Future<void> _persistHistory(
+    VesperPlayerSnapshot snapshot, {
+    BiliVideoPageEntry? page,
+  }) {
+    final selectedPage = page ?? _selectedPage.value;
     return historyStore.saveEntry(
       BiliPlaybackHistoryEntry(
-        bvid: _selectedPage.bvid ?? detail.bvid,
-        aid: _selectedPage.aid ?? detail.aid,
-        cid: _selectedPage.cid,
-        episodeId: _selectedPage.episodeId ?? 0,
-        business: (_selectedPage.episodeId ?? 0) > 0 ? 'pgc' : null,
+        bvid: selectedPage.bvid ?? detail.bvid,
+        aid: selectedPage.aid ?? detail.aid,
+        cid: selectedPage.cid,
+        episodeId: selectedPage.episodeId ?? 0,
+        business: (selectedPage.episodeId ?? 0) > 0 ? 'pgc' : null,
         videoTitle: detail.title,
-        pageTitle: _selectedPage.title,
-        coverUrl: _selectedPage.coverUrl ?? detail.coverUrl,
+        pageTitle: selectedPage.title,
+        coverUrl: selectedPage.coverUrl ?? detail.coverUrl,
         ownerName: detail.ownerName,
         playedAtMs: DateTime.now().millisecondsSinceEpoch,
         lastPositionMs: snapshot.timeline.positionMs,
@@ -1252,6 +1418,9 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     VesperPlayerController controller, {
     required VesperPlayerSnapshot fallback,
   }) async {
+    // Snapshot the selected page synchronously: dispose() may dispose the
+    // signal while this async body is awaiting controller.refresh().
+    final selectedPage = _selectedPage.value;
     var snapshot = fallback;
     try {
       await controller.refresh();
@@ -1259,7 +1428,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     } catch (_) {
       snapshot = fallback;
     }
-    await _persistHistory(snapshot);
+    await _persistHistory(snapshot, page: selectedPage);
   }
 
   Future<String?> setPlaybackRate(double rate) async {
@@ -1271,7 +1440,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       await controller.setPlaybackRate(rate);
       return null;
     } catch (error) {
-      return '倍速切换失败：$error';
+      return '倍速切换失败：${biliErrorMessage(error)}';
     }
   }
 
@@ -1281,18 +1450,17 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return null;
     }
     final tracks = playbackSelectionTracks(controller.snapshot);
-    var nextStrategy = _selectedCodecStrategy;
+    var nextStrategy = _selectedCodecStrategy.value;
     String? message;
     if (qualityId != null &&
         nextStrategy != BiliCodecStrategy.defaultStrategy &&
         !hasTrackForSelection(tracks, qualityId, nextStrategy)) {
-      message = '当前清晰度没有 ${_selectedCodecStrategy.label}，已使用默认策略。';
+      message = '当前清晰度没有 ${_selectedCodecStrategy.value.label}，已使用默认策略。';
       nextStrategy = BiliCodecStrategy.defaultStrategy;
     }
 
-    _selectedBiliQualityId = qualityId;
-    _selectedCodecStrategy = nextStrategy;
-    _notify();
+    _selectedBiliQualityId.value = qualityId;
+    _selectedCodecStrategy.value = nextStrategy;
     return await applyBiliPlaybackSelection() ?? message;
   }
 
@@ -1303,12 +1471,11 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     }
     final tracks = playbackSelectionTracks(controller.snapshot);
     if (strategy != BiliCodecStrategy.defaultStrategy &&
-        !hasTrackForSelection(tracks, _selectedBiliQualityId, strategy)) {
+        !hasTrackForSelection(tracks, _selectedBiliQualityId.value, strategy)) {
       return '当前分辨率没有 ${strategy.label} 策略。';
     }
 
-    _selectedCodecStrategy = strategy;
-    _notify();
+    _selectedCodecStrategy.value = strategy;
     return applyBiliPlaybackSelection();
   }
 
@@ -1318,8 +1485,8 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       return null;
     }
     try {
-      if (_selectedBiliQualityId == null &&
-          _selectedCodecStrategy == BiliCodecStrategy.defaultStrategy) {
+      if (_selectedBiliQualityId.value == null &&
+          _selectedCodecStrategy.value == BiliCodecStrategy.defaultStrategy) {
         await controller.setAbrPolicy(const VesperAbrPolicy.auto());
         return null;
       }
@@ -1347,7 +1514,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
       await controller.setAbrPolicy(VesperAbrPolicy.fixedTrack(track.id));
       return null;
     } catch (error) {
-      return '清晰度切换失败：$error';
+      return '清晰度切换失败：${biliErrorMessage(error)}';
     }
   }
 
@@ -1373,7 +1540,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     }
 
     final manifestTracks =
-        _resolvedPlayback?.videoTracks ?? const <VesperMediaTrack>[];
+        _resolvedPlayback.value?.videoTracks ?? const <VesperMediaTrack>[];
     if (manifestTracks.isNotEmpty) {
       return manifestTracks;
     }
@@ -1400,12 +1567,11 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     }
     try {
       await controller.setSubtitleTrackSelection(selection);
-      _notify();
       return null;
     } on VesperSubtitleException catch (error) {
       return '字幕切换失败：${error.message}';
     } catch (error) {
-      return '字幕切换失败：$error';
+      return '字幕切换失败：${biliErrorMessage(error)}';
     }
   }
 
@@ -1427,7 +1593,7 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   }
 
   BiliVideoCodecPreference currentDownloadCodecPreference() {
-    return switch (_selectedCodecStrategy) {
+    return switch (_selectedCodecStrategy.value) {
       BiliCodecStrategy.defaultStrategy => BiliVideoCodecPreference.automatic,
       BiliCodecStrategy.av1 => BiliVideoCodecPreference.av1,
       BiliCodecStrategy.hevc => BiliVideoCodecPreference.hevc,
@@ -1477,14 +1643,14 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
   ) {
     final tracks = _sortedVideoTracks(playbackSelectionTracks(snapshot));
     Iterable<VesperMediaTrack> candidates = tracks;
-    final selectedQualityId = _selectedBiliQualityId;
+    final selectedQualityId = _selectedBiliQualityId.value;
     if (selectedQualityId != null) {
       candidates = candidates.where(
         (track) => _biliQualityIdForTrack(track) == selectedQualityId,
       );
     }
 
-    final strategy = _selectedCodecStrategy;
+    final strategy = _selectedCodecStrategy.value;
     if (strategy != BiliCodecStrategy.defaultStrategy) {
       final strategyMatches = candidates
           .where((track) => _codecStrategyForTrack(track) == strategy)
@@ -1719,20 +1885,31 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     return null;
   }
 
-  void _emitMessage(String message) {
-    _pendingMessage = message;
-    _notify();
-  }
-
-  void _notify() {
-    if (!_isDisposed) {
-      notifyListeners();
+  void _handleDlnaChanged() {
+    if (_isDisposed) {
+      return;
     }
+    _dlnaState.value = _dlnaManager.state;
+    _dlnaRoutes.value = _dlnaManager.routes;
+    _dlnaMessage.value = _dlnaManager.message;
   }
 
-  @override
+  void _emitMessage(String message) {
+    if (_isDisposed) {
+      return;
+    }
+    _pendingMessage.value = message;
+  }
+
   void dispose() {
+    if (_isDisposed) {
+      return;
+    }
     _isDisposed = true;
+    _controllerGeneration += 1;
+    _commentRepliesRequestGeneration += 1;
+    _watchLaterRequestGeneration += 1;
+    _playbackRecoveryGeneration += 1;
     _playbackRecoverySuccessTimer?.cancel();
     final controller = _controller;
     final snapshot = controller?.snapshot;
@@ -1742,11 +1919,48 @@ final class BiliPlaybackViewModel extends ChangeNotifier {
     unawaited(_controllerEventsSubscription?.cancel() ?? Future<void>.value());
     unawaited(_castEventsSubscription?.cancel() ?? Future<void>.value());
     _externalPlaybackForCast.dispose();
+    _dlnaManager.removeListener(_handleDlnaChanged);
     _dlnaManager.dispose();
     _controller = null;
     if (controller != null) {
       unawaited(_disposeController(controller));
     }
-    super.dispose();
+    _selectedPage.dispose();
+    _coinCountLabel.dispose();
+    _shareCountLabel.dispose();
+    _controllerFuture.dispose();
+    _resolvedPlayback.dispose();
+    _engagement.dispose();
+    _comments.dispose();
+    _commentReplies.dispose();
+    _relatedVideos.dispose();
+    _engagementLoading.dispose();
+    _commentsLoading.dispose();
+    _commentsLoadingMore.dispose();
+    _commentsHasMore.dispose();
+    _commentRepliesLoading.dispose();
+    _commentRepliesLoadingMore.dispose();
+    _commentRepliesHasMore.dispose();
+    _commentSubmitting.dispose();
+    _relatedVideosLoading.dispose();
+    _watchLaterLoading.dispose();
+    _isInWatchLater.dispose();
+    _watchLaterKnown.dispose();
+    _pendingEngagementAction.dispose();
+    _commentsError.dispose();
+    _commentRepliesError.dispose();
+    _relatedVideosError.dispose();
+    _sentCoinCount.dispose();
+    _commentRepliesTotalCount.dispose();
+    _selectedBiliQualityId.dispose();
+    _selectedCodecStrategy.dispose();
+    _systemPlaybackPermissionStatus.dispose();
+    _castMessage.dispose();
+    _dlnaState.dispose();
+    _dlnaRoutes.dispose();
+    _dlnaMessage.dispose();
+    _pendingMessage.dispose();
+    _pendingPlaybackRecoveryNotice.dispose();
+    _isFullscreen.dispose();
   }
 }

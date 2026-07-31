@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
@@ -391,6 +392,79 @@ void main() {
       expect(viewModel.profile.value.isLoggedIn, isFalse);
       expect(viewModel.profileErrorMessage.value, isNull);
     });
+
+    test('transient network error keeps persisted session', () async {
+      final root = await Directory.systemTemp.createTemp(
+        'bili-hub-network-vm-test-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final client =
+          _ThrowingProfileBiliClient(const SocketException('network down'))
+            ..restoreCookies(const <String, String>{
+              'SESSDATA': 'sess',
+              'bili_jct': 'csrf',
+            });
+      final sessionStore = BiliSessionStore(baseDirectory: root);
+      await sessionStore.saveCookies(client.snapshotCookies());
+      final viewModel = BiliHubViewModel(
+        client: client,
+        sessionStore: sessionStore,
+        historyStore: BiliHistoryStore(
+          baseDirectory: Directory('${root.path}/history'),
+        ),
+        offlineController: _FakeOfflineController(
+          const <BiliOfflineDownloadEntry>[],
+        ),
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.refreshProfile(
+        clearInvalidSession: true,
+        persistIfLoggedIn: true,
+      );
+
+      // A network failure must not wipe persisted credentials.
+      expect(client.hasAuthenticatedSession, isTrue);
+      expect(await sessionStore.loadCookies(), isNotEmpty);
+      expect(viewModel.profile.value.isLoggedIn, isFalse);
+      expect(viewModel.profileErrorMessage.value, isNotNull);
+    });
+
+    test('invalid session error clears persisted session', () async {
+      final root = await Directory.systemTemp.createTemp(
+        'bili-hub-invalid-vm-test-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final client =
+          _ThrowingProfileBiliClient(const BiliApiException('未登录', code: -101))
+            ..restoreCookies(const <String, String>{
+              'SESSDATA': 'sess',
+              'bili_jct': 'csrf',
+            });
+      final sessionStore = BiliSessionStore(baseDirectory: root);
+      await sessionStore.saveCookies(client.snapshotCookies());
+      final viewModel = BiliHubViewModel(
+        client: client,
+        sessionStore: sessionStore,
+        historyStore: BiliHistoryStore(
+          baseDirectory: Directory('${root.path}/history'),
+        ),
+        offlineController: _FakeOfflineController(
+          const <BiliOfflineDownloadEntry>[],
+        ),
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.refreshProfile(
+        clearInvalidSession: true,
+        persistIfLoggedIn: true,
+      );
+
+      expect(client.hasAuthenticatedSession, isFalse);
+      expect(await sessionStore.loadCookies(), isEmpty);
+      expect(viewModel.profile.value.isLoggedIn, isFalse);
+      expect(viewModel.profileErrorMessage.value, isNotNull);
+    });
   });
 
   group('responsive helpers', () {
@@ -575,6 +649,17 @@ final class _FakeBiliHubClient extends BiliClient {
   Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) async {
     requestedEpisodeId = episodeId;
     return _pgcHistoryDetail();
+  }
+}
+
+final class _ThrowingProfileBiliClient extends BiliClient {
+  _ThrowingProfileBiliClient(this.profileError);
+
+  final Object profileError;
+
+  @override
+  Future<BiliUserProfile> fetchCurrentUserProfile() async {
+    throw profileError;
   }
 }
 

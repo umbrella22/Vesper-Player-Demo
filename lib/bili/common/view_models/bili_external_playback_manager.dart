@@ -6,6 +6,7 @@ import 'package:vesper_player_external_playback/vesper_player_external_playback.
 
 import '../../../player/player_sdk_options.dart';
 import '../models/bili_models.dart';
+import '../services/bili_api_core.dart';
 
 enum BiliDlnaState { idle, discovering, connecting, connected, error }
 
@@ -93,7 +94,7 @@ class BiliExternalPlaybackManager {
     } catch (error) {
       _routesSubscription?.cancel();
       _routesSubscription = null;
-      _message = 'DLNA 设备发现启动失败：$error';
+      _message = 'DLNA 设备发现启动失败：${biliErrorMessage(error)}';
       _setState(BiliDlnaState.error);
     }
   }
@@ -135,7 +136,7 @@ class BiliExternalPlaybackManager {
       return _message;
     } catch (error) {
       if (_disposed) return null;
-      await _failConnection('DLNA 连接失败：$error');
+      await _failConnection('DLNA 连接失败：${biliErrorMessage(error)}');
       return _message;
     }
   }
@@ -169,7 +170,7 @@ class BiliExternalPlaybackManager {
           refreshed = await refreshResolved();
         } catch (error) {
           if (_disposed) return null;
-          await _failConnection('播放地址刷新失败：$error');
+          await _failConnection('播放地址刷新失败：${biliErrorMessage(error)}');
           return _message;
         }
         if (_disposed) return null;
@@ -193,7 +194,7 @@ class BiliExternalPlaybackManager {
       return _message;
     } catch (error) {
       if (_disposed) return null;
-      await _failConnection('投屏播放失败：$error');
+      await _failConnection('投屏播放失败：${biliErrorMessage(error)}');
       return _message;
     } finally {
       _loadingMedia = false;

@@ -18,6 +18,14 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 - Keep app changes and SDK changes logically separated. If both are required, validate each side in its own working directory.
 - This repository is mobile-only for current work. Do not spend time on Flutter desktop paths unless the user explicitly asks.
 
+## State Management Conventions
+
+- Reactive UI state uses `signals` (`package:signals/signals_flutter.dart`). View models and page-local UI state are signals (`signal<T>` + `ReadonlySignal`, consumed with `SignalBuilder`), as in `BiliHubViewModel`, `BiliPlaybackViewModel`, and `OfflineCacheViewModel`.
+- `ChangeNotifier` is reserved for imperative SDK-boundary controllers (`BiliOfflineDownloadController`, `BiliExternalPlaybackManager`, `AppThemeController`). Their state is adapted to signals by the owning view model; do not introduce `ChangeNotifier` in page-facing view models.
+- App-level mutable state is owned by an injectable controller created in the composition root (`BiliUiModeController` is the pattern), never by top-level globals in `main.dart` or elsewhere.
+- Singletons (`.instance`) are fallback defaults for tests and direct construction only. The single runtime source of truth is the composition root in `lib/main.dart`, which creates `BiliClient` and `BiliOfflineDownloadController` and injects them down through `VesperApp -> HomePage -> ...`.
+- Do not read `X.instance` directly inside a widget or view model in a production path: it bypasses the injected instance and creates a second copy of session state (cookies, WBI keys, download metadata) that can silently diverge from the app's session. When a widget needs a dependency, add an optional constructor parameter defaulting to `.instance`.
+
 ## Validation
 
 - Default Flutter validation from the repository root: `flutter analyze` and `flutter test`.

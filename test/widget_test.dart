@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:vesper_media/app/app.dart';
+import 'package:vesper_media/app/home_page.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
@@ -1692,6 +1694,103 @@ void main() {
     expect(find.text('我的'), findsWidgets);
   });
 
+  testWidgets('VesperApp fallback mode uses the injected app settings', (
+    WidgetTester tester,
+  ) async {
+    const secureStorageChannel = MethodChannel(
+      'plugins.it_nomads.com/flutter_secure_storage',
+    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      secureStorageChannel,
+      (_) async => null,
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        secureStorageChannel,
+        null,
+      );
+    });
+    final root = Directory(
+      '${Directory.systemTemp.path}/vesper-app-mode-widget-test-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    final settings = AppSettingsStore(baseDirectory: root);
+    final client = _FakeTvHomeClient();
+    final offlineController = _FakeOfflineController(
+      <BiliOfflineDownloadEntry>[],
+    );
+    await tester.runAsync(() => settings.setForceTvMode(true));
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() async {
+        if (await root.exists()) {
+          await root.delete(recursive: true);
+        }
+      });
+    });
+
+    await tester.pumpWidget(
+      VesperApp(
+        appSettings: settings,
+        client: client,
+        offlineController: offlineController,
+      ),
+    );
+    await tester.pump();
+
+    final homePage = tester.widget<HomePage>(find.byType(HomePage));
+    await tester.runAsync(() => homePage.uiModeController!.refresh());
+    await tester.pump();
+
+    expect(find.byType(BiliTvHomePage), findsOneWidget);
+  });
+
+  testWidgets('HomePage fallback mode uses the injected app settings', (
+    WidgetTester tester,
+  ) async {
+    final root = Directory(
+      '${Directory.systemTemp.path}/home-page-mode-widget-test-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    final settings = AppSettingsStore(baseDirectory: root);
+    final client = _FakeTvHomeClient();
+    final historyStore = BiliHistoryStore(
+      baseDirectory: Directory('${root.path}/history'),
+    );
+    final sessionStore = BiliSessionStore(
+      baseDirectory: Directory('${root.path}/session'),
+    );
+    final offlineController = _FakeOfflineController(
+      <BiliOfflineDownloadEntry>[],
+    );
+    await tester.runAsync(() => settings.setForceTvMode(true));
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() async {
+        if (await root.exists()) {
+          await root.delete(recursive: true);
+        }
+      });
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          appSettings: settings,
+          client: client,
+          historyStore: historyStore,
+          sessionStore: sessionStore,
+          offlineController: offlineController,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final hubPage = tester.widget<BiliHubPage>(find.byType(BiliHubPage));
+    await tester.runAsync(() => hubPage.uiModeController!.refresh());
+    await tester.pump();
+
+    expect(find.byType(BiliTvHomePage), findsOneWidget);
+  });
+
   testWidgets('mobile shell keeps content and liquid tabs inside safe areas', (
     WidgetTester tester,
   ) async {
@@ -1915,6 +2014,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     expect(find.text('返回首页并切换'), findsNothing);
+  });
+
+  testWidgets('tv mode handoff preserves the active app dependencies', (
+    WidgetTester tester,
+  ) async {
+    final harness = await _pumpTvHomePage(tester);
+
+    await tester.tap(find.text('设置'));
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.tap(find.text('强制 TV 模式'));
+    await _pumpUntilFound(tester, find.text('返回首页并切换'));
+    await tester.tap(find.text('返回首页并切换'));
+    await _pumpUntilFound(tester, find.byType(HomePage));
+
+    final homePage = tester.widget<HomePage>(find.byType(HomePage));
+    expect(identical(homePage.client, harness.client), isTrue);
+    expect(identical(homePage.historyStore, harness.historyStore), isTrue);
+    expect(identical(homePage.sessionStore, harness.sessionStore), isTrue);
+    expect(
+      identical(homePage.offlineController, harness.offlineController),
+      isTrue,
+    );
+    expect(identical(homePage.appSettings, harness.appSettings), isTrue);
   });
 
   testWidgets('tv settings about card adapts on narrow landscape', (
@@ -3775,10 +3897,7 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       });
 
-      await _pumpPlaybackPage(
-        tester,
-        externalPlaybackMockInstalled: true,
-      );
+      await _pumpPlaybackPage(tester, externalPlaybackMockInstalled: true);
 
       await tester.tap(find.byIcon(Icons.cast_outlined));
       await tester.pump();
@@ -4921,6 +5040,14 @@ void main() {
 
     await tester.runAsync(() => settings.setForceTvMode(false));
     final themeController = AppThemeController(settings: settings);
+    final client = _FakeTvHomeClient();
+    final historyStore = BiliHistoryStore(
+      baseDirectory: Directory('${root.path}/history'),
+    );
+    final sessionStore = BiliSessionStore(baseDirectory: root);
+    final offlineController = _FakeOfflineController(
+      <BiliOfflineDownloadEntry>[],
+    );
     addTearDown(themeController.dispose);
     await tester.pumpWidget(
       AppThemeScope(
@@ -4929,7 +5056,10 @@ void main() {
           theme: AppVisualTokens.mobileLightTheme(),
           home: BiliSettingsPage(
             appSettings: settings,
-            sessionStore: BiliSessionStore(baseDirectory: root),
+            client: client,
+            historyStore: historyStore,
+            sessionStore: sessionStore,
+            offlineController: offlineController,
           ),
         ),
       ),
@@ -4946,6 +5076,15 @@ void main() {
     expect(find.text('返回首页后切换为 TV 界面'), findsOneWidget);
     expect(find.text('返回首页并切换'), findsOneWidget);
     expect(await tester.runAsync(settings.getForceTvMode), isTrue);
+
+    await tester.tap(find.text('返回首页并切换'));
+    await _pumpUntilFound(tester, find.byType(HomePage));
+    final homePage = tester.widget<HomePage>(find.byType(HomePage));
+    expect(identical(homePage.client, client), isTrue);
+    expect(identical(homePage.historyStore, historyStore), isTrue);
+    expect(identical(homePage.sessionStore, sessionStore), isTrue);
+    expect(identical(homePage.offlineController, offlineController), isTrue);
+    expect(identical(homePage.appSettings, settings), isTrue);
   });
 
   testWidgets('app settings logout clears cookies and pauses offline cache', (

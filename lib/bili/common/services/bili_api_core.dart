@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../models/bili_models.dart';
@@ -32,6 +33,44 @@ final class BiliApiException implements Exception {
     }
     return '[$code] $message';
   }
+}
+
+/// Returns true only when [error] is a Bilibili API error that definitively
+/// means the current session is invalid (code -101, "not logged in").
+///
+/// Network failures (socket/timeout), HTTP status errors, and risk-control
+/// (-352) must NOT be treated as session invalidation: clearing persisted
+/// cookies on a transient network error would silently log the user out.
+bool isBiliSessionInvalidError(Object error) {
+  return error is BiliApiException && error.code == -101;
+}
+
+/// Formats [error] for user-facing messages.
+///
+/// [BiliApiException] already carries display copy; other exceptions get their
+/// leading Dart type prefix (e.g. `SocketException: `, `FormatException: `)
+/// stripped so raw implementation details never leak into the UI.
+String biliErrorMessage(Object error) {
+  if (error is BiliApiException) {
+    return error.toString();
+  }
+  if (error is SocketException) {
+    return error.message;
+  }
+  if (error is FormatException) {
+    return error.message.isEmpty ? '数据格式异常' : error.message;
+  }
+  if (error is TimeoutException) {
+    return '请求超时，请检查网络连接';
+  }
+  if (error is FileSystemException) {
+    return error.message;
+  }
+  final message = error.toString();
+  const exceptionPrefix = 'Exception: ';
+  return message.startsWith(exceptionPrefix)
+      ? message.substring(exceptionPrefix.length)
+      : message;
 }
 
 final class BiliDashRequestVariant {

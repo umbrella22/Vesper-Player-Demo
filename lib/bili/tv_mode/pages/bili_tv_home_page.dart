@@ -13,6 +13,7 @@ import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
@@ -27,7 +28,10 @@ import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:vesper_media/app/home_page.dart';
 import 'package:vesper_media/download/download.dart';
-import 'package:vesper_media/main.dart';
+
+part 'bili_tv_hero.dart';
+part 'bili_tv_cards.dart';
+part 'bili_tv_account.dart';
 
 enum _TvNavItem { recommend, regions, search, history, mine, settings }
 
@@ -228,6 +232,7 @@ class BiliTvHomePage extends StatefulWidget {
     this.offlineController,
     this.appSettings,
     this.initialFeedItems = const <BiliFeedVideo>[],
+    this.uiModeController,
     this.initialHistoryEntries = const <BiliPlaybackHistoryEntry>[],
     this.skipBootstrap = false,
   });
@@ -237,7 +242,7 @@ class BiliTvHomePage extends StatefulWidget {
   final BiliSessionStore? sessionStore;
   final BiliOfflineDownloadController? offlineController;
   final AppSettingsStore? appSettings;
-  @visibleForTesting
+  final BiliUiModeController? uiModeController;
   final List<BiliFeedVideo> initialFeedItems;
   @visibleForTesting
   final List<BiliPlaybackHistoryEntry> initialHistoryEntries;
@@ -251,6 +256,7 @@ class BiliTvHomePage extends StatefulWidget {
 class _BiliTvHomePageState extends State<BiliTvHomePage> {
   late final BiliHubViewModel _viewModel;
   late final AppSettingsStore _appSettings;
+  late final BiliUiModeController _uiModeController;
   late final TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode(debugLabel: 'tv_search_field');
   final ScrollController _contentScrollController = ScrollController();
@@ -279,6 +285,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   _TvHeroItem? _heroItem;
   Timer? _heroUpdateTimer;
   bool _heroHasUserSelection = false;
+  bool _uiModeControllerTransferred = false;
 
   @override
   void initState() {
@@ -289,6 +296,11 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     setTvFocusArea(_searchFocusNode, TvFocusArea.content);
     _searchFocusNode.addListener(_handleSearchFocusChanged);
     _appSettings = widget.appSettings ?? const AppSettingsStore();
+    _uiModeController =
+        widget.uiModeController ??
+        BiliUiModeController(
+          resolver: BiliUiModeResolver(appSettings: _appSettings),
+        );
     _viewModel = BiliHubViewModel(
       client: widget.client,
       historyStore: widget.historyStore,
@@ -319,6 +331,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     _recommendShelfController.dispose();
     _heroUpdateTimer?.cancel();
     _viewModel.dispose();
+    if (widget.uiModeController == null && !_uiModeControllerTransferred) {
+      _uiModeController.dispose();
+    }
     if (_restorePresentationOnDispose) {
       unawaited(_restoreAppPresentation());
     }
@@ -2566,15 +2581,29 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 baseCornerRadius: 14,
                 showGlow: false,
                 onTap: () async {
-                  final nextMode = await refreshUiMode();
+                  final nextMode = await _uiModeController.refresh();
                   await _applyPresentationFor(nextMode);
                   if (!mounted) {
                     return;
                   }
+                  final navigator = Navigator.of(context);
+                  if (widget.uiModeController != null) {
+                    navigator.popUntil((route) => route.isFirst);
+                    return;
+                  }
+
                   _restorePresentationOnDispose = false;
-                  Navigator.of(context).pushAndRemoveUntil(
+                  _uiModeControllerTransferred = true;
+                  navigator.pushAndRemoveUntil(
                     PageRouteBuilder<void>(
-                      pageBuilder: (_, a, b) => const HomePage(),
+                      pageBuilder: (_, a, b) => HomePage.owningUiModeController(
+                        uiModeController: _uiModeController,
+                        client: _viewModel.client,
+                        historyStore: _viewModel.historyStore,
+                        sessionStore: _viewModel.sessionStore,
+                        offlineController: _viewModel.offlineController,
+                        appSettings: _appSettings,
+                      ),
                       transitionsBuilder: (_, animation, c, child) {
                         return FadeTransition(
                           opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -2701,788 +2730,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         ),
         BiliTvDialogAction(label: '登录', value: true, icon: Icons.login_rounded),
       ],
-    );
-  }
-}
-
-class _TvHeroAction extends StatelessWidget {
-  const _TvHeroAction({
-    required this.label,
-    required this.icon,
-    required this.debugLabel,
-    required this.onTap,
-    this.primary = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final String debugLabel;
-  final VoidCallback onTap;
-  final bool primary;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvGlassSelectable(
-      useOwnLayer: false,
-      scale: 1.025,
-      borderRadius: AppVisualTokens.controlRadius,
-      focusArea: TvFocusArea.content,
-      debugLabel: debugLabel,
-      onTap: onTap,
-      builder: (context, state) {
-        final focused = state == TvGlassSelectableState.focused;
-        final pressed = state == TvGlassSelectableState.pressed;
-        return AnimatedContainer(
-          duration: AppVisualTokens.motionDuration(
-            context,
-            AppVisualTokens.buttonPressDuration,
-          ),
-          width: primary ? 174 : 142,
-          height: 52,
-          decoration: BoxDecoration(
-            color: primary
-                ? AppVisualTokens.primaryBlue
-                : focused || pressed
-                ? const Color(0x3DFFFFFF)
-                : const Color(0x24FFFFFF),
-            borderRadius: BorderRadius.circular(AppVisualTokens.controlRadius),
-            boxShadow: primary
-                ? const [
-                    BoxShadow(
-                      color: Color(0x33409EFF),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
-                    ),
-                  ]
-                : const [],
-          ),
-          padding: const EdgeInsets.only(left: 17, right: 19),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Padding(
-                padding: EdgeInsets.only(
-                  left: icon == Icons.play_arrow_rounded ? 2 : 0,
-                ),
-                child: Icon(icon, color: Colors.white, size: 22),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _TvMediaShelf extends StatelessWidget {
-  const _TvMediaShelf({
-    super.key,
-    required this.title,
-    required this.controller,
-    required this.itemCount,
-    required this.cardWidth,
-    required this.itemBuilder,
-  });
-
-  final String title;
-  final ScrollController controller;
-  final int itemCount;
-  final double cardWidth;
-  final IndexedWidgetBuilder itemBuilder;
-
-  @override
-  Widget build(BuildContext context) {
-    final cardHeight = cardWidth / (16 / 9) + 58;
-    return TvFocusGroupScope(
-      group: ValueKey<String>('tv-shelf-focus-$title'),
-      onDirectionalEdge: (direction) {
-        if (!controller.hasClients ||
-            (direction != TraversalDirection.left &&
-                direction != TraversalDirection.right)) {
-          return false;
-        }
-        final position = controller.position;
-        final delta = cardWidth + 14;
-        final target = switch (direction) {
-          TraversalDirection.left => (position.pixels - delta).clamp(
-            position.minScrollExtent,
-            position.maxScrollExtent,
-          ),
-          TraversalDirection.right => (position.pixels + delta).clamp(
-            position.minScrollExtent,
-            position.maxScrollExtent,
-          ),
-          _ => position.pixels,
-        };
-        if ((target - position.pixels).abs() < 1) {
-          return false;
-        }
-        unawaited(
-          controller.animateTo(
-            target,
-            duration: AppVisualTokens.motionDuration(
-              context,
-              const Duration(milliseconds: 160),
-            ),
-            curve: Curves.easeOutCubic,
-          ),
-        );
-        return true;
-      },
-      child: RepaintBoundary(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: cardHeight + _tvGridFocusInset * 2,
-                child: Overlay.wrap(
-                  clipBehavior: Clip.none,
-                  child: ListView.separated(
-                    key: ValueKey<String>('tv-shelf-list-$title'),
-                    controller: controller,
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    scrollCacheExtent: ScrollCacheExtent.pixels(
-                      cardWidth * 2.5,
-                    ),
-                    padding: const EdgeInsets.fromLTRB(
-                      _tvGridFocusInset,
-                      _tvGridFocusInset,
-                      34,
-                      _tvGridFocusInset,
-                    ),
-                    itemCount: itemCount,
-                    separatorBuilder: (_, _) => const SizedBox(width: 14),
-                    itemBuilder: (context, index) => SizedBox(
-                      width: cardWidth,
-                      height: cardHeight,
-                      child: itemBuilder(context, index),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TvGridOverlayScope extends StatelessWidget {
-  const _TvGridOverlayScope({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Overlay.wrap(clipBehavior: Clip.hardEdge, child: child);
-  }
-}
-
-class _TvSearchSuffixIcon extends StatelessWidget {
-  const _TvSearchSuffixIcon({
-    required this.loading,
-    required this.visible,
-    required this.onClear,
-  });
-
-  final bool loading;
-  final bool visible;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      key: const ValueKey<String>('bili-tv-search-suffix'),
-      width: 48,
-      height: 48,
-      child: Center(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 140),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeOutCubic,
-          child: loading
-              ? const SizedBox(
-                  key: ValueKey<String>('search-loading'),
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Color(0x88FFFFFF),
-                  ),
-                )
-              : visible
-              ? IconButton(
-                  key: const ValueKey<String>('search-clear'),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 40,
-                    height: 40,
-                  ),
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    color: Color(0x88FFFFFF),
-                    size: 20,
-                  ),
-                  onPressed: onClear,
-                )
-              : const SizedBox.shrink(key: ValueKey<String>('search-empty')),
-        ),
-      ),
-    );
-  }
-}
-
-class _TvRegionVideoGrid extends StatelessWidget {
-  const _TvRegionVideoGrid({
-    required this.items,
-    required this.onTapItem,
-    required this.onFocusItem,
-    required this.onNearEnd,
-  });
-
-  final List<BiliRegionVideo> items;
-  final void Function(BiliRegionVideo item) onTapItem;
-  final void Function(BiliRegionVideo item, bool focused) onFocusItem;
-  final VoidCallback onNearEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        final coverCacheWidth = biliTvCoverCacheWidth(
-          tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-            constraints.crossAxisExtent,
-          ),
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-        );
-        return SliverGrid.builder(
-          itemCount: items.length,
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: _tvGridMaxCrossAxisExtent,
-            mainAxisSpacing: _tvGridMainAxisSpacing,
-            crossAxisSpacing: _tvGridCrossAxisSpacing,
-            childAspectRatio: _tvGridChildAspectRatio,
-          ),
-          itemBuilder: (context, index) {
-            if (index >= items.length - 8) {
-              onNearEnd();
-            }
-            final item = items[index];
-            final subtitle = item.seasonId != null
-                ? item.indexLabel ?? item.followCountLabel ?? '番剧'
-                : item.subtitle ?? item.followCountLabel ?? '';
-            final duration = item.seasonId != null
-                ? item.scoreLabel == null
-                      ? '剧集'
-                      : '${item.scoreLabel}分'
-                : item.indexLabel ?? '';
-            return _TvVideoCard(
-              key: ValueKey('region_${item.id}'),
-              coverUrl: item.coverUrl,
-              coverCacheWidth: coverCacheWidth,
-              title: item.title,
-              author: subtitle,
-              duration: duration,
-              playCount: item.followCountLabel ?? '',
-              onFocusChange: (focused) => onFocusItem(item, focused),
-              onTap: () => onTapItem(item),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _TvRegionPill extends StatelessWidget {
-  const _TvRegionPill({
-    required this.section,
-    required this.selected,
-    required this.onTap,
-    this.autofocus = false,
-  });
-
-  final BiliRegionSection section;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool autofocus;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvGlassSelectable(
-      autofocus: autofocus,
-      selected: selected,
-      scale: 1.06,
-      borderRadius: AppVisualTokens.controlRadius,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'region_${section.id}',
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      builder: (context, state) {
-        final focused =
-            state == TvGlassSelectableState.focused ||
-            state == TvGlassSelectableState.pressed;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(section.icon, style: const TextStyle(fontSize: 16)),
-            const SizedBox(width: 8),
-            Text(
-              section.name,
-              style: TextStyle(
-                color: focused || selected
-                    ? Colors.white
-                    : const Color(0xAAFFFFFF),
-                fontSize: 15,
-                fontWeight: focused || selected
-                    ? FontWeight.w800
-                    : FontWeight.w600,
-              ),
-            ),
-            if (selected) ...[
-              const SizedBox(width: 8),
-              Container(
-                width: 5,
-                height: 5,
-                decoration: const BoxDecoration(
-                  color: AppVisualTokens.primaryBlue,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _TvVideoCard extends StatelessWidget {
-  const _TvVideoCard({
-    super.key,
-    required this.coverUrl,
-    required this.coverCacheWidth,
-    required this.title,
-    required this.author,
-    required this.duration,
-    required this.playCount,
-    required this.onTap,
-    this.onFocusChange,
-  });
-
-  final String coverUrl;
-  final int coverCacheWidth;
-  final String title;
-  final String author;
-  final String duration;
-  final String playCount;
-  final VoidCallback onTap;
-  final ValueChanged<bool>? onFocusChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusableSurface(
-      scale: 1.07,
-      focusPadding: _tvCardFocusPadding,
-      useOverlayLift: true,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'video_$title',
-      onFocusChange: onFocusChange,
-      onTap: onTap,
-      builder: (context, focused) => LayoutBuilder(
-        builder: (context, constraints) {
-          final boundedHeight = constraints.hasBoundedHeight;
-          final tight = boundedHeight && constraints.maxHeight < 116;
-          final condensed = boundedHeight && constraints.maxHeight < 136;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: const Color(0xFF1A1A24),
-                        child: coverUrl.isEmpty
-                            ? const Icon(
-                                Icons.video_library_outlined,
-                                color: Color(0x55FFFFFF),
-                                size: 40,
-                              )
-                            : Image.network(
-                                coverUrl,
-                                fit: BoxFit.cover,
-                                cacheWidth: coverCacheWidth,
-                                errorBuilder: (_, _, _) =>
-                                    const ColoredBox(color: Color(0xFF1A1A24)),
-                              ),
-                      ),
-                      Positioned(
-                        left: 8,
-                        bottom: 6,
-                        child: Text(
-                          playCount,
-                          style: const TextStyle(
-                            color: Color(0xDDFFFFFF),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 8,
-                        bottom: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.65),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            duration,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: condensed ? 4 : 5),
-              Text(
-                title,
-                maxLines: tight ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: focused ? Colors.white : const Color(0xEEFFFFFF),
-                  fontSize: condensed ? 12 : 12.2,
-                  fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
-                  height: 1.17,
-                ),
-              ),
-              if (!condensed) ...[
-                const SizedBox(height: 2),
-                Text(
-                  author,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0x66FFFFFF),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TvSearchResultCard extends StatelessWidget {
-  const _TvSearchResultCard({
-    required this.coverUrl,
-    required this.coverCacheWidth,
-    required this.title,
-    required this.author,
-    required this.duration,
-    required this.playCount,
-    required this.onTap,
-    this.onFocusChange,
-  });
-
-  final String coverUrl;
-  final int coverCacheWidth;
-  final String title;
-  final String author;
-  final String duration;
-  final String playCount;
-  final VoidCallback onTap;
-  final ValueChanged<bool>? onFocusChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TvVideoCard(
-      coverUrl: coverUrl,
-      coverCacheWidth: coverCacheWidth,
-      title: title,
-      author: author,
-      duration: duration,
-      playCount: playCount,
-      onFocusChange: onFocusChange,
-      onTap: onTap,
-    );
-  }
-}
-
-class _TvHistoryCard extends StatelessWidget {
-  const _TvHistoryCard({
-    super.key,
-    required this.coverUrl,
-    required this.coverCacheWidth,
-    required this.title,
-    required this.subtitle,
-    required this.ownerName,
-    required this.progress,
-    required this.onTap,
-    this.autofocus = false,
-    this.onFocusChange,
-  });
-
-  final String coverUrl;
-  final int coverCacheWidth;
-  final String title;
-  final String subtitle;
-  final String ownerName;
-  final double progress;
-  final VoidCallback onTap;
-  final bool autofocus;
-  final ValueChanged<bool>? onFocusChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusableSurface(
-      autofocus: autofocus,
-      scale: 1.07,
-      focusPadding: _tvCardFocusPadding,
-      useOverlayLift: true,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'history_$title',
-      onFocusChange: onFocusChange,
-      onTap: onTap,
-      builder: (context, focused) => LayoutBuilder(
-        builder: (context, constraints) {
-          final boundedHeight = constraints.hasBoundedHeight;
-          final tight = boundedHeight && constraints.maxHeight < 116;
-          final condensed = boundedHeight && constraints.maxHeight < 136;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: const Color(0xFF1A1A24),
-                        child: coverUrl.isEmpty
-                            ? const Icon(
-                                Icons.video_library_outlined,
-                                color: Color(0x55FFFFFF),
-                                size: 40,
-                              )
-                            : Image.network(
-                                coverUrl,
-                                fit: BoxFit.cover,
-                                cacheWidth: coverCacheWidth,
-                                errorBuilder: (_, _, _) =>
-                                    const ColoredBox(color: Color(0xFF1A1A24)),
-                              ),
-                      ),
-                      if (progress > 0)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: LinearProgressIndicator(
-                            value: progress.clamp(0.0, 1.0),
-                            backgroundColor: const Color(0x33000000),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              AppVisualTokens.primaryBlue,
-                            ),
-                            minHeight: 3,
-                          ),
-                        ),
-                      Positioned(
-                        right: 8,
-                        bottom: progress > 0 ? 10 : 7,
-                        child: Text(
-                          '${(progress * 100).round()}%',
-                          style: const TextStyle(
-                            color: Color(0xCCFFFFFF),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: condensed ? 4 : 5),
-              Text(
-                title,
-                maxLines: tight ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: focused ? Colors.white : const Color(0xEEFFFFFF),
-                  fontSize: condensed ? 12 : 12.2,
-                  fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
-                  height: 1.17,
-                ),
-              ),
-              if (!condensed) ...[
-                const SizedBox(height: 2),
-                Text(
-                  '$ownerName · $subtitle',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0x66FFFFFF),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TvLibraryAction extends StatelessWidget {
-  const _TvLibraryAction({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.compact,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool compact;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvGlassSelectable(
-      scale: 1.045,
-      borderRadius: 12,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'mine_library_$label',
-      onTap: onTap,
-      builder: (context, state) => SizedBox(
-        width: double.infinity,
-        height: compact ? 68 : 104,
-        child: Flex(
-          direction: compact ? Axis.horizontal : Axis.vertical,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: const Color(0xCCFFFFFF), size: compact ? 22 : 30),
-            SizedBox(width: compact ? 9 : 0, height: compact ? 0 : 10),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xDDFFFFFF),
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TvMineCommand extends StatelessWidget {
-  const _TvMineCommand({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.autofocus = false,
-    this.primary = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool autofocus;
-  final bool primary;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvGlassSelectable(
-      autofocus: autofocus,
-      scale: 1.045,
-      borderRadius: 12,
-      selected: primary,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'mine_command_$label',
-      onTap: onTap,
-      builder: (context, state) => SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 19),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

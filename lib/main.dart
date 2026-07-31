@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:vesper_media/bili/bili.dart';
+import 'package:vesper_media/download/download.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -10,29 +11,32 @@ import 'package:material_ui/material_ui.dart';
 import 'app/app.dart';
 import 'app/design/app_glass_startup_policy.dart';
 import 'app/services/app_settings_store.dart';
+import 'app/services/bili_ui_mode_controller.dart';
 import 'app/system_presentation.dart';
 
 const _appSettings = AppSettingsStore();
-final _modeResolver = BiliUiModeResolver(appSettings: _appSettings);
-BiliUiMode _resolvedUiMode = BiliUiMode.phone;
-final ValueNotifier<bool> _tvMode = ValueNotifier<bool>(false);
-
-BiliUiMode get initialUiMode => _resolvedUiMode;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await setBiliSystemUiMode(SystemUiMode.edgeToEdge);
 
   final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-  final modeFuture = _modeResolver.resolveEffectiveUiMode();
+  final uiModeController = BiliUiModeController(
+    resolver: BiliUiModeResolver(appSettings: _appSettings),
+  );
+  // Composition root: the app owns a single BiliClient and offline download
+  // controller and injects them down the tree, so production code paths do
+  // not fall back to the global singletons.
+  final biliClient = BiliClient();
+  final offlineController = BiliOfflineDownloadController(client: biliClient);
+  final modeFuture = uiModeController.refresh();
   final qualityFuture = _appSettings.getGlassQuality();
   final themeFuture = _appSettings.getThemePreference();
   final hcppFuture = isAndroid
       ? BiliPlatformInfo.instance.isHcppPlatformSupported()
       : Future<bool>.value(true);
 
-  _resolvedUiMode = await modeFuture;
-  _tvMode.value = _resolvedUiMode == BiliUiMode.tv;
+  await modeFuture;
   final savedGlassQuality = await qualityFuture;
   final themePreference = await themeFuture;
   final isHcppPlatformSupported = await hcppFuture;
@@ -50,7 +54,7 @@ Future<void> main() async {
     AppThemePreference.dark => Brightness.dark,
   };
   setBiliSystemUiOverlayStyle(
-    _tvMode.value
+    uiModeController.tvModeListenable.value
         ? biliTvSystemUiStyle
         : appSystemUiStyleForBrightness(appBrightness),
   );
@@ -77,15 +81,10 @@ Future<void> main() async {
       child: VesperApp(
         appSettings: _appSettings,
         initialThemePreference: themePreference,
-        tvModeListenable: _tvMode,
-        initialTvMode: _tvMode.value,
+        uiModeController: uiModeController,
+        client: biliClient,
+        offlineController: offlineController,
       ),
     ),
   );
-}
-
-Future<BiliUiMode> refreshUiMode() async {
-  _resolvedUiMode = await _modeResolver.resolveEffectiveUiMode();
-  _tvMode.value = _resolvedUiMode == BiliUiMode.tv;
-  return _resolvedUiMode;
 }

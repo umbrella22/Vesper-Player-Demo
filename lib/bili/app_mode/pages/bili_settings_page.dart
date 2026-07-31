@@ -9,30 +9,35 @@ import 'package:vesper_media/app/design/app_visual_theme.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/app_version.dart';
-import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
+import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
+import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_logout_service.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
 import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
 import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/app/home_page.dart';
-import 'package:vesper_media/main.dart';
 
 class BiliSettingsPage extends StatefulWidget {
   const BiliSettingsPage({
     super.key,
     this.appSettings,
     this.client,
+    this.historyStore,
     this.sessionStore,
     this.offlineController,
+    this.uiModeController,
   });
 
   final AppSettingsStore? appSettings;
   final BiliClient? client;
+  final BiliHistoryStore? historyStore;
   final BiliSessionStore? sessionStore;
   final BiliOfflineDownloadController? offlineController;
+  final BiliUiModeController? uiModeController;
 
   @override
   State<BiliSettingsPage> createState() => _BiliSettingsPageState();
@@ -41,8 +46,11 @@ class BiliSettingsPage extends StatefulWidget {
 class _BiliSettingsPageState extends State<BiliSettingsPage> {
   late final AppSettingsStore _appSettings;
   late final BiliClient _client;
+  late final BiliHistoryStore _historyStore;
   late final BiliSessionStore _sessionStore;
   late final BiliOfflineDownloadController _offlineController;
+  late final BiliUiModeController _uiModeController;
+  bool _uiModeControllerTransferred = false;
   final _forceTvMode = signal(false);
   final _hasAuthenticatedSession = signal(false);
   final _loading = signal(true);
@@ -54,9 +62,15 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     super.initState();
     _appSettings = widget.appSettings ?? const AppSettingsStore();
     _client = widget.client ?? BiliClient.instance;
+    _historyStore = widget.historyStore ?? const BiliHistoryStore();
     _sessionStore = widget.sessionStore ?? const BiliSessionStore();
     _offlineController =
         widget.offlineController ?? BiliOfflineDownloadController.instance;
+    _uiModeController =
+        widget.uiModeController ??
+        BiliUiModeController(
+          resolver: BiliUiModeResolver(appSettings: _appSettings),
+        );
     _load();
   }
 
@@ -67,6 +81,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     _loading.dispose();
     _loggingOut.dispose();
     _version.dispose();
+    if (widget.uiModeController == null && !_uiModeControllerTransferred) {
+      _uiModeController.dispose();
+    }
     super.dispose();
   }
 
@@ -118,14 +135,28 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   Future<void> _switchHome() async {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    final nextMode = await refreshUiMode();
+    final nextMode = await _uiModeController.refresh();
     await _applyPresentationFor(nextMode);
     if (!mounted) {
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(
+    final navigator = Navigator.of(context);
+    if (widget.uiModeController != null) {
+      navigator.popUntil((route) => route.isFirst);
+      return;
+    }
+
+    _uiModeControllerTransferred = true;
+    navigator.pushAndRemoveUntil(
       PageRouteBuilder<void>(
-        pageBuilder: (_, a, b) => const HomePage(),
+        pageBuilder: (_, a, b) => HomePage.owningUiModeController(
+          uiModeController: _uiModeController,
+          client: _client,
+          historyStore: _historyStore,
+          sessionStore: _sessionStore,
+          offlineController: _offlineController,
+          appSettings: _appSettings,
+        ),
         transitionsBuilder: (_, animation, c, child) {
           final curved = CurvedAnimation(
             parent: animation,
@@ -416,7 +447,8 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Widget _buildReturnHomeAction(BuildContext context) {
-    if (_forceTvMode.value == (initialUiMode == BiliUiMode.tv)) {
+    if (_forceTvMode.value ==
+        (_uiModeController.currentMode == BiliUiMode.tv)) {
       return const SizedBox.shrink();
     }
     return Padding(
