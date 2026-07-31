@@ -7,6 +7,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/app/app_version.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
@@ -263,6 +264,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   bool _regionLoadMoreQueued = false;
   int _presentationGeneration = 0;
   int _regionPage = 1;
+  String _appVersion = '';
 
   List<BiliPlaybackHistoryEntry> _history = const [];
   BiliRegionSection _selectedRegion = biliRegionSections.first;
@@ -282,6 +284,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   void initState() {
     super.initState();
     unawaited(_enterTvHomePresentation());
+    unawaited(_loadAppVersion());
     _searchController = TextEditingController();
     setTvFocusArea(_searchFocusNode, TvFocusArea.content);
     _searchFocusNode.addListener(_handleSearchFocusChanged);
@@ -376,6 +379,16 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await AppVersion.load();
+    if (!mounted || version.isEmpty || version == _appVersion) {
+      return;
+    }
+    setState(() {
+      _appVersion = version;
+    });
   }
 
   Future<void> _loadHistory() async {
@@ -2519,10 +2532,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               ),
               child: Padding(
                 padding: EdgeInsets.all(compact ? 18 : 24),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       '关于 Vesper',
                       style: TextStyle(
                         color: Colors.white,
@@ -2530,10 +2543,13 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
                     Text(
-                      'Vesper 1.2.0 · TV',
-                      style: TextStyle(color: Color(0x88FFFFFF), fontSize: 13),
+                      'Vesper ${_appVersion.isEmpty ? '--' : _appVersion} · TV',
+                      style: const TextStyle(
+                        color: Color(0x88FFFFFF),
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),

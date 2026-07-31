@@ -17,14 +17,27 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 
 ## 当前项目已有功能
 
-- App 模式：面向手机触控场景，提供主题自适应的首页、搜索、账号、媒体库、播放
-  和离线缓存入口。
+- App 模式：面向手机触控场景，提供主题自适应的首页、搜索、分区、账号、媒体库、
+  播放和离线缓存入口。
 - TV 模式：面向大屏和遥控器操作场景，提供沉浸式 Hero、媒体 Shelf、可折叠导航
   和四向焦点体验。
 - 通过本地 path dependency 接入 [`vesper-player-sdk`](https://github.com/umbrella22/Vesper)，用于验证 Vesper Player
   在 Flutter 移动应用中的真实集成效果。
-- 已实现登录态、搜索、播放历史、分 P 播放、SDK 调试信息展示等接近真实
-  客户端的基础链路。
+- 已实现登录态、搜索、播放历史、分 P 播放、番剧分区、播放页评论区、投屏
+  （Android DLNA / iOS AirPlay）、离线缓存与 SDK 调试信息展示等接近真实
+  客户端的功能链路。
+
+### 功能预览
+
+以下截图均来自当前仓库已经实现的界面，用于快速预览移动端和 TV 端效果。
+
+| 移动端首页                        | 移动端番剧分区                        |
+| --------------------------------- | ------------------------------------- |
+| ![移动端首页预览](asset/首页.jpg) | ![移动端番剧分区预览](asset/番剧.jpg) |
+
+| TV 首页                          | TV 分区                          |
+| -------------------------------- | -------------------------------- |
+| ![TV 首页预览](asset/tv首页.jpg) | ![TV 分区预览](asset/tv分区.jpg) |
 
 ## 功能介绍
 
@@ -36,25 +49,32 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 - 首页 feed、关键词搜索、BV 号直达和视频链接粘贴打开。
 - 搜索结果和视频卡片可直接进入播放页。
 - 播放历史本地持久化，并展示在首页。
+- 番剧/分区入口与分区视频列表，登录后可浏览。
+- “我的”页面聚合账号信息、历史记录，以及关注列表与稍后再看（媒体库）入口。
+- 设置页提供外观主题、强制 TV 模式、账号与离线数据管理。
 
 ### 播放验证
 
 - 支持视频多分 P 选择、番剧分集选择。
-- 播放页有意关闭评论和弹幕控制，把重点放在播放器接入本身。
+- 播放页提供简介/评论双 Tab：热门评论分页浏览、楼中楼回复、时间戳跳转、
+  图片评论与评论发布。弹幕暂只展示数量信息，弹幕 overlay 仍保留在
+  `lib/danmaku/` 作为实验模块。
+- 播放页支持投屏：Android 通过 DLNA 发现并投放到局域网设备，iOS 提供
+  AirPlay 入口。
 - 播放页下方展示视频元数据和 Vesper SDK session 信息，方便调试当前流。
 
 ### 本地数据
 
 - 播放历史存储在 app support 目录下的项目数据文件中。
-- 登录 cookie session 存储在 app support 目录下的项目数据文件中。
-- 旧版临时目录数据会在下次加载时自动迁移到 app support 目录。
+- 登录 cookie 优先存储在系统安全存储（iOS Keychain / Android Keystore）中，
+  以项目数据文件为降级路径。
+- 旧版临时目录数据会在下次加载时自动迁移到 app support 目录或安全存储。
 
-### 安装兼容边界
+### 离线媒体
 
-Vesper 使用新的发布标识：Android 为 `dev.ikaros.vesper_player`，iOS 为
-`dev.ikaros.vesperPlayer`。系统会将它视为独立应用，因此不会继承旧标识应用沙盒中
-的登录状态、历史记录、设置和离线缓存。应用内部的临时目录迁移只处理当前 Vesper
-沙盒可访问的数据，不跨应用标识读取旧沙盒。
+- 登录后可创建视频离线缓存任务，支持暂停、恢复与删除。
+- 离线缓存页面可查看任务列表与存储占用，并支持导出内容。
+- 已缓存的媒体可解析为本地播放路径，在无网络时继续播放。
 
 ## 当前范围
 
@@ -78,7 +98,7 @@ lib/
   bili/       目标视频平台 API、WBI、搜索、详情、播放和历史
   player/     Player SDK 参数辅助逻辑
   danmaku/    为 SDK 实验和测试保留的弹幕解析工具
-  download/   离线缓存任务规划和导出入口
+  download/   离线缓存任务规划、存储、导出与本地播放
 scripts/
   prepare_flutter_workspace.sh
   prepare_ios_build.sh
@@ -113,6 +133,22 @@ Android 默认只构建 `arm64-v8a`。如果修改 Android release 配置，请�
 iOS 推荐使用 `bash scripts/build_ios_no_codesign.sh`。如果直接运行 raw
 `xcodebuild`，之后需要重新执行 `bash scripts/prepare_flutter_workspace.sh`，
 再回到 `flutter analyze`、`flutter test` 或 `flutter run`。
+
+## 发布
+
+版本发布由 GitHub Actions 自动驱动（release-please），无需手动打 tag：
+
+1. 提交遵循 [Conventional Commits](https://www.conventionalcommits.org/)（如
+   `feat:`、`fix:`）。推到 `main` 后，`.github/workflows/release-please.yml`
+   会根据提交类型自动创建或更新 release PR。
+2. 合并 release PR 时，release-please 自动升版 `pubspec.yaml`、更新
+   `CHANGELOG.md`，并创建 `v<version>` 标签与 GitHub Release。
+3. 标签推送会触发 `.github/workflows/android-release-apk.yml` 构建
+   `arm64-v8a` release APK，并作为资产挂到对应的 GitHub Release 上。
+
+版本号唯一来源是 `pubspec.yaml` 顶层 `version:` 字段，设置页与 TV 关于页在
+运行时读取同一字段。`scripts/tag_release.sh` 保留为本地手动打 tag 的兜底，
+正常发布流程不需要它。
 
 ## 验证记录
 

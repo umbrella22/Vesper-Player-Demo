@@ -8,6 +8,7 @@ import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/app/design/app_visual_theme.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
+import 'package:vesper_media/app/app_version.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
@@ -46,6 +47,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   final _hasAuthenticatedSession = signal(false);
   final _loading = signal(true);
   final _loggingOut = signal(false);
+  final _version = signal('');
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     _hasAuthenticatedSession.dispose();
     _loading.dispose();
     _loggingOut.dispose();
+    _version.dispose();
     super.dispose();
   }
 
@@ -82,6 +85,14 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       _hasAuthenticatedSession.value =
           _client.hasAuthenticatedSession || _isAuthenticatedCookieSet(cookies);
       _loading.value = false;
+    }
+    unawaited(_loadVersion());
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await AppVersion.load();
+    if (mounted) {
+      _version.value = version;
     }
   }
 
@@ -355,13 +366,13 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
           ],
         ),
         const AppSectionLabel('关于'),
-        const AppGroupedSurface(
+        AppGroupedSurface(
           children: [
             AppSettingsRow(
               icon: Icons.play_circle_outline_rounded,
               title: 'Vesper',
-              subtitle: '版本 1.2.0',
-              trailing: SizedBox(width: 24),
+              subtitle: '版本 ${_version.value.isEmpty ? '--' : _version.value}',
+              trailing: const SizedBox(width: 24),
             ),
           ],
         ),
