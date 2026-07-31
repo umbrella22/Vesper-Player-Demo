@@ -4,12 +4,24 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing release tag to build and attach the APK to
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Release tag created by the caller
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: android-release-apk-${{ github.ref }}
+  group: android-release-apk-${{ inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 defaults:
@@ -26,13 +38,28 @@ jobs:
       ANDROID_NDK_VERSION: 29.0.14206865
       VESPER_ANDROID_NDK_VERSION: 29.0.14206865
       RUST_ANDROID_ABIS: arm64-v8a
+      RELEASE_TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag_name || github.ref }}
           submodules: recursive
           fetch-depth: 0
+
+      - name: Verify release tag checkout
+        run: |
+          if ! git show-ref --verify --quiet "refs/tags/${RELEASE_TAG_NAME}"; then
+            echo "Release tag does not exist: ${RELEASE_TAG_NAME}" >&2
+            exit 1
+          fi
+          tag_commit="$(git rev-list -n 1 "${RELEASE_TAG_NAME}")"
+          head_commit="$(git rev-parse HEAD)"
+          if [[ "$tag_commit" != "$head_commit" ]]; then
+            echo "Checked out $head_commit, but ${RELEASE_TAG_NAME} points to $tag_commit." >&2
+            exit 1
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -117,7 +144,7 @@ jobs:
       - name: Stage APK artifact
         run: |
           mkdir -p artifacts
-          tag_name="${GITHUB_REF_NAME//\//-}"
+          tag_name="${RELEASE_TAG_NAME//\//-}"
           apk_name="vesper-${tag_name}-android-arm64-release.apk"
           apk_path="build/app/outputs/flutter-apk/app-release.apk"
           if [[ ! -f "$apk_path" ]]; then
@@ -142,7 +169,6 @@ jobs:
       - name: Attach APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
           files: artifacts/*
           fail_on_unmatched_files: true
