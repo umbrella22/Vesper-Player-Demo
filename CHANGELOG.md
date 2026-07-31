@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.4.0...vesper_media-v1.4.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* 更新工作流以支持通过 Release Please 创建的标签构建 Android 发布 APK ([58b7e85](https://github.com/umbrella22/Vesper-Player-Demo/commit/58b7e851fdbd2d1d086afa346507985448af7447))
+
 ## [1.4.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.3.2...vesper_media-v1.4.0) (2026-07-31)
 
 
