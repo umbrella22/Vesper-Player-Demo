@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.4.1...vesper_media-v1.5.0) (2026-08-02)
+
+
+### Features
+
+* 添加 iOS 发布 IPA 工作流并更新 Android APK 构建逻辑 ([62eff7e](https://github.com/umbrella22/Vesper-Player-Demo/commit/62eff7e4a673707a10e875ba1bd1d7435b7cffac))
+
 ## [1.4.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.4.0...vesper_media-v1.4.1) (2026-07-31)
 
 
