@@ -46,17 +46,19 @@ fi
 bash "$ROOT_DIR/scripts/prepare_ios_build.sh"
 
 (
+  cd "$ROOT_DIR/third_party/vesper-player-sdk"
+  bash scripts/ios/build-player-ffi-xcframework.sh "$PROFILE"
+)
+
+# Flutter resolves local Swift packages during --config-only. The Rust binary
+# target above must exist before this step runs on a clean checkout.
+(
   cd "$ROOT_DIR"
   flutter build ios \
     --config-only \
     --no-codesign \
     --no-pub \
     "--$PROFILE"
-)
-
-(
-  cd "$ROOT_DIR/third_party/vesper-player-sdk"
-  bash scripts/ios/build-player-ffi-xcframework.sh "$PROFILE"
 )
 
 (
