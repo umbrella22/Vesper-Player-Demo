@@ -134,22 +134,6 @@ iOS 推荐使用 `bash scripts/build_ios_no_codesign.sh`。如果直接运行 ra
 `xcodebuild`，之后需要重新执行 `bash scripts/prepare_flutter_workspace.sh`，
 再回到 `flutter analyze`、`flutter test` 或 `flutter run`。
 
-## 发布
-
-版本发布由 GitHub Actions 自动驱动（release-please），无需手动打 tag：
-
-1. 提交遵循 [Conventional Commits](https://www.conventionalcommits.org/)（如
-   `feat:`、`fix:`）。推到 `main` 后，`.github/workflows/release-please.yml`
-   会根据提交类型自动创建或更新 release PR。
-2. 合并 release PR 时，release-please 自动升版 `pubspec.yaml`、更新
-   `CHANGELOG.md`，并创建 `v<version>` 标签与 GitHub Release。
-3. 标签推送会触发 `.github/workflows/android-release-apk.yml` 构建
-   `arm64-v8a` release APK，并作为资产挂到对应的 GitHub Release 上。
-
-版本号唯一来源是 `pubspec.yaml` 顶层 `version:` 字段，设置页与 TV 关于页在
-运行时读取同一字段。`scripts/tag_release.sh` 保留为本地手动打 tag 的兜底，
-正常发布流程不需要它。
-
 ## 验证记录
 
 当前仓库阶段建议至少跑：

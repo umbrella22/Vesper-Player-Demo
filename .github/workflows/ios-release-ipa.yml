@@ -1,0 +1,159 @@
+name: iOS Release IPA
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing release tag to build and attach the IPA to
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Release tag created by the caller
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-release-ipa-${{ inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build unsigned iOS IPA
+    runs-on: macos-26
+    timeout-minutes: 120
+
+    env:
+      RELEASE_TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
+      VESPER_IOS_DERIVED_DATA_PATH: ${{ github.workspace }}/build/ios-release-derived-data
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify release tag checkout
+        run: |
+          if ! git show-ref --verify --quiet "refs/tags/${RELEASE_TAG_NAME}"; then
+            echo "Release tag does not exist: ${RELEASE_TAG_NAME}" >&2
+            exit 1
+          fi
+          tag_commit="$(git rev-list -n 1 "${RELEASE_TAG_NAME}")"
+          head_commit="$(git rev-parse HEAD)"
+          if [[ "$tag_commit" != "$head_commit" ]]; then
+            echo "Checked out $head_commit, but ${RELEASE_TAG_NAME} points to $tag_commit." >&2
+            exit 1
+          fi
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            third_party/vesper-player-sdk
+
+      - name: Install native build tools
+        run: brew install pkg-config
+
+      - name: Build unsigned iOS app
+        run: |
+          flutter --version
+          xcodebuild -version
+          bash scripts/build_ios_no_codesign.sh release
+
+      - name: Package unsigned IPA
+        run: |
+          app_path="${VESPER_IOS_DERIVED_DATA_PATH}/Build/Products/Release-iphoneos/Runner.app"
+          if [[ ! -d "$app_path" ]]; then
+            echo "Built iOS application was not found: $app_path" >&2
+            find "$VESPER_IOS_DERIVED_DATA_PATH/Build/Products" -maxdepth 3 -type d -name '*.app' -print >&2 || true
+            exit 1
+          fi
+
+          platform_name="$(/usr/libexec/PlistBuddy -c 'Print :DTPlatformName' "$app_path/Info.plist")"
+          if [[ "$platform_name" != "iphoneos" ]]; then
+            echo "Expected an iphoneos application, got: $platform_name" >&2
+            exit 1
+          fi
+
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Info.plist")"
+          expected_version=""
+          case "$RELEASE_TAG_NAME" in
+            *-v[0-9]*) expected_version="${RELEASE_TAG_NAME##*-v}" ;;
+            v[0-9]*) expected_version="${RELEASE_TAG_NAME#v}" ;;
+          esac
+          if [[ -n "$expected_version" && "$bundle_version" != "$expected_version" ]]; then
+            echo "Built bundle version is $bundle_version, but ${RELEASE_TAG_NAME} represents $expected_version." >&2
+            exit 1
+          fi
+          if codesign --verify --deep --strict "$app_path" >/dev/null 2>&1; then
+            echo "Expected an unsigned application, but code signature verification succeeded." >&2
+            exit 1
+          fi
+          echo "Packaging unsigned iphoneos application version $bundle_version."
+
+          artifact_dir="${GITHUB_WORKSPACE}/artifacts"
+          payload_root="$(mktemp -d "${RUNNER_TEMP}/vesper-ios-ipa.XXXXXX")"
+          mkdir -p "$artifact_dir" "$payload_root/Payload"
+          ditto "$app_path" "$payload_root/Payload/Runner.app"
+
+          tag_name="${RELEASE_TAG_NAME//\//-}"
+          artifact_tag="$tag_name"
+          if [[ "$tag_name" == *-v[0-9]* ]]; then
+            artifact_tag="v${tag_name##*-v}"
+          fi
+          ipa_name="vesper-${artifact_tag}-ios-unsigned.ipa"
+          (
+            cd "$payload_root"
+            /usr/bin/zip -qry "$artifact_dir/$ipa_name" Payload
+          )
+          (
+            cd "$artifact_dir"
+            shasum -a 256 "$ipa_name" > "$ipa_name.sha256"
+          )
+          /usr/bin/unzip -tq "$artifact_dir/$ipa_name"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach IPA to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
+          files: artifacts/*
+          fail_on_unmatched_files: true

@@ -145,7 +145,11 @@ jobs:
         run: |
           mkdir -p artifacts
           tag_name="${RELEASE_TAG_NAME//\//-}"
-          apk_name="vesper-${tag_name}-android-arm64-release.apk"
+          artifact_tag="$tag_name"
+          if [[ "$tag_name" == *-v[0-9]* ]]; then
+            artifact_tag="v${tag_name##*-v}"
+          fi
+          apk_name="vesper-${artifact_tag}-android-arm64-release.apk"
           apk_path="build/app/outputs/flutter-apk/app-release.apk"
           if [[ ! -f "$apk_path" ]]; then
             apk_path="$(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*release*.apk' | sort | head -n 1)"

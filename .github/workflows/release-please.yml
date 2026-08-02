@@ -28,7 +28,7 @@ jobs:
           manifest-file: .github/release-please-manifest.json
 
   # GITHUB_TOKEN-created tags do not start a second workflow run, so invoke the
-  # reusable APK workflow directly when Release Please creates a release.
+  # reusable artifact workflows directly when Release Please creates a release.
   android-release-apk:
     name: Build Android release APK
     needs: release-please
@@ -36,5 +36,15 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/android-release-apk.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
+
+  ios-release-ipa:
+    name: Build unsigned iOS IPA
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/ios-release-ipa.yml
     with:
       tag_name: ${{ needs.release-please.outputs.tag_name }}
