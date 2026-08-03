@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/download/download.dart';
@@ -117,7 +118,16 @@ final class BiliHubViewModel {
   late final FlutterComputed<bool> showsSearchResults;
 
   Future<void> bootstrap() async {
-    final persistedCookies = await sessionStore.loadCookies();
+    // Session restore must never take the whole app down: a Keychain
+    // PlatformException or a corrupt session file degrades to "not logged in"
+    // instead of failing bootstrap. The store already guards its own read
+    // paths; this is the last line of defense for unexpected failures.
+    Map<String, String> persistedCookies = const <String, String>{};
+    try {
+      persistedCookies = await sessionStore.loadCookies();
+    } catch (error) {
+      debugPrint('[BiliHub] session restore failed: $error');
+    }
     if (persistedCookies.isNotEmpty) {
       client.restoreCookies(persistedCookies);
     }

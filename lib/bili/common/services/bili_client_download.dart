@@ -534,6 +534,26 @@ extension BiliClientDownload on BiliClient {
     required String kind,
     required int index,
     required Map<String, String> headers,
+  }) {
+    return _probeDashMediaSizeOnce(
+      url,
+      kind: kind,
+      index: index,
+      headers: headers,
+    ).timeout(
+      _mediaProbeTimeout,
+      onTimeout: () => throw BiliApiException(
+        'media url probe timed out after '
+        '${_mediaProbeTimeout.inSeconds}s.',
+      ),
+    );
+  }
+
+  Future<int> _probeDashMediaSizeOnce(
+    String url, {
+    required String kind,
+    required int index,
+    required Map<String, String> headers,
   }) async {
     debugPrint('[BiliOffline] probe $kind url[$index] Range GET: $url');
     final uri = Uri.parse(url);
@@ -545,36 +565,82 @@ extension BiliClientDownload on BiliClient {
     });
     request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
     request.followRedirects = true;
-    final response = await request.close();
-    await response.drain<void>();
-    final contentRange = response.headers.value(HttpHeaders.contentRangeHeader);
-    debugPrint(
-      '[BiliOffline] probe result $kind url[$index] '
-      'HTTP ${response.statusCode}, contentLength=${response.contentLength}, '
-      'contentRange=${contentRange ?? ''}',
-    );
 
-    if (response.statusCode == HttpStatus.partialContent) {
-      final totalText = contentRange?.split('/').last.trim();
-      final totalBytes = totalText == null ? null : int.tryParse(totalText);
-      if (totalBytes != null && totalBytes > 0) {
-        return totalBytes;
+    // Future.timeout 只放弃等待，不会取消底层 HttpClientRequest：超时后
+    // 连接会一直挂到对端关闭。因此这里用 Timer 主动 abort 请求；若响应头
+    // 已返回（例如 206 的 body drain 被挂起），同时销毁响应 socket 中断
+    // body 读取。getUrl 阶段尚未持有 request，仍由外层 timeout 兜底。
+    HttpClientResponse? response;
+    var timedOut = false;
+    final timeoutTimer = Timer(_mediaProbeTimeout, () {
+      timedOut = true;
+      request.abort();
+      final current = response;
+      if (current != null) {
+        unawaited(_abortProbeResponseBody(current));
       }
-    }
-    if (response.statusCode == HttpStatus.ok) {
-      final contentLength = response.contentLength;
-      if (contentLength > 0) {
-        return contentLength;
+    });
+    try {
+      try {
+        response = await request.close();
+      } catch (error) {
+        if (timedOut) {
+          throw BiliApiException(
+            'media url probe timed out after '
+            '${_mediaProbeTimeout.inSeconds}s.',
+          );
+        }
+        rethrow;
       }
-    }
-    if (isStaleMediaStatus(response.statusCode)) {
-      throw BiliApiException(
-        'media url is stale or rejected (HTTP ${response.statusCode})',
+      final statusCode = response.statusCode;
+      final contentRange = response.headers.value(
+        HttpHeaders.contentRangeHeader,
       );
+      debugPrint(
+        '[BiliOffline] probe result $kind url[$index] '
+        'HTTP $statusCode, contentLength=${response.contentLength}, '
+        'contentRange=${contentRange ?? ''}',
+      );
+
+      // 先读响应头，再决定是否消费 body：若 CDN 忽略 Range 以 200 返回完整
+      // 文件，drain 会白白下载整个视频（参考 ATV-Bilibili-demo CDNDiagnostics
+      // 的有界探测模式：短超时 + 先取头后取体，且只读取需要的字节数）。
+      if (statusCode == HttpStatus.partialContent) {
+        final totalText = contentRange?.split('/').last.trim();
+        final totalBytes = totalText == null ? null : int.tryParse(totalText);
+        if (totalBytes != null && totalBytes > 0) {
+          // 206 的 body 即请求的 1 字节，drain 以释放连接复用。
+          await response.drain<void>();
+          return totalBytes;
+        }
+      }
+      if (statusCode == HttpStatus.ok) {
+        final contentLength = response.contentLength;
+        if (contentLength > 0) {
+          // Range 被忽略（200 + 完整 body）：不 drain，直接中断连接。
+          await _abortProbeResponseBody(response);
+          return contentLength;
+        }
+      }
+      await _abortProbeResponseBody(response);
+      if (isStaleMediaStatus(statusCode)) {
+        throw BiliApiException(
+          'media url is stale or rejected (HTTP $statusCode)',
+        );
+      }
+      throw BiliApiException('media url probe failed (HTTP $statusCode)');
+    } catch (error) {
+      // abort 打断 body 读取时会抛底层 Socket/Http 异常，统一转为超时错误。
+      if (timedOut) {
+        throw BiliApiException(
+          'media url probe timed out after '
+          '${_mediaProbeTimeout.inSeconds}s.',
+        );
+      }
+      rethrow;
+    } finally {
+      timeoutTimer.cancel();
     }
-    throw BiliApiException(
-      'media url probe failed (HTTP ${response.statusCode})',
-    );
   }
 
   String _downloadManifestPathForPlatform(String? targetDirectory) {
@@ -667,5 +733,20 @@ extension BiliClientDownload on BiliClient {
       return 'm4s';
     }
     return stream.isAudio ? 'audio' : 'video';
+  }
+}
+
+/// 单次媒体 URL 探测的总体超时。参考 ATV-Bilibili-demo CDNDiagnostics 的
+/// 起播 quickSession（3s/4s 短超时）；此处取 10s 兼顾弱网与备用源重试。
+const _mediaProbeTimeout = Duration(seconds: 10);
+
+/// 中止一次媒体探测的响应体读取：服务器忽略 Range 以 200 返回完整文件时，
+/// 直接拆下底层 socket 并销毁，避免把整个视频 body 下载下来。
+Future<void> _abortProbeResponseBody(HttpClientResponse response) async {
+  try {
+    final socket = await response.detachSocket();
+    socket.destroy();
+  } catch (_) {
+    // 连接已关闭或不可拆离，无需处理。
   }
 }

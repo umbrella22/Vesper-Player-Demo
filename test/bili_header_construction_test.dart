@@ -44,18 +44,25 @@ void main() {
       );
     });
 
-    test('includes Cookie header when an authenticated session is present', () {
-      final transport = BiliTransport()
-        ..setCookie('SESSDATA', 'session-token')
-        ..setCookie('bili_jct', 'csrf-token');
-      addTearDown(() => transport.httpClient.close(force: true));
+    test(
+      'omits Cookie header even when an authenticated session is present',
+      () {
+        // 媒体 URL 在 playurl 解析时已带会话签名，CDN 凭 URL 鉴权，无需 Cookie。
+        // 向第三方 CDN（Akamai、PCDN 等）发送 SESSDATA/bili_jct 会扩大会话令牌
+        // 暴露面，因此媒体路径即使已登录也绝不携带 Cookie。
+        final transport = BiliTransport()
+          ..setCookie('SESSDATA', 'session-token')
+          ..setCookie('bili_jct', 'csrf-token');
+        addTearDown(() => transport.httpClient.close(force: true));
 
-      final cookie = transport
-          .buildBiliMediaSourceHeaders()[HttpHeaders.cookieHeader];
-      expect(cookie, isNotNull);
-      expect(cookie!.contains('SESSDATA=session-token'), isTrue);
-      expect(cookie.contains('bili_jct=csrf-token'), isTrue);
-    });
+        expect(
+          transport.buildBiliMediaSourceHeaders().containsKey(
+            HttpHeaders.cookieHeader,
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test('omits Cookie header when session holds only empty values '
         '(protocol cleanup: serialization-based gating)', () {

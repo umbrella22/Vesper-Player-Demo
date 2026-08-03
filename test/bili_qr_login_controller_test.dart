@@ -24,7 +24,7 @@ void main() {
       await controller.start();
       await tester.pump();
 
-      expect(controller.pollResult?.status, BiliQrLoginStatus.failed);
+      expect(controller.pollResult.value?.status, BiliQrLoginStatus.failed);
       expect(controller.canRefresh, isTrue);
     });
 
@@ -51,14 +51,14 @@ void main() {
           await tester.pump();
 
           expect(client.pollCalls, 1);
-          expect(controller.errorMessage, contains('poll failed'));
+          expect(controller.errorMessage.value, contains('poll failed'));
 
           await controller.checkNow();
 
           expect(client.pollCalls, 2);
-          expect(controller.errorMessage, isNull);
+          expect(controller.errorMessage.value, isNull);
           expect(
-            controller.pollResult?.status,
+            controller.pollResult.value?.status,
             BiliQrLoginStatus.waitingForScan,
           );
 
@@ -67,7 +67,7 @@ void main() {
 
           expect(client.pollCalls, 3);
           expect(
-            controller.pollResult?.status,
+            controller.pollResult.value?.status,
             BiliQrLoginStatus.scannedAwaitingConfirm,
           );
         } finally {

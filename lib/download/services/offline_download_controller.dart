@@ -11,6 +11,7 @@ import '../../bili/common/services/bili_storage_directory.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 import 'offline_cache_inventory.dart';
+import 'download_manager_host.dart';
 import 'download_plugin_resolver.dart';
 import 'offline_device_storage.dart';
 import 'offline_download_store.dart';
@@ -30,7 +31,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     BiliOfflineDownloadStore store = const BiliOfflineDownloadStore(),
     BiliDownloadPluginResolver pluginResolver =
         const BiliDownloadPluginResolver(),
-    VesperDownloadManager? manager,
+    BiliDownloadManagerHost? manager,
   }) : _client = client,
        _store = store,
        _pluginResolver = pluginResolver,
@@ -49,7 +50,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   final Map<String, String> _orphanAssetDirectories = <String, String>{};
   final Map<String, String> _metadataIntegrityErrors = <String, String>{};
 
-  VesperDownloadManager? _manager;
+  BiliDownloadManagerHost? _manager;
   VesperDownloadSnapshot _snapshot = const VesperDownloadSnapshot.initial();
   StreamSubscription<VesperDownloadSnapshot>? _snapshotSubscription;
   Directory? _cacheRoot;
@@ -57,11 +58,27 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   final Map<int, String> _lastTaskLogFingerprints = <int, String>{};
   Future<void>? _initializing;
   Future<void> _metadataWriteChain = Future<void>.value();
+  Timer? _metadataPersistDebounce;
+  DateTime _lastIntegrityRefreshAt = DateTime.fromMillisecondsSinceEpoch(0);
   int _integrityRefreshGeneration = 0;
   bool _initialized = false;
   bool _disposed = false;
 
-  bool get isInitialized => _initialized;
+  /// SDK emits download snapshots at `minProgressIntervalMs` (250ms), i.e. up
+  /// to ~4 writes/sec while a task is downloading. Debounce metadata writes so
+  /// the whole JSON is not rewritten on every progress tick; a trailing write
+  /// still lands shortly after the last snapshot. Explicit user actions
+  /// (enqueue/remove/rename) bypass this via [_persistMetadata] directly.
+  static const Duration _metadataPersistDebounceInterval = Duration(
+    milliseconds: 1500,
+  );
+
+  /// Integrity probing walks every completed entry's output on disk. Throttle
+  /// it to a once-per-interval cadence; a just-completed task shows up within
+  /// one interval, and the play path re-validates the file in real time.
+  static const Duration _integrityRefreshMinInterval = Duration(seconds: 5);
+
+  bool get isInitialized => _initialized && !_disposed;
 
   bool get hasRemuxPlugin => _pluginLibraryPaths.isNotEmpty;
 
@@ -78,6 +95,11 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       entries.where((entry) => entry.isActive).toList(growable: false);
 
   Future<void> initialize() {
+    if (_disposed) {
+      // A disposed controller must not re-initialize: the download manager,
+      // snapshot subscription, and metadata write chain were torn down.
+      throw StateError('BiliOfflineDownloadController has been disposed.');
+    }
     if (_initialized) {
       return Future<void>.value();
     }
@@ -125,10 +147,19 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       throw const BiliOfflineDownloadException('缺少 MP4 合成插件，当前安装包无法生成离线 MP4。');
     }
 
-    final resolvedOptions = await _client.resolveDownloadOptions(
-      detail: detail,
-      page: page,
-    );
+    // Reuse the caller-provided options when they were resolved for this same
+    // page (the download panel passes the manifest it already fetched), so a
+    // collection enqueue does not re-fetch the DASH manifest and re-probe
+    // every media URL per episode. Fall back to a fresh resolve otherwise.
+    final BiliDownloadOptions resolvedOptions;
+    if (options != null && options.cid == page.cid) {
+      resolvedOptions = options;
+    } else {
+      resolvedOptions = await _client.resolveDownloadOptions(
+        detail: detail,
+        page: page,
+      );
+    }
     final preview = _client.prepareDownloadAsset(
       options: resolvedOptions,
       qualityId: qualityId,
@@ -152,7 +183,12 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     }
 
     if (existingTask != null) {
-      await manager.removeTask(existingTask.taskId);
+      // 与 remove()/removeEntry() 一致：SDK 任务存在但删除失败时不能继续
+      // 对同一 asset 重建任务——旧任务可能仍在运行或占用输出。
+      final removed = await manager.removeTask(existingTask.taskId);
+      if (!removed) {
+        throw const BiliOfflineDownloadException('缓存任务删除失败，请稍后重试。');
+      }
     } else {
       await _deleteAssetDirectory(cacheRoot, preview.assetId);
     }
@@ -344,7 +380,15 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     final matchingAssetIds = matchingEntries
         .map((entry) => entry.metadata.assetId)
         .toSet();
-    await _manager?.removeTask(taskId);
+    final manager = _manager;
+    // SDK 任务不存在时（孤儿元数据）直接清理本地；任务存在但 SDK 删除失败
+    // 时保留目录与元数据，并让调用方报告失败而不是"已删除"。
+    if (manager != null && manager.task(taskId) != null) {
+      final removed = await manager.removeTask(taskId);
+      if (!removed) {
+        throw const BiliOfflineDownloadException('缓存任务删除失败，请稍后重试。');
+      }
+    }
     for (final entry in matchingEntries) {
       await _deleteAssetDirectoryForMetadata(
         entry.metadata,
@@ -369,8 +413,13 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   Future<void> removeEntry(BiliOfflineDownloadEntry entry) async {
     await initialize();
     final taskId = entry.task?.taskId ?? entry.metadata.taskId;
-    if (taskId != null) {
-      await _manager?.removeTask(taskId);
+    final manager = _manager;
+    // 与 remove() 一致：SDK 任务存在但删除失败时不删本地、不报成功。
+    if (taskId != null && manager != null && manager.task(taskId) != null) {
+      final removed = await manager.removeTask(taskId);
+      if (!removed) {
+        throw const BiliOfflineDownloadException('缓存任务删除失败，请稍后重试。');
+      }
     }
     // The SDK normally removes task output, but an orphan task may have no
     // metadata path for the SDK to clean. Delete both the canonical asset
@@ -401,6 +450,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
   Future<void> _doInitialize() async {
     final entries = await _store.loadEntries();
+    _ensureNotDisposedDuringInitialize();
     _metadataByAssetId
       ..clear()
       ..addEntries(entries.map((entry) => MapEntry(entry.assetId, entry)));
@@ -408,12 +458,15 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     final root = await resolveBiliStorageDirectory();
     final cacheRoot = Directory('${root.path}/offline-cache');
     await cacheRoot.create(recursive: true);
+    _ensureNotDisposedDuringInitialize();
     _cacheRoot = cacheRoot;
     _pluginLibraryPaths = await _pluginResolver
         .bundledDownloadPluginLibraryPaths();
+    _ensureNotDisposedDuringInitialize();
 
-    final manager =
-        _manager ??
+    var manager = _manager;
+    if (manager == null) {
+      final created = VesperDownloadManagerAdapter(
         await VesperDownloadManager.create(
           configuration: VesperDownloadConfiguration(
             baseDirectory: cacheRoot.path,
@@ -423,15 +476,28 @@ class BiliOfflineDownloadController extends ChangeNotifier {
             resumePartialDownloads: true,
           ),
           staleResourceRecovery: _recoverStaleDownloadPlan,
-        );
+        ),
+      );
+      // 原生 manager 已创建但初始化被 dispose 打断：销毁它而不是泄漏，
+      // 再以 StateError 结束本次 initialize。
+      if (_disposed) {
+        unawaited(_disposeManagerSafely(created));
+        throw StateError('BiliOfflineDownloadController has been disposed.');
+      }
+      manager = created;
+    }
     _manager = manager;
     _snapshot = manager.snapshot;
     await _scanOrphanAssetDirectories();
+    _ensureNotDisposedDuringInitialize();
     _snapshotSubscription = manager.snapshots.listen((snapshot) {
+      if (_disposed) {
+        return;
+      }
       _snapshot = snapshot;
       _logDownloadSnapshot(snapshot);
       _reconcileMetadataWithSnapshot(snapshot);
-      unawaited(_persistMetadata());
+      _schedulePersistMetadata();
       notifyListeners();
       unawaited(_refreshMetadataIntegrityAfterSnapshot());
     });
@@ -439,8 +505,20 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     await _refreshMetadataIntegrity();
     _logDownloadSnapshot(_snapshot);
     await _persistMetadata();
+    _ensureNotDisposedDuringInitialize();
     _initialized = true;
     notifyListeners();
+  }
+
+  /// Aborts [_doInitialize] when the controller was disposed while one of its
+  /// awaits was pending: after dispose nothing may create the native manager,
+  /// subscribe to snapshot streams, or call notifyListeners. The error also
+  /// clears the shared [_initializing] future so a disposed controller cannot
+  /// be re-initialized.
+  void _ensureNotDisposedDuringInitialize() {
+    if (_disposed) {
+      throw StateError('BiliOfflineDownloadController has been disposed.');
+    }
   }
 
   VesperDownloadTaskSnapshot? _taskForMetadata(
@@ -521,6 +599,32 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       onError: (_) => _store.saveEntries(snapshot),
     );
     return _metadataWriteChain;
+  }
+
+  /// Snapshot-driven persistence is debounced: SDK progress ticks arrive up
+  /// to ~4/s while downloading, but metadata only changes meaningfully when a
+  /// task transitions state, so merging ticks into one trailing write removes
+  /// most of the write amplification. Direct user actions still call
+  /// [_persistMetadata] immediately and wait on the write chain.
+  void _schedulePersistMetadata() {
+    _metadataPersistDebounce ??= Timer(_metadataPersistDebounceInterval, () {
+      _metadataPersistDebounce = null;
+      unawaited(
+        _persistMetadata().then<void>(
+          (_) {},
+          onError: (Object error, StackTrace stackTrace) {
+            // 快照驱动的后台写盘失败不能静默丢弃，也不能成为未处理的异步
+            // 错误：经 FlutterError 上报。显式用户操作路径（enqueue/remove
+            // /rename）仍直接等待 _persistMetadata 并把错误抛给调用方。
+            _reportBackgroundError(
+              error,
+              stackTrace,
+              'persisting offline cache metadata',
+            );
+          },
+        ),
+      );
+    });
   }
 
   Future<void> _deleteAssetDirectory(
@@ -686,6 +790,15 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   }
 
   Future<void> _refreshMetadataIntegrityAfterSnapshot() async {
+    // Throttle integrity probing: it stats every completed entry, and running
+    // it on every 250ms snapshot while other tasks download is pure I/O churn.
+    // A just-completed task becomes visible within one interval.
+    final now = DateTime.now();
+    if (now.difference(_lastIntegrityRefreshAt) <
+        _integrityRefreshMinInterval) {
+      return;
+    }
+    _lastIntegrityRefreshAt = now;
     try {
       await _refreshMetadataIntegrity();
       if (!_disposed) {
@@ -736,8 +849,58 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    final pendingDebounce = _metadataPersistDebounce;
+    _metadataPersistDebounce = null;
+    if (pendingDebounce != null) {
+      pendingDebounce.cancel();
+      // Flush the trailing metadata write that the debounce would have
+      // issued, so a dispose right after a snapshot does not drop the last
+      // state transition. A failing flush is reported, not dropped.
+      unawaited(_flushMetadataWriteSafely());
+    }
     unawaited(_snapshotSubscription?.cancel() ?? Future<void>.value());
+    _snapshotSubscription = null;
+    // Release the native download manager (platform event subscription,
+    // snapshot streams, task registry). SDK dispose() rethrows a platform
+    // release error, which must be reported through FlutterError instead of
+    // surfacing as an unhandled async error.
+    final manager = _manager;
+    _manager = null;
+    if (manager != null) {
+      unawaited(_disposeManagerSafely(manager));
+    }
     super.dispose();
+  }
+
+  Future<void> _flushMetadataWriteSafely() async {
+    try {
+      await _persistMetadata();
+    } catch (error, stackTrace) {
+      _reportBackgroundError(error, stackTrace, 'flushing cached metadata');
+    }
+  }
+
+  Future<void> _disposeManagerSafely(BiliDownloadManagerHost manager) async {
+    try {
+      await manager.dispose();
+    } catch (error, stackTrace) {
+      _reportBackgroundError(error, stackTrace, 'disposing download manager');
+    }
+  }
+
+  void _reportBackgroundError(
+    Object error,
+    StackTrace stackTrace,
+    String context,
+  ) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'offline_download_controller',
+        context: ErrorDescription(context),
+      ),
+    );
   }
 
   void _logPreparedAsset(BiliPreparedDownloadAsset prepared) {

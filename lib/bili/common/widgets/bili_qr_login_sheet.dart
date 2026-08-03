@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_visual_theme.dart';
 
@@ -87,9 +88,8 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
           _controller.cancel();
         }
       },
-      child: ListenableBuilder(
-        listenable: _controller,
-        builder: (context, _) => Column(
+      child: SignalBuilder(
+        builder: (context) => Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -145,8 +145,8 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
                     width: qrSize,
                     height: qrSize,
                     child: BiliQrCodeView(
-                      ticket: _controller.ticket,
-                      isLoading: _controller.isLoading,
+                      ticket: _controller.ticket.value,
+                      isLoading: _controller.isLoading.value,
                     ),
                   ),
                 ),
@@ -166,7 +166,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
     final message = _controller.statusMessage;
-    final timestampMs = _controller.pollResult?.timestampMs;
+    final timestampMs = _controller.pollResult.value?.timestampMs;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -176,7 +176,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
             message,
             key: ValueKey<String>(message),
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: _controller.errorMessage == null
+              color: _controller.errorMessage.value == null
                   ? visualTheme.textSecondary
                   : theme.colorScheme.error,
               height: 1.5,

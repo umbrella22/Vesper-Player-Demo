@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'bili_storage_directory.dart';
@@ -68,20 +69,44 @@ final class BiliSessionStore {
 
     final secureStorage =
         _secureStorage ?? const BiliFlutterSessionSecureStorage();
-    final secureCookies = _decodeCookiesPayload(
-      await secureStorage.read(key: _secureSessionKey),
-    );
+    String? secureText;
+    var secureReadFailed = false;
+    try {
+      secureText = await secureStorage.read(key: _secureSessionKey);
+    } catch (error) {
+      secureReadFailed = true;
+      // Keychain read failures (backup migration, key invalidation,
+      // PlatformException) must not fail app bootstrap. Degrade to the
+      // plain-file fallback below; a later saveCookies rewrites the key.
+      // 只记录异常类型，异常消息可能携带 Keychain 内部的敏感片段。
+      debugPrint(
+        '[BiliSession] secure storage read failed: ${error.runtimeType}',
+      );
+    }
+    final secureCookies = _decodeCookiesPayload(secureText);
     if (secureCookies.isNotEmpty) {
       return secureCookies;
     }
 
     final fileCookies = await _loadCookiesFromFile();
     if (fileCookies.isNotEmpty) {
-      await secureStorage.write(
-        key: _secureSessionKey,
-        value: _encodeCookiesPayload(fileCookies),
-      );
-      await _clearSessionFile();
+      try {
+        await secureStorage.write(
+          key: _secureSessionKey,
+          value: _encodeCookiesPayload(fileCookies),
+        );
+        // 只有本次成功读取过安全存储时才删除明文文件：读取失败可能意味着
+        // Keychain 持续不可用，写入成功并不能证明下次启动能读回，删除明文
+        // 会让下一次启动丢失整个会话。读取正常（迁移路径）时删除明文。
+        if (!secureReadFailed) {
+          await _clearSessionFile();
+        }
+      } catch (error) {
+        // 迁移写入失败不得丢弃已恢复的会话：保留明文文件，下次启动重试。
+        debugPrint(
+          '[BiliSession] secure storage write failed: ${error.runtimeType}',
+        );
+      }
     }
     return fileCookies;
   }
@@ -111,29 +136,41 @@ final class BiliSessionStore {
   }
 
   Future<Map<String, String>> _loadCookiesFromFile() async {
-    final file = await _sessionFile();
-    if (!await file.exists()) {
+    try {
+      final file = await _sessionFile();
+      if (!await file.exists()) {
+        return const <String, String>{};
+      }
+
+      final text = await file.readAsString();
+      if (text.trim().isEmpty) {
+        return const <String, String>{};
+      }
+
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) {
+        return const <String, String>{};
+      }
+
+      final rawCookies = decoded['cookies'];
+      if (rawCookies is! Map) {
+        return const <String, String>{};
+      }
+
+      return rawCookies.map(
+        (key, value) => MapEntry(key.toString(), value.toString()),
+      );
+    } catch (error) {
+      // A corrupt session file (interrupted write, partial migration) must
+      // not fail bootstrap. Treat it as "no persisted session"; a later
+      // successful login overwrites the file.
+      // 只记录异常类型：FormatException 消息可能包含文件中的原始片段，
+      // 而该文件可能含有 Cookie 值。
+      debugPrint(
+        '[BiliSession] session file read failed: ${error.runtimeType}',
+      );
       return const <String, String>{};
     }
-
-    final text = await file.readAsString();
-    if (text.trim().isEmpty) {
-      return const <String, String>{};
-    }
-
-    final decoded = jsonDecode(text);
-    if (decoded is! Map) {
-      return const <String, String>{};
-    }
-
-    final rawCookies = decoded['cookies'];
-    if (rawCookies is! Map) {
-      return const <String, String>{};
-    }
-
-    return rawCookies.map(
-      (key, value) => MapEntry(key.toString(), value.toString()),
-    );
   }
 
   Future<void> _saveCookiesToFile(Map<String, String> cookies) async {
@@ -169,18 +206,28 @@ final class BiliSessionStore {
       return const <String, String>{};
     }
 
-    final decoded = jsonDecode(text);
-    if (decoded is! Map) {
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) {
+        return const <String, String>{};
+      }
+
+      final rawCookies = decoded['cookies'];
+      if (rawCookies is! Map) {
+        return const <String, String>{};
+      }
+
+      return rawCookies.map(
+        (key, value) => MapEntry(key.toString(), value.toString()),
+      );
+    } catch (error) {
+      // A corrupt secure payload (e.g. partial migration) must not fail
+      // bootstrap; the file fallback below still gets a chance to restore.
+      // 只记录异常类型：消息可能携带 Keychain 返回的原始片段。
+      debugPrint(
+        '[BiliSession] secure payload decode failed: ${error.runtimeType}',
+      );
       return const <String, String>{};
     }
-
-    final rawCookies = decoded['cookies'];
-    if (rawCookies is! Map) {
-      return const <String, String>{};
-    }
-
-    return rawCookies.map(
-      (key, value) => MapEntry(key.toString(), value.toString()),
-    );
   }
 }

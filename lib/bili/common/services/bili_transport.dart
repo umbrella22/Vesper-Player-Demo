@@ -420,11 +420,14 @@ class BiliTransport {
   }
 
   Map<String, String> buildBiliMediaSourceHeaders() {
-    // 媒体/CDN 请求：Accept=*/*、显式 UA、不携带 Sec-Fetch-*、按需携带 Cookie。
+    // 媒体/CDN 请求：Accept=*/*、显式 UA、不携带 Sec-Fetch-*、绝不携带 Cookie。
+    // 媒体 URL 在 playurl 解析时已带会话签名（upsig/osig），CDN 凭 URL 鉴权，
+    // 无需 Cookie。向第三方 CDN（Akamai、PCDN 等）发送 SESSDATA/bili_jct 会
+    // 扩大会话令牌暴露面（参考 ATV-Bilibili-demo：媒体请求仅 UA+Referer）。
     return _buildBiliHeaders(
       referer: biliMediaReferer,
       acceptHeader: '*/*',
-      includeCookies: true,
+      includeCookies: false,
       includeSecFetch: false,
       includeUserAgent: true,
     );
@@ -434,7 +437,8 @@ class BiliTransport {
   ///
   /// 契约（由定向测试 bili_header_construction_test.dart 锁定）：
   ///  - [includeCookies] == false 时绝不产生 Cookie 头（即使已登录），
-  ///    防止 session 泄漏到 CDN 等非受信 host。
+  ///    防止 session 泄漏到 CDN 等非受信 host。媒体路径固定为 false：
+  ///    媒体 URL 已带会话签名，CDN 凭 URL 鉴权，无需 Cookie。
   ///  - Cookie 头仅在序列化结果非空时产生。注意这是一处协议层清理：
   ///    旧 API 路径只要 cookie map 非空就写头（即便值全为空串，会发出
   ///    `SESSDATA=` 这类畸形头）；现在与媒体路径统一，由 buildCookieHeader

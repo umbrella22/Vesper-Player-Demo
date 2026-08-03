@@ -369,7 +369,27 @@ extension BiliClientLibrary on BiliClient {
     final cacheKey = _subtitleCacheKey(bvid: bvid, cid: cid, aid: aid);
     final cached = _subtitleRequests[cacheKey];
     if (cached != null) {
-      return cached;
+      // _cleanupStaleSubtitleFiles can delete the local VTT file a cached
+      // entry points at. A hit must re-verify the file still exists, or the
+      // cache is invalidated and the subtitles are fetched again. A failed
+      // original request keeps its semantics: the error propagates and the
+      // entry is not retained.
+      final tracks = await cached;
+      if (tracks.every(_materializedSubtitleFileExists)) {
+        return tracks;
+      }
+      // 并发调用方可能已在此刻失效同一条目并放入了新请求：只有当前条目
+      // 仍是刚才 await 的那一个时才移除，否则会误删别人刚建的新请求。
+      if (identical(_subtitleRequests[cacheKey], cached)) {
+        _subtitleRequests.remove(cacheKey);
+        _completedSubtitleRequests.remove(cacheKey);
+      }
+      // Fall through to the fresh path below; a concurrent caller that
+      // invalidated the same entry may already have started a new request.
+    }
+    final concurrent = _subtitleRequests[cacheKey];
+    if (concurrent != null) {
+      return concurrent;
     }
 
     final request = _fetchVideoSubtitlesUncached(
@@ -380,16 +400,61 @@ extension BiliClientLibrary on BiliClient {
     _subtitleRequests[cacheKey] = request;
     // Do not retain a transient network/API failure. The Future returned to
     // the caller still completes with the original error, while a later
-    // playback attempt can retry the request.
+    // playback attempt can retry the request. Successful entries are kept but
+    // bounded so a long session cannot grow the map without limit.
     request.then<void>(
-      (_) {},
+      (_) {
+        // 会话切换（restoreCookies/clearSession 清空缓存）后完成的旧请求
+        // 不得把新会话的同 key 条目标记为 completed：那会让 trim 把仍在
+        // in-flight 的新请求当成已完成条目驱逐。
+        if (!identical(_subtitleRequests[cacheKey], request)) {
+          return;
+        }
+        _completedSubtitleRequests.add(cacheKey);
+        _trimSubtitleRequestCache(cacheKey);
+      },
       onError: (Object error, StackTrace stackTrace) {
+        _completedSubtitleRequests.remove(cacheKey);
         if (identical(_subtitleRequests[cacheKey], request)) {
           _subtitleRequests.remove(cacheKey);
         }
       },
     );
     return request;
+  }
+
+  /// True when the materialized track still has its local WebVTT file on
+  /// disk. Non-`file:` URLs (not produced by this client) always pass so a
+  /// cache hit is not rejected for an unexpected track kind.
+  bool _materializedSubtitleFileExists(BiliSubtitleTrack track) {
+    final uri = Uri.tryParse(track.url);
+    if (uri == null || uri.scheme != 'file') {
+      return true;
+    }
+    return File(uri.toFilePath()).existsSync();
+  }
+
+  /// Keeps [_subtitleRequests] bounded by dropping the oldest completed
+  /// entries (map iteration order is insertion order for string keys).
+  /// Entries whose Future is still pending are shared with concurrent callers
+  /// and are skipped.
+  void _trimSubtitleRequestCache(String newestKey) {
+    const maxCachedSubtitles = 24;
+    var overflow = _subtitleRequests.length - maxCachedSubtitles;
+    if (overflow <= 0) {
+      return;
+    }
+    for (final key in _subtitleRequests.keys.toList(growable: false)) {
+      if (overflow <= 0 || key == newestKey) {
+        break;
+      }
+      if (!_completedSubtitleRequests.contains(key)) {
+        continue;
+      }
+      _subtitleRequests.remove(key);
+      _completedSubtitleRequests.remove(key);
+      overflow -= 1;
+    }
   }
 
   Future<List<BiliSubtitleTrack>> _fetchVideoSubtitlesUncached({
@@ -839,6 +904,9 @@ extension BiliClientLibrary on BiliClient {
       }
       await temp.rename(file.path);
     }
+    // Best-effort: keep the subtitle temp directory from growing unbounded
+    // across sessions. Cleanup must never break playback resolution.
+    unawaited(_cleanupStaleSubtitleFiles(directory));
     return BiliSubtitleTrack(
       id: 'subtitle:bili:${track.id}',
       language: track.language,
@@ -846,6 +914,34 @@ extension BiliClientLibrary on BiliClient {
       url: file.uri.toString(),
       isDefault: track.isDefault,
     );
+  }
+
+  /// Best-effort cleanup of stale materialized subtitle files (same expiry
+  /// contract as `_cleanupStaleDashManifests`). Failures are ignored so a
+  /// cleanup hiccup can never break playback resolution.
+  Future<void> _cleanupStaleSubtitleFiles(Directory directory) async {
+    try {
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      await for (final entity in directory.list()) {
+        if (entity is! File) {
+          continue;
+        }
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith('.vtt') && !name.contains('.tmp-')) {
+          continue;
+        }
+        try {
+          final stat = await entity.stat();
+          if (stat.modified.isBefore(cutoff)) {
+            await entity.delete();
+          }
+        } catch (_) {
+          // Ignore individual file failures.
+        }
+      }
+    } catch (_) {
+      // Cleanup must never break playback resolution.
+    }
   }
 
   String? _subtitleBodyToWebVtt(String body) {

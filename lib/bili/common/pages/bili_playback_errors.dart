@@ -99,7 +99,7 @@ class _BiliPlaybackErrorState extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    error.toString(),
+                    biliErrorMessage(error),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: visualTheme.textSecondary,
                       height: 1.6,

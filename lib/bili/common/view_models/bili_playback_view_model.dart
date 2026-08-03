@@ -949,6 +949,13 @@ final class BiliPlaybackViewModel {
     if (controller == null || page.cid == _selectedPage.value.cid) {
       return null;
     }
+    // Reentrancy guard: a previous switch may still be resolving/selecting
+    // its source. Let the in-flight transition finish untouched instead of
+    // interleaving two resolvePlayback -> selectSource -> play chains that
+    // would race on _selectedPage/_resolvedPlayback writes.
+    if (_playbackSourceTransitionInFlight) {
+      return null;
+    }
 
     _playbackSourceTransitionInFlight = true;
     _resetPlaybackRecoveryState(clearPendingNotice: true);
@@ -1334,35 +1341,44 @@ final class BiliPlaybackViewModel {
       return;
     }
 
-    switch (event.kind) {
-      case VesperExternalPlaybackSessionEventKind.routeConnected:
-        final result = await _externalPlaybackForCast.loadFromPlayer(
-          player: controller,
-          source: resolved.toSource(),
-          metadata: _systemPlaybackMetadataForResolved(resolved),
-        );
-        if (_isDisposed) return;
-        _castPausedLocalPlayback = result.isSuccess;
-        _castMessage.value = result.isSuccess
-            ? '投屏已连接：${event.routeName ?? '外部设备'}'
-            : result.message ?? '当前资源暂不支持投屏。';
-      case VesperExternalPlaybackSessionEventKind.routeDisconnected:
-        if (_castPausedLocalPlayback) {
-          final positionMs = event.positionMs;
-          if (positionMs != null) {
-            final deltaMs =
-                positionMs - controller.snapshot.timeline.positionMs;
-            await controller.seekBy(deltaMs);
+    try {
+      switch (event.kind) {
+        case VesperExternalPlaybackSessionEventKind.routeConnected:
+          final result = await _externalPlaybackForCast.loadFromPlayer(
+            player: controller,
+            source: resolved.toSource(),
+            metadata: _systemPlaybackMetadataForResolved(resolved),
+          );
+          if (_isDisposed) return;
+          _castPausedLocalPlayback = result.isSuccess;
+          _castMessage.value = result.isSuccess
+              ? '投屏已连接：${event.routeName ?? '外部设备'}'
+              : result.message ?? '当前资源暂不支持投屏。';
+        case VesperExternalPlaybackSessionEventKind.routeDisconnected:
+          if (_castPausedLocalPlayback) {
+            final positionMs = event.positionMs;
+            if (positionMs != null) {
+              final deltaMs =
+                  positionMs - controller.snapshot.timeline.positionMs;
+              await controller.seekBy(deltaMs);
+            }
+            await controller.play();
           }
-          await controller.play();
-        }
-        if (_isDisposed) return;
-        _castPausedLocalPlayback = false;
-        _castMessage.value = '投屏已断开，本地播放已恢复。';
-      case VesperExternalPlaybackSessionEventKind.suspended:
-        if (_isDisposed) return;
-        _castMessage.value = '投屏连接已暂停。';
-      default:
+          if (_isDisposed) return;
+          _castPausedLocalPlayback = false;
+          _castMessage.value = '投屏已断开，本地播放已恢复。';
+        case VesperExternalPlaybackSessionEventKind.suspended:
+          if (_isDisposed) return;
+          _castMessage.value = '投屏连接已暂停。';
+        default:
+      }
+    } catch (error) {
+      // 事件回调是 fire-and-forget 的流监听，async 回调内抛出的异常不会
+      // 进入流的 onError，会成为 unhandled async error（如投屏断开瞬间
+      // 控制器已被 dispose，seekBy/play 抛出的平台异常）。
+      if (_isDisposed) return;
+      _castPausedLocalPlayback = false;
+      _castMessage.value = '投屏操作失败：${biliErrorMessage(error)}';
     }
   }
 

@@ -39,6 +39,10 @@ class BiliClient {
   // cannot issue duplicate player-v2 and subtitle-body requests.
   final Map<String, Future<List<BiliSubtitleTrack>>> _subtitleRequests =
       <String, Future<List<BiliSubtitleTrack>>>{};
+  // Keys of [_subtitleRequests] whose Future has completed successfully.
+  // Cache trimming only drops these; an in-flight request's Future is still
+  // shared with concurrent callers and must not be evicted underneath them.
+  final Set<String> _completedSubtitleRequests = <String>{};
   int? _currentUserMid;
 
   BiliTransport get transport => _transport;
@@ -49,12 +53,14 @@ class BiliClient {
     _transport.restoreCookies(cookies);
     _currentUserMid = readInt(cookies['DedeUserID']);
     _subtitleRequests.clear();
+    _completedSubtitleRequests.clear();
   }
 
   void clearSession() {
     _transport.clearSession();
     _currentUserMid = null;
     _subtitleRequests.clear();
+    _completedSubtitleRequests.clear();
   }
 
   bool get hasAuthenticatedSession => _transport.hasAuthenticatedSession;

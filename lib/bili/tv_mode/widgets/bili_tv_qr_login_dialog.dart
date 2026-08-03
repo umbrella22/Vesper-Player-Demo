@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -115,9 +116,8 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
           _controller.cancel();
         }
       },
-      child: ListenableBuilder(
-        listenable: _controller,
-        builder: (context, _) {
+      child: SignalBuilder(
+        builder: (context) {
           final screenSize = MediaQuery.sizeOf(context);
           final compact = screenSize.height < 560;
           final qrSize = (screenSize.height * (compact ? 0.34 : 0.32))
@@ -143,7 +143,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                     label: '刷新二维码',
                     icon: Icons.refresh_rounded,
                     autofocus: true,
-                    enabled: !_controller.isLoading,
+                    enabled: !_controller.isLoading.value,
                     debugLabel: 'tv_qr_login_refresh',
                     onTap: () => unawaited(_controller.refresh()),
                   ),
@@ -194,8 +194,8 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
               child: SizedBox.square(
                 dimension: qrSize,
                 child: BiliQrCodeView(
-                  ticket: _controller.ticket,
-                  isLoading: _controller.isLoading,
+                  ticket: _controller.ticket.value,
+                  isLoading: _controller.isLoading.value,
                 ),
               ),
             ),
@@ -208,7 +208,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                 width: 7,
                 height: 7,
                 decoration: BoxDecoration(
-                  color: _controller.errorMessage == null
+                  color: _controller.errorMessage.value == null
                       ? const Color(0xFF57D38C)
                       : const Color(0xFFFF7B83),
                   shape: BoxShape.circle,
@@ -217,7 +217,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  _controller.errorMessage == null
+                  _controller.errorMessage.value == null
                       ? '二维码有效，请使用手机扫码'
                       : '二维码需要刷新',
                   maxLines: 1,
@@ -237,8 +237,8 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
   }
 
   Widget _buildLoginPanel(double qrSize, {required bool compact}) {
-    final error = _controller.errorMessage != null;
-    final timestampMs = _controller.pollResult?.timestampMs;
+    final error = _controller.errorMessage.value != null;
+    final timestampMs = _controller.pollResult.value?.timestampMs;
     return SizedBox(
       height: qrSize + (compact ? 58 : 66),
       child: Column(

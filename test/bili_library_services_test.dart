@@ -645,6 +645,218 @@ void main() {
     );
   });
 
+  test(
+    're-fetches subtitles when the cached VTT file was cleaned up',
+    () async {
+      final httpClient = _LibraryHttpClient();
+      final client = BiliClient(httpClient: httpClient)
+        ..restoreCookies(const <String, String>{
+          'SESSDATA': 'sess',
+          'bili_jct': 'csrf',
+          'DedeUserID': '42',
+          'buvid3': 'b3',
+          'buvid4': 'b4',
+        });
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      final first = await client.fetchVideoSubtitles(
+        bvid: 'BV1subtitle',
+        cid: 99,
+      );
+      final firstUrl = first.single.url;
+      final firstFile = File(Uri.parse(firstUrl).toFilePath());
+      addTearDown(() async {
+        if (await firstFile.exists()) {
+          await firstFile.delete();
+        }
+      });
+      // Simulate _cleanupStaleSubtitleFiles removing the materialized file
+      // while the in-memory cache still points at it.
+      await firstFile.delete();
+
+      final second = await client.fetchVideoSubtitles(
+        bvid: 'BV1subtitle',
+        cid: 99,
+      );
+      expect(second.single.id, first.single.id);
+      expect(
+        File(Uri.parse(second.single.url).toFilePath()).existsSync(),
+        isTrue,
+      );
+      expect(
+        httpClient.requestedUris.where((uri) => uri.host == 'subtitle.example'),
+        hasLength(2),
+      );
+    },
+  );
+
+  test('cache trim never evicts an in-flight subtitle request', () async {
+    final gate = Completer<void>();
+    final httpClient = _LibraryHttpClient(
+      subtitleGates: <Future<void>>[gate.future],
+      subtitleBvids: const <String>{'BV1inflight'},
+    );
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    // Start one materialization and hold its subtitle-body request open.
+    final inFlight = client.fetchVideoSubtitles(bvid: 'BV1inflight', cid: 1);
+    await pumpEventQueue();
+    // Fill the request cache past its bound with completed requests.
+    for (var i = 0; i < 24; i++) {
+      await client.fetchVideoSubtitles(bvid: 'BV1done$i', cid: 1000 + i);
+    }
+    gate.complete();
+    final tracks = await inFlight;
+    expect(tracks, hasLength(1));
+    addTearDown(() async {
+      final file = File(Uri.parse(tracks.single.url).toFilePath());
+      if (await file.exists()) {
+        await file.delete();
+      }
+    });
+
+    // The trim triggered by the completed requests must not have evicted the
+    // then-in-flight entry: a follow-up lookup is served from the cache.
+    final playerV2Count = httpClient.requestedUris
+        .where((uri) => uri.path == '/x/player/v2')
+        .length;
+    final again = await client.fetchVideoSubtitles(bvid: 'BV1inflight', cid: 1);
+    expect(again.single.id, tracks.single.id);
+    expect(
+      httpClient.requestedUris.where((uri) => uri.path == '/x/player/v2'),
+      hasLength(playerV2Count),
+    );
+  });
+
+  test(
+    'two callers invalidate the same stale subtitle entry exactly once',
+    () async {
+      final httpClient = _LibraryHttpClient();
+      final client = BiliClient(httpClient: httpClient)
+        ..restoreCookies(const <String, String>{
+          'SESSDATA': 'sess',
+          'bili_jct': 'csrf',
+          'DedeUserID': '42',
+          'buvid3': 'b3',
+          'buvid4': 'b4',
+        });
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      final first = await client.fetchVideoSubtitles(
+        bvid: 'BV1subtitle',
+        cid: 99,
+      );
+      final file = File(Uri.parse(first.single.url).toFilePath());
+      addTearDown(() async {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      });
+      await file.delete();
+
+      // 两个调用方同时命中同一个已失效的缓存条目：两者都必须拿到新拉取
+      // 的结果，且只允许发出一次重拉（player-v2 与字幕 body 各一次）。
+      final results = await Future.wait(<Future<List<BiliSubtitleTrack>>>[
+        client.fetchVideoSubtitles(bvid: 'BV1subtitle', cid: 99),
+        client.fetchVideoSubtitles(bvid: 'BV1subtitle', cid: 99),
+      ]);
+      expect(results[0].single.id, first.single.id);
+      expect(results[1].single.id, first.single.id);
+      expect(
+        File(Uri.parse(results[0].single.url).toFilePath()).existsSync(),
+        isTrue,
+      );
+      expect(
+        httpClient.requestedUris.where((uri) => uri.path == '/x/player/v2'),
+        hasLength(2),
+      );
+      expect(
+        httpClient.requestedUris.where((uri) => uri.host == 'subtitle.example'),
+        hasLength(2),
+      );
+    },
+  );
+
+  test(
+    'a stale session future cannot mark a fresh in-flight request completed',
+    () async {
+      // 会话切换（restoreCookies 清空缓存）后，旧会话挂起的 Future 完成时
+      // 不得把新会话的 in-flight 条目标记为 completed——否则 trim 会把它
+      // 当成已完成条目驱逐，正在等待的调用方就会失去共享的请求。
+      final staleGate = Completer<void>();
+      final freshGate = Completer<void>();
+      final httpClient = _LibraryHttpClient(
+        subtitleGates: <Future<void>>[staleGate.future, freshGate.future],
+        subtitleBvids: const <String>{'BV1inflight'},
+      );
+      final client = BiliClient(httpClient: httpClient)
+        ..restoreCookies(const <String, String>{
+          'SESSDATA': 'sess',
+          'bili_jct': 'csrf',
+          'DedeUserID': '42',
+          'buvid3': 'b3',
+          'buvid4': 'b4',
+        });
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      // 旧会话请求挂起（结果由 gate 控制，不需要持有）。
+      unawaited(client.fetchVideoSubtitles(bvid: 'BV1inflight', cid: 1));
+      await pumpEventQueue();
+      // 会话切换：旧 Future 仍挂着，但缓存已被清空。
+      client.restoreCookies(const <String, String>{
+        'SESSDATA': 'sess2',
+        'bili_jct': 'csrf2',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+      // 新会话的同 key 请求挂起（freshGate）。
+      final fresh = client.fetchVideoSubtitles(bvid: 'BV1inflight', cid: 1);
+      await pumpEventQueue();
+      // 填满其他视频的已完成条目，使下一次完成触发 trim。
+      for (var i = 0; i < 24; i++) {
+        await client.fetchVideoSubtitles(bvid: 'BV1done$i', cid: 1000 + i);
+      }
+      // 旧请求先完成：不得标记新请求。
+      staleGate.complete();
+      await pumpEventQueue();
+      // 再完成一个其他视频：trim 溢出，若旧请求错误标记了新请求，正在
+      // in-flight 的 fresh 就会被驱逐。
+      await client.fetchVideoSubtitles(bvid: 'BV1done-last', cid: 9999);
+      freshGate.complete();
+      final tracks = await fresh;
+      expect(tracks, hasLength(1));
+      addTearDown(() async {
+        final file = File(Uri.parse(tracks.single.url).toFilePath());
+        if (await file.exists()) {
+          await file.delete();
+        }
+      });
+
+      // fresh 未被驱逐：再次请求命中缓存，不再发 player-v2。
+      final playerV2Count = httpClient.requestedUris
+          .where((uri) => uri.path == '/x/player/v2')
+          .length;
+      final again = await client.fetchVideoSubtitles(
+        bvid: 'BV1inflight',
+        cid: 1,
+      );
+      expect(again.single.id, tracks.single.id);
+      expect(
+        httpClient.requestedUris.where((uri) => uri.path == '/x/player/v2'),
+        hasLength(playerV2Count),
+      );
+    },
+  );
+
   test('falls back to the ATV WBI subtitle endpoint', () async {
     final httpClient = _LibraryHttpClient(subtitlesOnlyOnWbi: true);
     final client = BiliClient(httpClient: httpClient)
@@ -838,6 +1050,8 @@ final class _LibraryHttpClient implements HttpClient {
     this.historyPaginationAuthExpires = false,
     this.emptyHistoryCovers = false,
     this.emptyWatchLaterCovers = false,
+    this.subtitleGates = const <Future<void>>[],
+    this.subtitleBvids,
   });
 
   final bool durationAsClockLabel;
@@ -855,6 +1069,15 @@ final class _LibraryHttpClient implements HttpClient {
   final bool historyPaginationAuthExpires;
   final bool emptyHistoryCovers;
   final bool emptyWatchLaterCovers;
+
+  /// When non-empty, subtitle body requests (host `subtitle.example`) wait on
+  /// the next gate future (consumed per request, queue order) before
+  /// responding. Used to hold individual materializations in flight.
+  final List<Future<void>> subtitleGates;
+
+  /// When non-null, only player-v2 responses for these bvids advertise
+  /// subtitles. Keeps gated requests from blocking unrelated materializations.
+  final Set<String>? subtitleBvids;
   final List<Uri> requestedUris = <Uri>[];
   final Map<Uri, Map<String, String>> requestHeaders =
       <Uri, Map<String, String>>{};
@@ -872,6 +1095,9 @@ final class _LibraryHttpClient implements HttpClient {
     requestedUris.add(url);
     final headers = <String, String>{};
     requestHeaders[url] = headers;
+    if (url.host == 'subtitle.example' && subtitleGates.isNotEmpty) {
+      await subtitleGates.removeAt(0);
+    }
     return _LibraryHttpClientRequest(
       _responseFor(url),
       onHeader: (name, value) => headers[name.toLowerCase()] = value.toString(),
@@ -1048,8 +1274,11 @@ final class _LibraryHttpClient implements HttpClient {
           'message': 'subtitle endpoint unavailable',
         });
       }
+      final subtitleBvids = this.subtitleBvids;
       final hasSubtitles =
-          !subtitlesOnlyOnWbi || url.path == '/x/player/wbi/v2';
+          (subtitleBvids == null ||
+              subtitleBvids.contains(url.queryParameters['bvid'])) &&
+          (!subtitlesOnlyOnWbi || url.path == '/x/player/wbi/v2');
       return _json(<String, Object?>{
         'code': 0,
         'data': <String, Object?>{

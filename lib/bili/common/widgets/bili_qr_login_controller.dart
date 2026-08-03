@@ -1,12 +1,19 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:signals/signals_flutter.dart';
 
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
 
-final class BiliQrLoginController extends ChangeNotifier {
+/// 扫码登录流程的页面级状态机。
+///
+/// UI 状态用 signals 表达（`signal<T>` + ReadonlySignal），符合仓库的
+/// 状态管理约定：页面级控制器不应使用 ChangeNotifier。消费者通过
+/// [revision]（每次状态变化自增）驱动 SignalBuilder 重建，或直接读
+/// 各状态的 .value。
+final class BiliQrLoginController {
   BiliQrLoginController({
     required this.client,
     required this.sessionStore,
@@ -17,50 +24,57 @@ final class BiliQrLoginController extends ChangeNotifier {
   final BiliSessionStore sessionStore;
   final ValueChanged<BiliUserProfile> onConfirmed;
 
-  BiliQrLoginTicket? _ticket;
-  BiliQrLoginPollResult? _pollResult;
-  bool _isLoading = true;
-  bool _isPolling = false;
-  String? _errorMessage;
+  final Signal<BiliQrLoginTicket?> _ticket = Signal<BiliQrLoginTicket?>(null);
+  final Signal<BiliQrLoginPollResult?> _pollResult =
+      Signal<BiliQrLoginPollResult?>(null);
+  final Signal<bool> _isLoading = Signal<bool>(true);
+  final Signal<bool> _isPolling = Signal<bool>(false);
+  final Signal<String?> _errorMessage = Signal<String?>(null);
+  // Bumped on every state change so SignalBuilder can rebuild on any field.
+  final Signal<int> _revision = Signal<int>(0);
   Timer? _timer;
   int _generation = 0;
   bool _active = true;
   bool _disposed = false;
 
-  BiliQrLoginTicket? get ticket => _ticket;
-  BiliQrLoginPollResult? get pollResult => _pollResult;
-  bool get isLoading => _isLoading;
-  bool get isPolling => _isPolling;
-  String? get errorMessage => _errorMessage;
+  ReadonlySignal<BiliQrLoginTicket?> get ticket => _ticket;
+  ReadonlySignal<BiliQrLoginPollResult?> get pollResult => _pollResult;
+  ReadonlySignal<bool> get isLoading => _isLoading;
+  ReadonlySignal<bool> get isPolling => _isPolling;
+  ReadonlySignal<String?> get errorMessage => _errorMessage;
+
+  /// Increments on every state mutation; listen to it to rebuild the whole
+  /// login surface when any field changes.
+  ReadonlySignal<int> get revision => _revision;
 
   bool get canRefresh {
-    final status = _pollResult?.status;
-    return _errorMessage != null ||
+    final status = _pollResult.value?.status;
+    return _errorMessage.value != null ||
         status == BiliQrLoginStatus.expired ||
         status == BiliQrLoginStatus.failed;
   }
 
-  bool get canCheck => _ticket != null && !_isPolling;
+  bool get canCheck => _ticket.value != null && !_isPolling.value;
 
   String get statusMessage {
-    final errorMessage = _errorMessage;
+    final errorMessage = _errorMessage.value;
     if (errorMessage != null) {
       return errorMessage;
     }
-    return switch (_pollResult?.status) {
+    return switch (_pollResult.value?.status) {
       BiliQrLoginStatus.waitingForScan || null => '用哔哩哔哩 App 扫码，然后在手机上确认登录。',
       BiliQrLoginStatus.scannedAwaitingConfirm => '已经扫到码了，等手机端确认。',
       BiliQrLoginStatus.confirmed => '登录成功，正在同步账号信息。',
       BiliQrLoginStatus.expired => '二维码已失效，刷新后重新扫码。',
-      BiliQrLoginStatus.failed => _pollResult?.message ?? '登录失败。',
+      BiliQrLoginStatus.failed => _pollResult.value?.message ?? '登录失败。',
     };
   }
 
   String get checkLabel {
-    if (_isPolling) {
+    if (_isPolling.value) {
       return '检查中';
     }
-    if (_pollResult?.status == BiliQrLoginStatus.scannedAwaitingConfirm) {
+    if (_pollResult.value?.status == BiliQrLoginStatus.scannedAwaitingConfirm) {
       return '已扫码，继续等待';
     }
     return '立即检查状态';
@@ -75,11 +89,11 @@ final class BiliQrLoginController extends ChangeNotifier {
     _stopPollingTimer();
     _active = true;
     final generation = ++_generation;
-    _isLoading = true;
-    _isPolling = false;
-    _errorMessage = null;
-    _ticket = null;
-    _pollResult = null;
+    _isLoading.value = true;
+    _isPolling.value = false;
+    _errorMessage.value = null;
+    _ticket.value = null;
+    _pollResult.value = null;
     _notify();
 
     try {
@@ -87,8 +101,8 @@ final class BiliQrLoginController extends ChangeNotifier {
       if (!_isCurrent(generation)) {
         return;
       }
-      _ticket = ticket;
-      _isLoading = false;
+      _ticket.value = ticket;
+      _isLoading.value = false;
       _notify();
       _ensurePollingTimer();
       unawaited(checkNow());
@@ -96,28 +110,28 @@ final class BiliQrLoginController extends ChangeNotifier {
       if (!_isCurrent(generation)) {
         return;
       }
-      _isLoading = false;
-      _errorMessage = error.toString();
+      _isLoading.value = false;
+      _errorMessage.value = error.toString();
       _notify();
     }
   }
 
   Future<void> checkNow() async {
-    final ticket = _ticket;
-    if (ticket == null || _isPolling || !_active || _disposed) {
+    final ticket = _ticket.value;
+    if (ticket == null || _isPolling.value || !_active || _disposed) {
       return;
     }
     final generation = _generation;
-    _isPolling = true;
-    _errorMessage = null;
+    _isPolling.value = true;
+    _errorMessage.value = null;
     _notify();
     try {
       final result = await client.pollQrLogin(ticket.qrcodeKey);
       if (!_isCurrent(generation)) {
         return;
       }
-      _pollResult = result;
-      _errorMessage = null;
+      _pollResult.value = result;
+      _errorMessage.value = null;
       _notify();
 
       if (result.status == BiliQrLoginStatus.confirmed) {
@@ -144,11 +158,11 @@ final class BiliQrLoginController extends ChangeNotifier {
       if (!_isCurrent(generation)) {
         return;
       }
-      _errorMessage = error.toString();
+      _errorMessage.value = error.toString();
       _stopPollingTimer();
     } finally {
       if (_isCurrent(generation)) {
-        _isPolling = false;
+        _isPolling.value = false;
         _notify();
       }
     }
@@ -160,12 +174,15 @@ final class BiliQrLoginController extends ChangeNotifier {
     }
     _active = false;
     _generation += 1;
-    _isPolling = false;
+    _isPolling.value = false;
     _stopPollingTimer();
   }
 
   void _ensurePollingTimer() {
-    if (!_active || _disposed || _ticket == null || _timer?.isActive == true) {
+    if (!_active ||
+        _disposed ||
+        _ticket.value == null ||
+        _timer?.isActive == true) {
       return;
     }
     _timer = Timer.periodic(
@@ -184,14 +201,18 @@ final class BiliQrLoginController extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) {
-      notifyListeners();
+      _revision.value += 1;
     }
   }
 
-  @override
   void dispose() {
     cancel();
     _disposed = true;
-    super.dispose();
+    _ticket.dispose();
+    _pollResult.dispose();
+    _isLoading.dispose();
+    _isPolling.dispose();
+    _errorMessage.dispose();
+    _revision.dispose();
   }
 }

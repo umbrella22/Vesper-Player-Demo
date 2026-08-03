@@ -6,6 +6,7 @@ import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+import 'package:vesper_media/download/services/offline_download_controller.dart';
 
 class BiliVideoDetailPage extends StatefulWidget {
   const BiliVideoDetailPage({
@@ -14,12 +15,14 @@ class BiliVideoDetailPage extends StatefulWidget {
     this.seedResult,
     required this.client,
     required this.historyStore,
+    this.offlineController,
   });
 
   final String bvid;
   final BiliSearchResult? seedResult;
   final BiliClient client;
   final BiliHistoryStore historyStore;
+  final BiliOfflineDownloadController? offlineController;
 
   @override
   State<BiliVideoDetailPage> createState() => _BiliVideoDetailPageState();
@@ -72,6 +75,9 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
           initialPage: page,
           client: widget.client,
           historyStore: widget.historyStore,
+          offlineController:
+              widget.offlineController ??
+              BiliOfflineDownloadController.instance,
         ),
       ),
     );

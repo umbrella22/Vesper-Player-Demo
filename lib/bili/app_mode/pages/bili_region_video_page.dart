@@ -366,6 +366,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
           initialPage: initialPage,
           client: _client,
           historyStore: _historyStore,
+          offlineController: _offlineController,
         ),
       ),
     );

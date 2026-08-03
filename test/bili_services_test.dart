@@ -1012,10 +1012,16 @@ void main() {
         );
         final origin = 'http://${server.address.host}:${server.port}';
         final client = BiliClient();
+        // baseUrl 用无端口的 0.0.0.0（必然连接失败，非 PCDN 所以不会触发
+        // 全 PCDN 重写为公网 CDN host）；bad/good 候选都指向本地测试服务器。
+        // 探测顺序：0.0.0.0 失败 → bad 403 → good 206。
         final video = BiliDashStream(
           id: 80,
-          baseUrl: '$origin/bad-video.m4s',
-          backupUrls: <String>['$origin/good-video.m4s'],
+          baseUrl: 'http://0.0.0.0/bad-video.m4s',
+          backupUrls: <String>[
+            '$origin/bad-video.m4s',
+            '$origin/good-video.m4s',
+          ],
           mimeType: 'video/mp4',
           codecs: 'avc1.640028',
           bandwidth: 1200000,
@@ -1027,7 +1033,11 @@ void main() {
         );
         final audio = BiliDashStream(
           id: 30280,
-          baseUrl: '$origin/good-audio.m4s',
+          baseUrl: 'http://0.0.0.0/bad-audio.m4s',
+          backupUrls: <String>[
+            '$origin/bad-audio.m4s',
+            '$origin/good-audio.m4s',
+          ],
           mimeType: 'audio/mp4',
           codecs: 'mp4a.40.2',
           bandwidth: 192000,
@@ -1083,6 +1093,80 @@ void main() {
         expect(videoResource.sizeBytes, 1234);
         expect(audioResource.sizeBytes, 1234);
       },
+    );
+
+    test(
+      'probe aborts a 200 full-body response without draining it',
+      () async {
+        // CDN 忽略 Range 以 200 返回完整文件时，探测只读响应头并立即断开
+        // body，绝不下拉整个视频。若实现回归为 drain，测试会挂到超时。
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        const fullSizeBytes = 8 * 1024 * 1024;
+        server.listen((request) {
+          request.response
+            ..statusCode = HttpStatus.ok
+            ..headers.contentLength = fullSizeBytes
+            ..add(List<int>.filled(1024, 1));
+          // 故意不 close：客户端应主动中止 body 读取。
+        });
+        final origin = 'http://${server.address.host}:${server.port}';
+        final client = BiliClient();
+        final options = _buildProbeTestOptions(origin);
+
+        final prepared = await client.prepareVerifiedDownloadAsset(
+          options: options,
+          qualityId: 80,
+        );
+
+        expect(prepared.selectedVideo.sizeBytes, fullSizeBytes);
+        expect(prepared.selectedAudio.sizeBytes, fullSizeBytes);
+        expect(prepared.assetIndex.totalSizeBytes, fullSizeBytes * 2);
+      },
+      timeout: const Timeout(Duration(seconds: 10)),
+    );
+
+    test(
+      'probe timeout closes the stalled connection',
+      () async {
+        // 服务端不返回响应头时，超时必须主动关闭底层连接，不能遗留悬挂
+        // 的后台连接。不访问任何公网地址。用原始 ServerSocket：HttpServer
+        // 会在 handler 抛错/返回时自动完成响应，干扰"连接被客户端关闭"
+        // 的观测。
+        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close());
+        final connectionClosed = Completer<void>();
+        server.listen((socket) {
+          // 故意不回应：客户端 abort 时服务端会读到 EOF（read onDone）。
+          // socket.done 需本地 close 才完成，不能用于观测对端 FIN。
+          socket.listen(
+            (_) {},
+            onDone: () {
+              if (!connectionClosed.isCompleted) {
+                connectionClosed.complete();
+              }
+            },
+          );
+        });
+        final origin = 'http://${server.address.address}:${server.port}';
+        final client = BiliClient();
+        final options = _buildProbeTestOptions(origin);
+
+        await expectLater(
+          client.prepareVerifiedDownloadAsset(options: options, qualityId: 80),
+          throwsA(
+            isA<BiliApiException>().having(
+              (error) => error.toString(),
+              'message',
+              contains('timed out'),
+            ),
+          ),
+        );
+
+        // 超时后服务端必须观察到连接被客户端关闭。
+        await connectionClosed.future.timeout(const Duration(seconds: 5));
+      },
+      timeout: const Timeout(Duration(seconds: 25)),
     );
 
     test(
@@ -1671,6 +1755,193 @@ void main() {
         expect(legacyFile.existsSync(), isFalse);
       },
     );
+
+    test(
+      'secure storage write failure keeps the plaintext fallback session',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'bili-session-write-fail-',
+        );
+        final legacy = await Directory.systemTemp.createTemp(
+          'bili-session-legacy-',
+        );
+        final secureStorage = _FakeSessionSecureStorage()
+          ..writeError = Exception('keychain unavailable');
+        addTearDown(() => root.delete(recursive: true));
+        addTearDown(() => legacy.delete(recursive: true));
+
+        final legacyFile = File('${legacy.path}/bili-session.json');
+        await legacyFile.create(recursive: true);
+        await legacyFile.writeAsString(
+          '{"savedAtMs":123,"cookies":{"SESSDATA":"abc","bili_jct":"token"}}',
+        );
+
+        final store = BiliSessionStore(
+          baseDirectory: root,
+          legacyDirectory: legacy,
+          secureStorage: secureStorage,
+        );
+        final cookies = await store.loadCookies();
+
+        // 迁移写入失败必须保留已恢复的会话，且不得删除明文文件。
+        expect(cookies['SESSDATA'], 'abc');
+        expect(cookies['bili_jct'], 'token');
+        expect(secureStorage.values, isEmpty);
+        expect(File('${root.path}/bili-session.json').existsSync(), isTrue);
+        expect(legacyFile.existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'secure storage read failure falls back to plaintext session',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'bili-session-read-fail-',
+        );
+        final legacy = await Directory.systemTemp.createTemp(
+          'bili-session-legacy-',
+        );
+        final secureStorage = _FakeSessionSecureStorage()
+          ..readError = Exception('keychain unavailable');
+        addTearDown(() => root.delete(recursive: true));
+        addTearDown(() => legacy.delete(recursive: true));
+
+        final legacyFile = File('${legacy.path}/bili-session.json');
+        await legacyFile.create(recursive: true);
+        await legacyFile.writeAsString(
+          '{"savedAtMs":123,"cookies":{"SESSDATA":"abc","bili_jct":"token"}}',
+        );
+
+        final store = BiliSessionStore(
+          baseDirectory: root,
+          legacyDirectory: legacy,
+          secureStorage: secureStorage,
+        );
+        final cookies = await store.loadCookies();
+
+        expect(cookies['SESSDATA'], 'abc');
+        expect(cookies['bili_jct'], 'token');
+        // 迁移写入成功，但安全存储本次读取失败（Keychain 可能持续不可用），
+        // 明文文件必须保留作为下次启动的兜底，不能被删除。
+        expect(secureStorage.values, hasLength(1));
+        expect(legacyFile.existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'keeps the plaintext fallback across startups while secure reads fail',
+      () async {
+        // 两次"启动"（两个 store 实例、同一目录与同一 Keychain）：读取持续
+        // 失败时，第一次启动写入的迁移值不能以删除明文为代价。
+        final root = await Directory.systemTemp.createTemp(
+          'bili-session-read-fail-2-',
+        );
+        final legacy = await Directory.systemTemp.createTemp(
+          'bili-session-legacy-2-',
+        );
+        final secureStorage = _FakeSessionSecureStorage()
+          ..readError = Exception('keychain unavailable');
+        addTearDown(() => root.delete(recursive: true));
+        addTearDown(() => legacy.delete(recursive: true));
+
+        final legacyFile = File('${legacy.path}/bili-session.json');
+        await legacyFile.create(recursive: true);
+        await legacyFile.writeAsString(
+          '{"savedAtMs":123,"cookies":{"SESSDATA":"abc","bili_jct":"token"}}',
+        );
+
+        BiliSessionStore storeForStartup() => BiliSessionStore(
+          baseDirectory: root,
+          legacyDirectory: legacy,
+          secureStorage: secureStorage,
+        );
+        final firstCookies = await storeForStartup().loadCookies();
+        expect(firstCookies['SESSDATA'], 'abc');
+        expect(legacyFile.existsSync(), isTrue);
+
+        // 第二次启动：Keychain 仍不可读，明文兜底必须还在。
+        final secondCookies = await storeForStartup().loadCookies();
+        expect(secondCookies['SESSDATA'], 'abc');
+        expect(secondCookies['bili_jct'], 'token');
+        expect(secureStorage.values, hasLength(1));
+      },
+    );
+
+    test('corrupt session file logs no cookie payload', () async {
+      final logs = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          logs.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = originalDebugPrint;
+      });
+
+      final root = await Directory.systemTemp.createTemp(
+        'bili-session-corrupt-',
+      );
+      final legacy = await Directory.systemTemp.createTemp(
+        'bili-session-legacy-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => legacy.delete(recursive: true));
+
+      final legacyFile = File('${legacy.path}/bili-session.json');
+      await legacyFile.create(recursive: true);
+      await legacyFile.writeAsString(
+        '{"savedAtMs":123,"cookies":{"SESSDATA":"secret-value-123"',
+      );
+
+      final store = BiliSessionStore(
+        baseDirectory: root,
+        legacyDirectory: legacy,
+      );
+      final cookies = await store.loadCookies();
+
+      expect(cookies, isEmpty);
+      final joinedLogs = logs.join('\n');
+      expect(joinedLogs, isNot(contains('secret-value-123')));
+      expect(joinedLogs, isNot(contains('SESSDATA')));
+    });
+
+    test('corrupt secure payload logs no cookie payload', () async {
+      final logs = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          logs.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = originalDebugPrint;
+      });
+
+      final root = await Directory.systemTemp.createTemp(
+        'bili-session-secure-corrupt-',
+      );
+      final legacy = await Directory.systemTemp.createTemp(
+        'bili-session-legacy-',
+      );
+      final secureStorage = _FakeSessionSecureStorage()
+        ..values['bili-session-cookies-v1'] =
+            '{"cookies":{"bili_jct":"csrf-secret-value"';
+      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => legacy.delete(recursive: true));
+
+      final store = BiliSessionStore(
+        baseDirectory: root,
+        legacyDirectory: legacy,
+        secureStorage: secureStorage,
+      );
+      final cookies = await store.loadCookies();
+
+      expect(cookies, isEmpty);
+      final joinedLogs = logs.join('\n');
+      expect(joinedLogs, isNot(contains('csrf-secret-value')));
+      expect(joinedLogs, isNot(contains('bili_jct')));
+    });
   });
 
   group('BiliFeedVideo parser', () {
@@ -1917,14 +2188,85 @@ final class _FakeEngagementHttpClient implements HttpClient {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+BiliDownloadOptions _buildProbeTestOptions(String origin) {
+  // baseUrl 用无端口的 0.0.0.0 占位候选：连接 0.0.0.0 必然立即失败
+  // （SocketException），不依赖本机 127.0.0.1:80 是否空闲；且 0.0.0.0
+  // 不是 PCDN（无端口），避免候选全为带端口 PCDN 时
+  // sortBiliMediaUrlCandidates 把第一个候选重写为公网 CDN host——测试
+  // 必须只访问 loopback，绝不触达 bilivideo.com。
+  final video = BiliDashStream(
+    id: 80,
+    baseUrl: 'http://0.0.0.0/video.m4s',
+    backupUrls: <String>['$origin/video.m4s'],
+    mimeType: 'video/mp4',
+    codecs: 'avc1.640028',
+    bandwidth: 1200000,
+    representationId: 'video-80-7-1200000-0',
+    segmentInfo: const BiliDashSegmentInfo(
+      initialization: '0-10',
+      indexRange: '11-20',
+    ),
+  );
+  final audio = BiliDashStream(
+    id: 30280,
+    baseUrl: 'http://0.0.0.0/audio.m4s',
+    backupUrls: <String>['$origin/audio.m4s'],
+    mimeType: 'audio/mp4',
+    codecs: 'mp4a.40.2',
+    bandwidth: 192000,
+    representationId: 'audio-30280-mp4a402-192000-0',
+    segmentInfo: const BiliDashSegmentInfo(
+      initialization: '0-10',
+      indexRange: '11-20',
+    ),
+  );
+  return BiliDownloadOptions(
+    bvid: 'BV1xx411c7mD',
+    cid: 11,
+    videoTitle: '测试视频',
+    pageTitle: 'P1 · 正片',
+    coverUrl: '',
+    referer: 'https://www.bilibili.com/video/BV1xx411c7mD',
+    headers: const <String, String>{
+      HttpHeaders.refererHeader: 'https://www.bilibili.com',
+    },
+    manifest: BiliDashManifestData(
+      durationMs: 1000,
+      minBufferTimeMs: 1500,
+      videoStreams: <BiliDashStream>[video],
+      audioStreams: <BiliDashStream>[audio],
+    ),
+    qualities: <BiliDownloadQualityOption>[
+      BiliDownloadQualityOption(
+        qualityId: 80,
+        label: '1080P 高清',
+        videoStreams: <BiliDashStream>[video],
+      ),
+    ],
+    variantLabel: 'test',
+  );
+}
+
 final class _FakeSessionSecureStorage implements BiliSessionSecureStorage {
   final Map<String, String> values = <String, String>{};
+  Object? readError;
+  Object? writeError;
 
   @override
-  Future<String?> read({required String key}) async => values[key];
+  Future<String?> read({required String key}) async {
+    final error = readError;
+    if (error != null) {
+      throw error;
+    }
+    return values[key];
+  }
 
   @override
   Future<void> write({required String key, required String value}) async {
+    final error = writeError;
+    if (error != null) {
+      throw error;
+    }
     values[key] = value;
   }
 
