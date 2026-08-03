@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.5.1...vesper_media-v1.6.0) (2026-08-03)
+
+
+### Features
+
+* enhance BiliServices tests with new probe timeout and abort scenarios ([78198a8](https://github.com/umbrella22/Vesper-Player-Demo/commit/78198a877c9acd74c7fd58c14c0f1ea54edce372))
+
+
+### Bug Fixes
+
+* update BiliQrLoginController tests to use value property for pollResult and errorMessage ([78198a8](https://github.com/umbrella22/Vesper-Player-Demo/commit/78198a877c9acd74c7fd58c14c0f1ea54edce372))
+
 ## [1.5.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.5.0...vesper_media-v1.5.1) (2026-08-02)
 
 
