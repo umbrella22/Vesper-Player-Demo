@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.5.0...vesper_media-v1.5.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* 修复构建顺序问题 ([90fa00a](https://github.com/umbrella22/Vesper-Player-Demo/commit/90fa00afe293922e36e5a078af7ba4305dbdfb63))
+
 ## [1.5.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.4.1...vesper_media-v1.5.0) (2026-08-02)
 
 
