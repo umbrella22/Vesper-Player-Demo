@@ -1,4 +1,4 @@
-name: iOS Release IPA
+name: iOS Release IPAs
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Existing release tag to build and attach the IPA to
+        description: Existing release tag to build and attach the IPAs to
         required: true
         type: string
   workflow_call:
@@ -30,7 +30,7 @@ defaults:
 
 jobs:
   build:
-    name: Build unsigned iOS IPA
+    name: Build unsigned and PlayCover iOS IPAs
     runs-on: macos-26
     timeout-minutes: 120
 
@@ -91,7 +91,7 @@ jobs:
           xcodebuild -version
           bash scripts/build_ios_no_codesign.sh release
 
-      - name: Package unsigned IPA
+      - name: Package unsigned and PlayCover IPAs
         run: |
           app_path="${VESPER_IOS_DERIVED_DATA_PATH}/Build/Products/Release-iphoneos/Runner.app"
           if [[ ! -d "$app_path" ]]; then
@@ -120,34 +120,70 @@ jobs:
             echo "Expected an unsigned application, but code signature verification succeeded." >&2
             exit 1
           fi
-          echo "Packaging unsigned iphoneos application version $bundle_version."
+          echo "Packaging unsigned and PlayCover iphoneos applications version $bundle_version."
 
           artifact_dir="${GITHUB_WORKSPACE}/artifacts"
-          payload_root="$(mktemp -d "${RUNNER_TEMP}/vesper-ios-ipa.XXXXXX")"
-          mkdir -p "$artifact_dir" "$payload_root/Payload"
-          ditto "$app_path" "$payload_root/Payload/Runner.app"
+          unsigned_payload_root="$(mktemp -d "${RUNNER_TEMP}/vesper-ios-unsigned.XXXXXX")"
+          playcover_payload_root="$(mktemp -d "${RUNNER_TEMP}/vesper-ios-playcover.XXXXXX")"
+          mkdir -p \
+            "$artifact_dir" \
+            "$unsigned_payload_root/Payload" \
+            "$playcover_payload_root/Payload"
+          ditto "$app_path" "$unsigned_payload_root/Payload/Runner.app"
+          ditto "$app_path" "$playcover_payload_root/Payload/Runner.app"
 
           tag_name="${RELEASE_TAG_NAME//\//-}"
           artifact_tag="$tag_name"
           if [[ "$tag_name" == *-v[0-9]* ]]; then
             artifact_tag="v${tag_name##*-v}"
           fi
-          ipa_name="vesper-${artifact_tag}-ios-unsigned.ipa"
+          unsigned_ipa_name="vesper-${artifact_tag}-ios-unsigned.ipa"
+          playcover_ipa_name="vesper-${artifact_tag}-ios-playcover.ipa"
           (
-            cd "$payload_root"
-            /usr/bin/zip -qry "$artifact_dir/$ipa_name" Payload
+            cd "$unsigned_payload_root"
+            /usr/bin/zip -qry "$artifact_dir/$unsigned_ipa_name" Payload
           )
+
+          playcover_app_path="$playcover_payload_root/Payload/Runner.app"
+          dart run scripts/rewrite_playcover_native_assets.dart "$playcover_app_path"
+          codesign --force --deep --sign - "$playcover_app_path"
+          codesign --verify --deep --strict --verbose=2 "$playcover_app_path"
+          signature_details="$(codesign --display --verbose=4 "$playcover_app_path" 2>&1)"
+          if ! grep -q '^Signature=adhoc$' <<<"$signature_details"; then
+            echo "Expected an ad-hoc signature on the PlayCover application." >&2
+            echo "$signature_details" >&2
+            exit 1
+          fi
+          (
+            cd "$playcover_payload_root"
+            /usr/bin/zip -qry "$artifact_dir/$playcover_ipa_name" Payload
+          )
+
           (
             cd "$artifact_dir"
-            shasum -a 256 "$ipa_name" > "$ipa_name.sha256"
+            shasum -a 256 "$unsigned_ipa_name" > "$unsigned_ipa_name.sha256"
+            shasum -a 256 "$playcover_ipa_name" > "$playcover_ipa_name.sha256"
           )
-          /usr/bin/unzip -tq "$artifact_dir/$ipa_name"
+          /usr/bin/unzip -tq "$artifact_dir/$unsigned_ipa_name"
+          /usr/bin/unzip -tq "$artifact_dir/$playcover_ipa_name"
 
-      - name: Upload IPA artifact
+      - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: ios-unsigned-ipa
-          path: artifacts/*
+          path: |
+            artifacts/*-ios-unsigned.ipa
+            artifacts/*-ios-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload PlayCover IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-playcover-ipa
+          path: |
+            artifacts/*-ios-playcover.ipa
+            artifacts/*-ios-playcover.ipa.sha256
           if-no-files-found: error
           retention-days: 30
 

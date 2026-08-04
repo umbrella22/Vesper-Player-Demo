@@ -36,6 +36,9 @@ part 'bili_tv_account.dart';
 enum _TvNavItem { recommend, regions, search, history, mine, settings }
 
 const _tvGridMaxCrossAxisExtent = 184.0;
+const _tvGridMaxCrossAxisExtentCeiling = 320.0;
+const _tvGridGrowthStartWidth = 1100.0;
+const _tvGridGrowthEndWidth = 2600.0;
 const _tvGridMainAxisSpacing = 14.0;
 const _tvGridCrossAxisSpacing = 16.0;
 const _tvGridChildAspectRatio = 1.14;
@@ -173,11 +176,25 @@ final class _TvHeroItem {
 }
 
 @visibleForTesting
-double biliTvVideoGridTileWidthForCrossAxisExtent(double crossAxisExtent) {
+double biliTvGridMaxCrossAxisExtentForWidth(double crossAxisExtent) {
   assert(crossAxisExtent >= 0);
+  final progress =
+      ((crossAxisExtent - _tvGridGrowthStartWidth) /
+              (_tvGridGrowthEndWidth - _tvGridGrowthStartWidth))
+          .clamp(0.0, 1.0);
+  return _tvGridMaxCrossAxisExtent +
+      (_tvGridMaxCrossAxisExtentCeiling - _tvGridMaxCrossAxisExtent) * progress;
+}
+
+@visibleForTesting
+double biliTvVideoGridTileWidthForCrossAxisExtent(
+  double crossAxisExtent, {
+  double maxCrossAxisExtent = _tvGridMaxCrossAxisExtent,
+}) {
+  assert(crossAxisExtent >= 0);
+  assert(maxCrossAxisExtent > 0);
   final calculatedCrossAxisCount =
-      (crossAxisExtent / (_tvGridMaxCrossAxisExtent + _tvGridCrossAxisSpacing))
-          .ceil();
+      (crossAxisExtent / (maxCrossAxisExtent + _tvGridCrossAxisSpacing)).ceil();
   final crossAxisCount = calculatedCrossAxisCount < 1
       ? 1
       : calculatedCrossAxisCount;
@@ -259,9 +276,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   late final BiliUiModeController _uiModeController;
   late final TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode(debugLabel: 'tv_search_field');
+  final FocusNode _heroPlayFocusNode = FocusNode(debugLabel: 'tv_hero_play');
   final ScrollController _contentScrollController = ScrollController();
   final ScrollController _continueShelfController = ScrollController();
-  final ScrollController _recommendShelfController = ScrollController();
 
   _TvNavItem _selectedNav = _TvNavItem.recommend;
   bool _forceTvMode = false;
@@ -325,10 +342,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   void dispose() {
     _searchFocusNode.removeListener(_handleSearchFocusChanged);
     _searchFocusNode.dispose();
+    _heroPlayFocusNode.dispose();
     _searchController.dispose();
     _contentScrollController.dispose();
     _continueShelfController.dispose();
-    _recommendShelfController.dispose();
     _heroUpdateTimer?.cancel();
     _viewModel.dispose();
     if (widget.uiModeController == null && !_uiModeControllerTransferred) {
@@ -523,6 +540,22 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     unawaited(
       precacheImage(NetworkImage(item.coverUrl), context, onError: (_, _) {}),
     );
+  }
+
+  bool _handleHistoryShelfDirectionalEdge(TraversalDirection direction) {
+    if (direction != TraversalDirection.up ||
+        _heroPlayFocusNode.context == null ||
+        !_heroPlayFocusNode.canRequestFocus) {
+      return false;
+    }
+    if (_contentScrollController.hasClients) {
+      final position = _contentScrollController.position;
+      if (position.pixels != position.minScrollExtent) {
+        _contentScrollController.jumpTo(position.minScrollExtent);
+      }
+    }
+    _heroPlayFocusNode.requestFocus();
+    return true;
   }
 
   Future<void> _playHero(_TvHeroItem item) async {
@@ -721,6 +754,15 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _clearMessages() {
+    if (!mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.clearSnackBars();
+    messenger?.removeCurrentSnackBar();
+  }
+
   Future<void> _runSearch() async {
     final bvid = biliExtractBvid(_searchController.text.trim());
     if (bvid != null) {
@@ -855,11 +897,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     setState(() {
       _forceTvMode = value;
     });
-    _showMessage(
-      value == _initialForceTvMode
-          ? '已恢复当前显示模式，无需切换首页。'
-          : '显示模式已修改，点击下方按钮返回首页切换。',
-    );
+    _clearMessages();
+    if (value != _initialForceTvMode) {
+      _showMessage('显示模式已修改，点击下方按钮返回首页切换。');
+    }
     try {
       await _appSettings.setForceTvMode(value);
     } catch (error) {
@@ -1532,7 +1573,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             final heroHeight = (constraints.maxHeight * 0.48)
                 .clamp(280.0, 480.0)
                 .toDouble();
-            final cardWidth = (constraints.maxWidth * 0.19)
+            final historyCardWidth = (constraints.maxWidth * 0.19)
                 .clamp(220.0, 310.0)
                 .toDouble();
             return NotificationListener<ScrollNotification>(
@@ -1543,49 +1584,68 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 }
                 return false;
               },
-              child: CustomScrollView(
-                key: const ValueKey<String>('bili-tv-recommend-scroll'),
-                controller: _contentScrollController,
-                clipBehavior: Clip.hardEdge,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: heroHeight,
-                      child: _buildHeroPanel(
-                        _heroItem ?? _TvHeroItem.feed(items.first),
-                        compact: constraints.maxWidth < 840,
-                      ),
-                    ),
-                  ),
-                  if (_history.isNotEmpty)
+              child: _TvGridOverlayScope(
+                child: CustomScrollView(
+                  key: const ValueKey<String>('bili-tv-recommend-scroll'),
+                  controller: _contentScrollController,
+                  clipBehavior: Clip.hardEdge,
+                  slivers: [
                     SliverToBoxAdapter(
-                      child: _buildHistoryShelf(
-                        entries: _history.take(20).toList(growable: false),
-                        cardWidth: cardWidth,
+                      child: SizedBox(
+                        height: heroHeight,
+                        child: _buildHeroPanel(
+                          _heroItem ?? _TvHeroItem.feed(items.first),
+                          compact: constraints.maxWidth < 840,
+                        ),
                       ),
                     ),
-                  SliverToBoxAdapter(
-                    child: _buildFeedShelf(items: items, cardWidth: cardWidth),
-                  ),
-                  if (_viewModel.isLoadingMoreFeed.value)
-                    const SliverToBoxAdapter(
+                    if (_history.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: _buildHistoryShelf(
+                          entries: _history.take(20).toList(growable: false),
+                          cardWidth: historyCardWidth,
+                        ),
+                      ),
+                    SliverToBoxAdapter(
                       child: Padding(
-                        padding: EdgeInsets.only(top: 4, bottom: 28),
-                        child: Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0x88FFFFFF),
-                            ),
+                        padding: EdgeInsets.fromLTRB(
+                          0,
+                          _history.isEmpty ? 10 : 0,
+                          28,
+                          0,
+                        ),
+                        child: const Text(
+                          '为你推荐',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
                           ),
                         ),
                       ),
-                    )
-                  else
-                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
-                ],
+                    ),
+                    _buildFeedGrid(items: items),
+                    if (_viewModel.isLoadingMoreFeed.value)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 4, bottom: 28),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0x88FFFFFF),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  ],
+                ),
               ),
             );
           },
@@ -1723,6 +1783,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                             : '开始播放',
                         icon: Icons.play_arrow_rounded,
                         primary: true,
+                        focusNode: _heroPlayFocusNode,
                         debugLabel: 'tv_hero_play',
                         onTap: () => unawaited(_playHero(item)),
                       ),
@@ -1758,6 +1819,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
       controller: _continueShelfController,
       itemCount: entries.length,
       cardWidth: cardWidth,
+      onDirectionalEdge: _handleHistoryShelfDirectionalEdge,
       itemBuilder: (context, index) {
         final entry = entries[index];
         final hero = _TvHeroItem.history(entry);
@@ -1776,36 +1838,57 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     );
   }
 
-  Widget _buildFeedShelf({
-    required List<BiliFeedVideo> items,
-    required double cardWidth,
-  }) {
-    final coverCacheWidth = biliTvCoverCacheWidth(
-      tileWidth: cardWidth,
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-    );
-    return _TvMediaShelf(
-      key: const ValueKey<String>('bili-tv-recommend-shelf'),
-      title: '为你推荐',
-      controller: _recommendShelfController,
-      itemCount: items.length,
-      cardWidth: cardWidth,
-      itemBuilder: (context, index) {
-        if (index >= items.length - 8) {
-          _requestMoreFeed();
-        }
-        final item = items[index];
-        final hero = _TvHeroItem.feed(item);
-        return _TvVideoCard(
-          key: ValueKey<String>('feed_${item.bvid}'),
-          coverUrl: item.coverUrl,
-          coverCacheWidth: coverCacheWidth,
-          title: item.title,
-          author: item.author,
-          duration: item.durationLabel,
-          playCount: item.playCountLabel,
-          onFocusChange: (focused) => _scheduleHeroUpdate(hero, focused),
-          onTap: () => unawaited(_playHero(hero)),
+  Widget _buildFeedGrid({required List<BiliFeedVideo> items}) {
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final gridCrossAxisExtent =
+            constraints.crossAxisExtent - _tvGridFocusInset * 2;
+        final maxCrossAxisExtent = biliTvGridMaxCrossAxisExtentForWidth(
+          gridCrossAxisExtent,
+        );
+        final coverCacheWidth = biliTvCoverCacheWidth(
+          tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
+            gridCrossAxisExtent,
+            maxCrossAxisExtent: maxCrossAxisExtent,
+          ),
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        );
+        return SliverPadding(
+          key: const ValueKey<String>('bili-tv-recommend-grid'),
+          padding: const EdgeInsets.fromLTRB(
+            _tvGridFocusInset,
+            16,
+            _tvGridFocusInset,
+            _tvGridFocusInset,
+          ),
+          sliver: SliverGrid.builder(
+            itemCount: items.length,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: maxCrossAxisExtent,
+              mainAxisSpacing: _tvGridMainAxisSpacing,
+              crossAxisSpacing: _tvGridCrossAxisSpacing,
+              childAspectRatio: _tvGridChildAspectRatio,
+            ),
+            itemBuilder: (context, index) {
+              if (index >= items.length - 8) {
+                _requestMoreFeed();
+              }
+              final item = items[index];
+              final hero = _TvHeroItem.feed(item);
+              return _TvVideoCard(
+                key: ValueKey<String>('feed_${item.bvid}'),
+                coverUrl: item.coverUrl,
+                coverCacheWidth: coverCacheWidth,
+                title: item.title,
+                author: item.author,
+                duration: item.durationLabel,
+                playCount: item.playCountLabel,
+                focusArea: TvFocusArea.recommendGrid,
+                onFocusChange: (focused) => _scheduleHeroUpdate(hero, focused),
+                onTap: () => unawaited(_playHero(hero)),
+              );
+            },
+          ),
         );
       },
     );
@@ -1835,6 +1918,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               final section = biliRegionSections[index];
               final selected = _selectedRegion.id == section.id;
               return _TvRegionPill(
+                key: ValueKey<String>('bili-tv-region-${section.id}'),
                 section: section,
                 selected: selected,
                 autofocus: index == 0,
@@ -2061,9 +2145,14 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                     builder: (context, constraints) {
                       final gridCrossAxisExtent =
                           constraints.maxWidth - _tvGridFocusInset * 2;
+                      final maxCrossAxisExtent =
+                          biliTvGridMaxCrossAxisExtentForWidth(
+                            gridCrossAxisExtent,
+                          );
                       final coverCacheWidth = biliTvCoverCacheWidth(
                         tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
                           gridCrossAxisExtent,
+                          maxCrossAxisExtent: maxCrossAxisExtent,
                         ),
                         devicePixelRatio: MediaQuery.devicePixelRatioOf(
                           context,
@@ -2077,13 +2166,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                           _tvGridFocusInset,
                           _tvGridFocusInset,
                         ),
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: _tvGridMaxCrossAxisExtent,
-                              mainAxisSpacing: _tvGridMainAxisSpacing,
-                              crossAxisSpacing: _tvGridCrossAxisSpacing,
-                              childAspectRatio: _tvGridChildAspectRatio,
-                            ),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: maxCrossAxisExtent,
+                          mainAxisSpacing: _tvGridMainAxisSpacing,
+                          crossAxisSpacing: _tvGridCrossAxisSpacing,
+                          childAspectRatio: _tvGridChildAspectRatio,
+                        ),
                         itemCount: results.length,
                         itemBuilder: (context, index) {
                           final result = results[index];
@@ -2190,9 +2278,15 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     return _TvGridOverlayScope(
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final gridCrossAxisExtent =
+              constraints.maxWidth - _tvGridFocusInset * 2;
+          final maxCrossAxisExtent = biliTvGridMaxCrossAxisExtentForWidth(
+            gridCrossAxisExtent,
+          );
           final coverCacheWidth = biliTvCoverCacheWidth(
             tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-              constraints.maxWidth - _tvGridFocusInset * 2,
+              gridCrossAxisExtent,
+              maxCrossAxisExtent: maxCrossAxisExtent,
             ),
             devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           );
@@ -2204,8 +2298,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               28,
               _tvGridFocusInset,
             ),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: _tvGridMaxCrossAxisExtent,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: maxCrossAxisExtent,
               mainAxisSpacing: _tvGridMainAxisSpacing,
               crossAxisSpacing: _tvGridCrossAxisSpacing,
               childAspectRatio: _tvGridChildAspectRatio,
@@ -2249,6 +2343,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           builder: (context, constraints) {
             final compact =
                 constraints.maxWidth < 760 || constraints.maxHeight < 390;
+            final contentMaxWidth = (constraints.maxWidth * 0.72)
+                .clamp(980.0, 1440.0)
+                .toDouble();
             final account = _buildMineAccount(profile, compact: compact);
             final library = _buildMineLibraryActions(compact: compact);
             return SingleChildScrollView(
@@ -2261,7 +2358,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               ),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 980),
+                  constraints: BoxConstraints(maxWidth: contentMaxWidth),
                   child: compact
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2437,6 +2534,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compactHeight = constraints.maxHeight < 420;
+        final panelMaxWidth = (constraints.maxWidth * 0.56)
+            .clamp(600.0, 1100.0)
+            .toDouble();
         return Align(
           alignment: compactHeight ? Alignment.topCenter : Alignment.center,
           child: SingleChildScrollView(
@@ -2447,7 +2547,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               compactHeight ? 24 : 36,
             ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
+              constraints: BoxConstraints(maxWidth: panelMaxWidth),
               child: _buildSettingsPanelContent(compact: compactHeight),
             ),
           ),
@@ -2581,6 +2681,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 baseCornerRadius: 14,
                 showGlow: false,
                 onTap: () async {
+                  _clearMessages();
                   final nextMode = await _uiModeController.refresh();
                   await _applyPresentationFor(nextMode);
                   if (!mounted) {

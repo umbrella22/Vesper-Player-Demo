@@ -24,7 +24,8 @@ final class BiliUiModeResolver {
       return BiliUiMode.tv;
     }
     final isTv = await _platformInfo.isTv();
-    _currentMode = isTv ? BiliUiMode.tv : BiliUiMode.phone;
+    final isTablet = isTv ? false : await _platformInfo.isTablet();
+    _currentMode = isTv || isTablet ? BiliUiMode.tv : BiliUiMode.phone;
     return _currentMode!;
   }
 

@@ -40,7 +40,7 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.tag_name }}
 
   ios-release-ipa:
-    name: Build unsigned iOS IPA
+    name: Build iOS release IPAs
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     permissions:

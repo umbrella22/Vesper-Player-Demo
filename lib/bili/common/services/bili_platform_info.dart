@@ -9,6 +9,7 @@ final class BiliPlatformInfo {
   );
 
   bool? _cachedIsTv;
+  bool? _cachedIsTablet;
 
   Future<bool> isTv() async {
     if (_cachedIsTv != null) {
@@ -23,6 +24,23 @@ final class BiliPlatformInfo {
       return false;
     } on PlatformException {
       _cachedIsTv = false;
+      return false;
+    }
+  }
+
+  Future<bool> isTablet() async {
+    if (_cachedIsTablet != null) {
+      return _cachedIsTablet!;
+    }
+    try {
+      final result = await _channel.invokeMethod<bool>('isTablet');
+      _cachedIsTablet = result ?? false;
+      return _cachedIsTablet!;
+    } on MissingPluginException {
+      _cachedIsTablet = false;
+      return false;
+    } on PlatformException {
+      _cachedIsTablet = false;
       return false;
     }
   }

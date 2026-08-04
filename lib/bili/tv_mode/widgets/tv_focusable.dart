@@ -10,7 +10,15 @@ import 'package:vesper_media/app/design/app_visual_theme.dart';
 const _tvWhiteRamp = Color(0xFFFFFFFF);
 const _tvBlackRamp = Color(0xFF000000);
 
-enum TvFocusArea { rail, content, playbackControls, playbackPanel }
+enum TvFocusArea {
+  rail,
+  content,
+  recommendGrid,
+  regionCategories,
+  regionGrid,
+  playbackControls,
+  playbackPanel,
+}
 
 class TvGlassQualityScope extends InheritedWidget {
   const TvGlassQualityScope({
@@ -825,6 +833,9 @@ class _TvFocusableSurfaceBody extends StatelessWidget {
 final Expando<TvFocusArea> _tvFocusAreas = Expando<TvFocusArea>('tvFocusAreas');
 final Expando<Map<TvFocusArea, FocusNode>> _tvLastFocusedNodes =
     Expando<Map<TvFocusArea, FocusNode>>('tvLastFocusedNodes');
+final Expando<FocusNode> _tvLastFocusedContentNodes = Expando<FocusNode>(
+  'tvLastFocusedContentNodes',
+);
 final Object _noTvFocusGroup = Object();
 final Expando<Object> _tvFocusGroups = Expando<Object>('tvFocusGroups');
 
@@ -863,7 +874,7 @@ bool moveTvFocusSpatially(
   final horizontal =
       direction == TraversalDirection.left ||
       direction == TraversalDirection.right;
-  if (horizontal && currentGroup != null) {
+  if (currentGroup != null) {
     final movedWithinGroup = _moveTvFocusSpatially(
       current,
       direction,
@@ -878,23 +889,25 @@ bool moveTvFocusSpatially(
     if (groupScope?.onDirectionalEdge?.call(direction) == true) {
       return true;
     }
-    if (currentArea == TvFocusArea.content &&
-        direction == TraversalDirection.left) {
-      return _restoreRememberedTvFocus(current, TvFocusArea.rail) ||
-          _moveTvFocusSpatially(
-            current,
-            direction,
-            allowedAreas: {TvFocusArea.rail},
-          );
+    if (horizontal) {
+      if (_isTvHomeContentArea(currentArea) &&
+          direction == TraversalDirection.left) {
+        return _restoreRememberedTvFocus(current, TvFocusArea.rail) ||
+            _moveTvFocusSpatially(
+              current,
+              direction,
+              allowedAreas: {TvFocusArea.rail},
+            );
+      }
+      return false;
     }
-    return false;
   }
-  if (currentArea == TvFocusArea.content &&
+  if (_isTvHomeContentArea(currentArea) &&
       direction == TraversalDirection.left) {
     return _moveTvFocusSpatially(
           current,
           direction,
-          allowedAreas: {TvFocusArea.content},
+          allowedAreas: {currentArea!},
         ) ||
         _moveTvFocusSpatially(
           current,
@@ -904,11 +917,16 @@ bool moveTvFocusSpatially(
   }
   if (currentArea == TvFocusArea.rail &&
       direction == TraversalDirection.right) {
-    return _restoreRememberedTvFocus(current, TvFocusArea.content) ||
+    return _restoreRememberedTvContentFocus(current) ||
         _moveTvFocusSpatially(
           current,
           direction,
-          allowedAreas: {TvFocusArea.content},
+          allowedAreas: const {
+            TvFocusArea.content,
+            TvFocusArea.recommendGrid,
+            TvFocusArea.regionCategories,
+            TvFocusArea.regionGrid,
+          },
         );
   }
   return _moveTvFocusSpatially(
@@ -926,6 +944,31 @@ void _rememberTvFocus(FocusNode node, TvFocusArea? area) {
   final remembered = _tvLastFocusedNodes[scope] ?? <TvFocusArea, FocusNode>{};
   remembered[area] = node;
   _tvLastFocusedNodes[scope] = remembered;
+  if (_isTvHomeContentArea(area)) {
+    _tvLastFocusedContentNodes[scope] = node;
+  }
+}
+
+bool _isTvHomeContentArea(TvFocusArea? area) {
+  return area == TvFocusArea.content ||
+      area == TvFocusArea.recommendGrid ||
+      area == TvFocusArea.regionCategories ||
+      area == TvFocusArea.regionGrid;
+}
+
+bool _restoreRememberedTvContentFocus(FocusNode current) {
+  final scope = current.nearestScope;
+  final node = scope == null ? null : _tvLastFocusedContentNodes[scope];
+  if (scope == null ||
+      node == null ||
+      node == current ||
+      !node.canRequestFocus ||
+      node.context == null ||
+      !scope.traversalDescendants.contains(node)) {
+    return false;
+  }
+  node.requestFocus();
+  return true;
 }
 
 bool _restoreRememberedTvFocus(FocusNode current, TvFocusArea area) {
@@ -950,9 +993,30 @@ Set<TvFocusArea>? _defaultAllowedAreas(
   return switch (currentArea) {
     TvFocusArea.rail when direction == TraversalDirection.right => {
       TvFocusArea.content,
+      TvFocusArea.recommendGrid,
+      TvFocusArea.regionCategories,
+      TvFocusArea.regionGrid,
     },
     TvFocusArea.rail => {TvFocusArea.rail},
+    TvFocusArea.content when direction == TraversalDirection.down => {
+      TvFocusArea.content,
+      TvFocusArea.recommendGrid,
+    },
     TvFocusArea.content => {TvFocusArea.content},
+    TvFocusArea.recommendGrid when direction == TraversalDirection.up => {
+      TvFocusArea.recommendGrid,
+      TvFocusArea.content,
+    },
+    TvFocusArea.recommendGrid => {TvFocusArea.recommendGrid},
+    TvFocusArea.regionCategories when direction == TraversalDirection.down => {
+      TvFocusArea.regionGrid,
+    },
+    TvFocusArea.regionCategories => {TvFocusArea.regionCategories},
+    TvFocusArea.regionGrid when direction == TraversalDirection.up => {
+      TvFocusArea.regionGrid,
+      TvFocusArea.regionCategories,
+    },
+    TvFocusArea.regionGrid => {TvFocusArea.regionGrid},
     TvFocusArea.playbackControls => {TvFocusArea.playbackControls},
     TvFocusArea.playbackPanel => {TvFocusArea.playbackPanel},
     null => null,

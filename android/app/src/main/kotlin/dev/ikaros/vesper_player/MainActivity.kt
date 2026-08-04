@@ -30,6 +30,7 @@ class MainActivity : FlutterFragmentActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isTv" -> result.success(isTvDevice())
+                "isTablet" -> result.success(isTabletDevice())
                 "isAutoRotateEnabled" -> result.success(isAutoRotateEnabled())
                 "isHcppPlatformSupported" -> result.success(isHcppPlatformSupported())
                 "shouldPreferTextureViewForPlayback" ->
@@ -292,6 +293,10 @@ class MainActivity : FlutterFragmentActivity() {
             return true
         }
         return false
+    }
+
+    private fun isTabletDevice(): Boolean {
+        return resources.configuration.smallestScreenWidthDp >= 600
     }
 
     private fun isAutoRotateEnabled(): Boolean {

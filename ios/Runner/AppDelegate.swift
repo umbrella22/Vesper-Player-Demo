@@ -7,6 +7,7 @@ import UIKit
   private var downloadPluginChannel: FlutterMethodChannel?
   private var storageSpaceChannel: FlutterMethodChannel?
   private var mediaExportChannel: FlutterMethodChannel?
+  private var platformInfoChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -16,6 +17,25 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    let platformChannel = FlutterMethodChannel(
+      name: "dev.ikaros.vesper_player/platform",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    platformChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "isTv":
+        result(UIDevice.current.userInterfaceIdiom == .tv)
+      case "isTablet":
+        let idiom = UIDevice.current.userInterfaceIdiom
+        let shortestScreenSide = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        let isRunningOnMac = ProcessInfo.processInfo.isiOSAppOnMac
+        result(idiom == .pad || idiom == .mac || isRunningOnMac || shortestScreenSide >= 600)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    platformInfoChannel = platformChannel
+
     let channel = FlutterMethodChannel(
       name: "dev.ikaros.vesper_player/download_plugin",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

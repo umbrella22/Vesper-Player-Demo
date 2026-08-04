@@ -51,6 +51,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   late final BiliOfflineDownloadController _offlineController;
   late final BiliUiModeController _uiModeController;
   bool _uiModeControllerTransferred = false;
+  bool _initialForceTvMode = false;
   final _forceTvMode = signal(false);
   final _hasAuthenticatedSession = signal(false);
   final _loading = signal(true);
@@ -98,6 +99,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       _client.restoreCookies(cookies);
     }
     if (mounted) {
+      _initialForceTvMode = forceTvMode;
       _forceTvMode.value = forceTvMode;
       _hasAuthenticatedSession.value =
           _client.hasAuthenticatedSession || _isAuthenticatedCookieSet(cookies);
@@ -119,22 +121,21 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       return;
     }
     _forceTvMode.value = value;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(value ? 'TV 模式已开启' : 'TV 模式已关闭'),
-          action: SnackBarAction(
-            label: '返回首页切换',
-            onPressed: () => _switchHome(),
-          ),
-          duration: const Duration(seconds: 6),
-        ),
-      );
+    _clearMessages();
+    if (value == _initialForceTvMode) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(value ? 'TV 模式已开启' : 'TV 模式已关闭'),
+        action: SnackBarAction(label: '返回首页切换', onPressed: () => _switchHome()),
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   Future<void> _switchHome() async {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    _clearMessages();
     final nextMode = await _uiModeController.refresh();
     await _applyPresentationFor(nextMode);
     if (!mounted) {
@@ -332,6 +333,12 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _clearMessages() {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.clearSnackBars();
+    messenger?.removeCurrentSnackBar();
   }
 
   @override

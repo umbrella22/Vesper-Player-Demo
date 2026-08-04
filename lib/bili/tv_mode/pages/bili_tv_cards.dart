@@ -8,6 +8,7 @@ class _TvMediaShelf extends StatelessWidget {
     required this.itemCount,
     required this.cardWidth,
     required this.itemBuilder,
+    this.onDirectionalEdge,
   });
 
   final String title;
@@ -15,6 +16,7 @@ class _TvMediaShelf extends StatelessWidget {
   final int itemCount;
   final double cardWidth;
   final IndexedWidgetBuilder itemBuilder;
+  final bool Function(TraversalDirection direction)? onDirectionalEdge;
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +24,9 @@ class _TvMediaShelf extends StatelessWidget {
     return TvFocusGroupScope(
       group: ValueKey<String>('tv-shelf-focus-$title'),
       onDirectionalEdge: (direction) {
+        if (onDirectionalEdge?.call(direction) == true) {
+          return true;
+        }
         if (!controller.hasClients ||
             (direction != TraversalDirection.left &&
                 direction != TraversalDirection.right)) {
@@ -192,16 +197,20 @@ class _TvRegionVideoGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return SliverLayoutBuilder(
       builder: (context, constraints) {
+        final maxCrossAxisExtent = biliTvGridMaxCrossAxisExtentForWidth(
+          constraints.crossAxisExtent,
+        );
         final coverCacheWidth = biliTvCoverCacheWidth(
           tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
             constraints.crossAxisExtent,
+            maxCrossAxisExtent: maxCrossAxisExtent,
           ),
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
         );
         return SliverGrid.builder(
           itemCount: items.length,
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: _tvGridMaxCrossAxisExtent,
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: maxCrossAxisExtent,
             mainAxisSpacing: _tvGridMainAxisSpacing,
             crossAxisSpacing: _tvGridCrossAxisSpacing,
             childAspectRatio: _tvGridChildAspectRatio,
@@ -227,6 +236,7 @@ class _TvRegionVideoGrid extends StatelessWidget {
               author: subtitle,
               duration: duration,
               playCount: item.followCountLabel ?? '',
+              focusArea: TvFocusArea.regionGrid,
               onFocusChange: (focused) => onFocusItem(item, focused),
               onTap: () => onTapItem(item),
             );
@@ -239,6 +249,7 @@ class _TvRegionVideoGrid extends StatelessWidget {
 
 class _TvRegionPill extends StatelessWidget {
   const _TvRegionPill({
+    super.key,
     required this.section,
     required this.selected,
     required this.onTap,
@@ -257,7 +268,7 @@ class _TvRegionPill extends StatelessWidget {
       selected: selected,
       scale: 1.06,
       borderRadius: AppVisualTokens.controlRadius,
-      focusArea: TvFocusArea.content,
+      focusArea: TvFocusArea.regionCategories,
       debugLabel: 'region_${section.id}',
       onTap: onTap,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -311,6 +322,7 @@ class _TvVideoCard extends StatelessWidget {
     required this.playCount,
     required this.onTap,
     this.onFocusChange,
+    this.focusArea = TvFocusArea.content,
   });
 
   final String coverUrl;
@@ -321,6 +333,7 @@ class _TvVideoCard extends StatelessWidget {
   final String playCount;
   final VoidCallback onTap;
   final ValueChanged<bool>? onFocusChange;
+  final TvFocusArea focusArea;
 
   @override
   Widget build(BuildContext context) {
@@ -328,7 +341,7 @@ class _TvVideoCard extends StatelessWidget {
       scale: 1.07,
       focusPadding: _tvCardFocusPadding,
       useOverlayLift: true,
-      focusArea: TvFocusArea.content,
+      focusArea: focusArea,
       debugLabel: 'video_$title',
       onFocusChange: onFocusChange,
       onTap: onTap,

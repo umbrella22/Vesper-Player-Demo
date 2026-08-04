@@ -19,6 +19,18 @@ void main() {
   });
 
   group('Bili TV home layout helpers', () {
+    test(
+      'grid cards grow on ultra-wide viewports instead of adding columns',
+      () {
+        expect(biliTvGridMaxCrossAxisExtentForWidth(1100), 184);
+        expect(biliTvGridMaxCrossAxisExtentForWidth(2600), 320);
+        expect(
+          biliTvGridMaxCrossAxisExtentForWidth(1800),
+          greaterThan(biliTvGridMaxCrossAxisExtentForWidth(1280)),
+        );
+      },
+    );
+
     test('tile width follows the max extent grid layout', () {
       expect(biliTvVideoGridTileWidthForCrossAxisExtent(184), 184);
       expect(biliTvVideoGridTileWidthForCrossAxisExtent(384), 184);

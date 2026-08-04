@@ -103,6 +103,7 @@ scripts/
   prepare_flutter_workspace.sh
   prepare_ios_build.sh
   build_ios_no_codesign.sh
+  rewrite_playcover_native_assets.dart
 third_party/
   vesper-player-sdk/
 ```
@@ -133,6 +134,13 @@ Android 默认只构建 `arm64-v8a`。如果修改 Android release 配置，请�
 iOS 推荐使用 `bash scripts/build_ios_no_codesign.sh`。如果直接运行 raw
 `xcodebuild`，之后需要重新执行 `bash scripts/prepare_flutter_workspace.sh`，
 再回到 `flutter analyze`、`flutter test` 或 `flutter run`。
+
+版本发布流水线会同时生成 `*-ios-unsigned.ipa` 和
+`*-ios-playcover.ipa`。前者保留未签名应用，供后续使用开发者证书重签；后者使用
+macOS ad-hoc 签名，可直接导入 PlayCover，但不能用于 iPhone、iPad 或 Apple TV
+真机侧载。PlayCover 产物还会将 Flutter native asset 路径转换为
+`@executable_path/Frameworks/...`，避免 Dart FFI framework 在 PlayCover 中解析到
+错误的相对路径。
 
 ## 验证记录
 

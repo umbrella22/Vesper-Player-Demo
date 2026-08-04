@@ -2014,6 +2014,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     expect(find.text('返回首页并切换'), findsNothing);
+    expect(find.text('已恢复当前显示模式，无需切换首页。'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('tv mode handoff preserves the active app dependencies', (
@@ -2027,6 +2029,9 @@ void main() {
     await _pumpUntilFound(tester, find.text('返回首页并切换'));
     await tester.tap(find.text('返回首页并切换'));
     await _pumpUntilFound(tester, find.byType(HomePage));
+
+    expect(find.text('显示模式已修改，点击下方按钮返回首页切换。'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
 
     final homePage = tester.widget<HomePage>(find.byType(HomePage));
     expect(identical(homePage.client, harness.client), isTrue);
@@ -2091,7 +2096,7 @@ void main() {
     expectAligned();
   });
 
-  testWidgets('tv shelf reserves unclipped focus clearance', (
+  testWidgets('tv recommendations use a padded vertical grid', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
@@ -2100,13 +2105,16 @@ void main() {
       skipBootstrap: true,
     );
 
-    final list = tester.widget<ListView>(
-      find.byKey(const ValueKey<String>('tv-shelf-list-为你推荐')),
+    final gridPadding = tester.widget<SliverPadding>(
+      find.byKey(const ValueKey<String>('bili-tv-recommend-grid')),
     );
-    final padding = list.padding! as EdgeInsets;
+    final padding = gridPadding.padding as EdgeInsets;
 
-    expect(list.clipBehavior, Clip.none);
-    expect(padding.top, 32);
+    expect(
+      find.byKey(const ValueKey<String>('tv-shelf-list-为你推荐')),
+      findsNothing,
+    );
+    expect(padding.top, 16);
     expect(padding.bottom, 32);
   });
 
@@ -2505,6 +2513,11 @@ void main() {
     await move(LogicalKeyboardKey.arrowUp, 1);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'history_历史视频 0');
     expect(scrollView.controller!.offset, lessThanOrEqualTo(downwardOffset));
+
+    expect(scrollView.controller!.offset, greaterThan(0));
+    await move(LogicalKeyboardKey.arrowUp, 1);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_hero_play');
+    expect(scrollView.controller!.offset, 0);
   });
 
   testWidgets('tv home regions nav loads section videos', (
@@ -2539,6 +2552,50 @@ void main() {
 
     expect(harness.client.requestedSections.last.id, 'guochuang');
     expect(find.text('国创内容 0'), findsOneWidget);
+  });
+
+  testWidgets('tv region categories keep focus separate from the first row', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      surfaceSize: const Size(3008, 1692),
+      initialFeedItems: _tvFeedItems(),
+      loggedIn: true,
+    );
+    await _pumpUntil(tester, () => find.text('测试用户').evaluate().isNotEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _flushRealAsync(tester);
+    await tester.pumpAndSettle();
+
+    if (FocusManager.instance.primaryFocus?.debugLabel == 'nav_regions') {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'region_bangumi');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'region_guochuang');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _flushRealAsync(tester);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'region_guochuang');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      startsWith('video_国创内容'),
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'region_guochuang');
   });
 
   testWidgets('tv home regions prompt for login before loading', (
@@ -5076,9 +5133,12 @@ void main() {
     expect(find.text('返回首页后切换为 TV 界面'), findsOneWidget);
     expect(find.text('返回首页并切换'), findsOneWidget);
     expect(await tester.runAsync(settings.getForceTvMode), isTrue);
+    expect(find.text('TV 模式已开启'), findsOneWidget);
 
     await tester.tap(find.text('返回首页并切换'));
     await _pumpUntilFound(tester, find.byType(HomePage));
+    expect(find.text('TV 模式已开启'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
     final homePage = tester.widget<HomePage>(find.byType(HomePage));
     expect(identical(homePage.client, client), isTrue);
     expect(identical(homePage.historyStore, historyStore), isTrue);

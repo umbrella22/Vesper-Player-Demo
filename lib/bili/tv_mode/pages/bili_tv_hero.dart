@@ -7,6 +7,7 @@ class _TvHeroAction extends StatelessWidget {
     required this.debugLabel,
     required this.onTap,
     this.primary = false,
+    this.focusNode,
   });
 
   final String label;
@@ -14,10 +15,12 @@ class _TvHeroAction extends StatelessWidget {
   final String debugLabel;
   final VoidCallback onTap;
   final bool primary;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     return TvGlassSelectable(
+      focusNode: focusNode,
       useOwnLayer: false,
       scale: 1.025,
       borderRadius: AppVisualTokens.controlRadius,
