@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.6.0...vesper_media-v1.7.0) (2026-08-04)
+
+
+### Features
+
+* Enhance TV mode functionality and UI responsiveness ([d9088aa](https://github.com/umbrella22/Vesper-Player-Demo/commit/d9088aa747912e9b1ac43b2b77198e8b0d050f60))
+
 ## [1.6.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.5.1...vesper_media-v1.6.0) (2026-08-03)
 
 
