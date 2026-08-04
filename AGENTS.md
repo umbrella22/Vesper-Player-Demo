@@ -9,7 +9,7 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 - Flutter app code: `lib/`.
 - Local SDK source: `third_party/vesper-player-sdk`.
 - Flutter packages from the SDK are consumed through local path dependencies in `pubspec.yaml`.
-- Native helper scripts live in `scripts/`.
+- Native helper scripts live in `scripts/` (see `scripts/README.md` for a per-script overview of purpose and callers).
 
 ## Default Workflow
 

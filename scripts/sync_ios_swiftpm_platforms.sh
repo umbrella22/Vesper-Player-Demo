@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# 把 iOS 部署目标（IPHONEOS_DEPLOYMENT_TARGET，从 project.pbxproj 读取）
+# 同步到 Flutter 生成的 SwiftPM manifest（FlutterGeneratedPluginSwiftPackage /
+# FlutterFramework 的 .iOS(...) 平台声明）。
+#   bash scripts/sync_ios_swiftpm_platforms.sh [仓库根目录]
+#
+# 被 Xcode scheme PreAction 在每个 Xcode 构建前调用（Runner.xcscheme），
+# 也被 scripts/build_ios_no_codesign.sh 调用。
 set -euo pipefail
 
 ROOT_DIR="${1:-$(cd "$(dirname "$0")/.." && pwd)}"

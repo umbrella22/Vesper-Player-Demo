@@ -80,6 +80,11 @@ if [[ "$new_version" == "$current" ]]; then
   exit 1
 fi
 
+if git -C "$ROOT_DIR" rev-parse --verify "refs/tags/v$new_version" >/dev/null 2>&1; then
+  echo "标签 v$new_version 已存在，中止（避免提交已落而 tag 失败）。" >&2
+  exit 1
+fi
+
 echo "当前版本: $current"
 echo "新版本:   $new_version"
 

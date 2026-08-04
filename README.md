@@ -90,7 +90,7 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 - Flutter 业务代码：`lib/`。
 - 本地播放器 SDK：`third_party/vesper-player-sdk`，作为 git submodule 引入。
 - Flutter 通过 `pubspec.yaml` 中的本地 path dependency 消费 Vesper SDK。
-- 原生辅助脚本：`scripts/`。
+- 原生辅助脚本：`scripts/`，详见 [`scripts/README.md`](scripts/README.md)。
 
 ```text
 lib/
@@ -100,10 +100,13 @@ lib/
   danmaku/    为 SDK 实验和测试保留的弹幕解析工具
   download/   离线缓存任务规划、存储、导出与本地播放
 scripts/
-  prepare_flutter_workspace.sh
-  prepare_ios_build.sh
-  build_ios_no_codesign.sh
-  rewrite_playcover_native_assets.dart
+  README.md                                # 脚本总览（用途/调用方/用法）
+  build_ios_no_codesign.sh                 # 无签名构建 iOS（统一入口）
+  prepare_flutter_workspace.sh             # flutter pub get + 清理 stale 链接
+  sync_ios_swiftpm_platforms.sh            # SwiftPM 部署目标同步（Xcode 钩子）
+  sign_ios_flutter_native_asset_frameworks.sh  # native asset framework 补签名（Xcode 钩子）
+  rewrite_playcover_native_assets.dart     # PlayCover 产物 native asset 路径改写
+  tag_release.sh                           # 手动打 tag 的应急发版脚本
 third_party/
   vesper-player-sdk/
 ```
