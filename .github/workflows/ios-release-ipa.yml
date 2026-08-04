@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag_name || github.ref }}
           submodules: recursive
@@ -168,7 +168,7 @@ jobs:
           /usr/bin/unzip -tq "$artifact_dir/$playcover_ipa_name"
 
       - name: Upload unsigned IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-unsigned-ipa
           path: |
@@ -178,7 +178,7 @@ jobs:
           retention-days: 30
 
       - name: Upload PlayCover IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-playcover-ipa
           path: |
@@ -188,7 +188,7 @@ jobs:
           retention-days: 30
 
       - name: Attach IPA to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG_NAME }}
           files: artifacts/*
