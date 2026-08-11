@@ -65,6 +65,7 @@ Future<void> main() async {
 
   runApp(
     LiquidGlassWidgets.wrap(
+      brightnessResolver: Theme.maybeBrightnessOf,
       adaptiveQuality: true,
       // ignore: experimental_member_use
       adaptiveConfig: GlassAdaptiveScopeConfig(

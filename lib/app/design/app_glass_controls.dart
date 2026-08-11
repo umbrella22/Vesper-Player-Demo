@@ -5,9 +5,8 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
-/// Keeps App-owned Material widgets on the split `material_ui` tree while
-/// `liquid_glass_widgets` builds its scaffold with Flutter's legacy Material
-/// library. Remove this adapter once the package migrates.
+/// Bridges App-owned split `material_ui` surfaces into Liquid Glass's
+/// Cupertino-only scaffold without coupling either package to legacy Material.
 class AppGlassScaffold extends StatelessWidget {
   const AppGlassScaffold({
     super.key,
@@ -41,8 +40,8 @@ class AppGlassScaffold extends StatelessWidget {
         body: _materialSurface(body),
         appBar: appBar == null ? null : _materialAppBarSurface(appBar!),
         bottomBar: bottomBar == null ? null : _materialSurface(bottomBar!),
-        // The explicit color is required because the legacy Material theme
-        // cannot read the split material_ui Theme inherited by the App.
+        // Liquid Glass is Material-decoupled, so resolve the App's split
+        // material_ui scaffold color explicitly.
         backgroundColor: resolvedBackgroundColor,
         enableBackgroundSampling: false,
         statusBarStyle: statusBarStyle,
