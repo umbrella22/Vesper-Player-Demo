@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.7.0...vesper_media-v1.8.0) (2026-08-11)
+
+
+### Features
+
+* sdk修正 ([ddf9583](https://github.com/umbrella22/Vesper-Player-Demo/commit/ddf958391092f09538e62fdc23e6748f84bb92db))
+* 重构代码 ([e0b565f](https://github.com/umbrella22/Vesper-Player-Demo/commit/e0b565f74ed6f870c8595cd4ae90ec6d4ee9246c))
+
 ## [1.7.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.6.0...vesper_media-v1.7.0) (2026-08-04)
 
 
