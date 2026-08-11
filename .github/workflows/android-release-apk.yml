@@ -109,7 +109,7 @@ jobs:
             third_party/vesper-player-sdk/third_party/ffmpeg/android
             third_party/vesper-player-sdk/third_party/openssl/android
             third_party/vesper-player-sdk/third_party/libxml2/android
-          key: vesper-android-native-${{ runner.os }}-${{ hashFiles('third_party/vesper-player-sdk/Cargo.lock', 'third_party/vesper-player-sdk/scripts/lib/ffmpeg.sh', 'third_party/vesper-player-sdk/scripts/lib/ffmpeg-profile.sh', 'third_party/vesper-player-sdk/scripts/android/**/*.sh') }}
+          key: vesper-android-native-${{ runner.os }}-${{ hashFiles('third_party/vesper-player-sdk/Cargo.lock', 'third_party/vesper-player-sdk/scripts/vesper', 'third_party/vesper-player-sdk/scripts/ffmpeg-profiles.toml', 'third_party/vesper-player-sdk/scripts/source-normalizer-profiles.toml', 'third_party/vesper-player-sdk/scripts/ffmpeg-source-policy.toml', 'third_party/vesper-player-sdk/crates/tools/player-cli/**', 'third_party/vesper-player-sdk/plugins/remux-ffmpeg/vesper-plugin.toml', 'third_party/vesper-player-sdk/plugins/source-normalizer-ffmpeg/vesper-plugin.toml') }}
           restore-keys: |
             vesper-android-native-${{ runner.os }}-
 

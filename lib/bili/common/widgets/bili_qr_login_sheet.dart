@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 import '../models/bili_models.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
-import 'bili_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'bili_qr_code_view.dart';
 import 'bili_qr_login_controller.dart';
 
@@ -17,11 +17,11 @@ Future<BiliUserProfile?> showBiliQrLoginSheet({
   required BiliClient client,
   required BiliSessionStore sessionStore,
 }) {
-  return showBiliGlassSheet<BiliUserProfile>(
+  return showMediaGlassSheet<BiliUserProfile>(
     context: context,
     maxContentHeightFactor: 0.86,
     contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-    appearance: BiliGlassSheetAppearance.readable,
+    appearance: MediaGlassSheetAppearance.readable,
     builder: (_) =>
         BiliQrLoginSheet(client: client, sessionStore: sessionStore),
   );

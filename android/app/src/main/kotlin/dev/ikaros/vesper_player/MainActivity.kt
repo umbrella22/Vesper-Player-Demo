@@ -13,7 +13,6 @@ import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
 import android.provider.Settings
-import dalvik.system.BaseDexClassLoader
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -54,28 +53,6 @@ class MainActivity : FlutterFragmentActivity() {
                     val value = call.argument<Double>("value") ?: 0.5
                     result.success(writeVolume(value).toDouble())
                 }
-                else -> result.notImplemented()
-            }
-        }
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.vesper_player/download_plugin",
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "bundledDownloadPluginLibraryPaths" ->
-                    result.success(bundledDownloadPluginLibraryPaths())
-                else -> result.notImplemented()
-            }
-        }
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "dev.ikaros.vesper_player/player_plugins",
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "bundledSourceNormalizerPluginLibraryPaths" ->
-                    result.success(bundledSourceNormalizerPluginLibraryPaths())
                 else -> result.notImplemented()
             }
         }
@@ -162,37 +139,6 @@ class MainActivity : FlutterFragmentActivity() {
             .coerceIn(0, maxVolume)
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
         return readVolume()
-    }
-
-    private fun bundledDownloadPluginLibraryPaths(): List<String> {
-        val libraryNames = listOf("vesper_remux_ffmpeg", "player_remux_ffmpeg")
-        return libraryNames
-            .asSequence()
-            .mapNotNull(::resolveNativeLibraryPath)
-            .take(1)
-            .toList()
-    }
-
-    private fun bundledSourceNormalizerPluginLibraryPaths(): List<String> {
-        return listOf("player_source_normalizer_ffmpeg")
-            .asSequence()
-            .mapNotNull(::resolveNativeLibraryPath)
-            .take(1)
-            .toList()
-    }
-
-    private fun resolveNativeLibraryPath(libraryName: String): String? {
-        val classLoaderPath =
-            (classLoader as? BaseDexClassLoader)?.findLibrary(libraryName)?.takeIf { path ->
-                path.isNotBlank() && File(path).isFile
-            }
-        if (classLoaderPath != null) {
-            return classLoaderPath
-        }
-
-        val nativeLibraryDir = applicationInfo.nativeLibraryDir ?: return null
-        val pluginLibrary = File(nativeLibraryDir, System.mapLibraryName(libraryName))
-        return pluginLibrary.takeIf(File::isFile)?.absolutePath
     }
 
     private fun deviceStorageUsage(): Map<String, Long> {

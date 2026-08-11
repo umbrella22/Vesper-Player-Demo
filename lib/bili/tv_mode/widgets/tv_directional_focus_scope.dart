@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
 class TvDirectionalFocusScope extends StatefulWidget {
   const TvDirectionalFocusScope({

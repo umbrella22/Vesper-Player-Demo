@@ -1,5 +1,6 @@
 export 'models/danmaku_models.dart';
 export 'services/bili_danmaku_parser.dart';
+export 'services/bili_danmaku_provider.dart';
 export 'services/bili_danmaku_repository.dart';
 export 'widgets/danmaku_overlay.dart';
 

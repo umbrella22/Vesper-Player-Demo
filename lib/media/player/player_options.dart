@@ -1,25 +1,33 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:vesper_player/vesper_player.dart';
+
+final class PlayerModule {
+  const PlayerModule._();
+
+  static const plannedScope =
+      'Playback pages, control surfaces, source switching, quality UI, and '
+      'track/ABR-facing affordances are owned by the app shell while native '
+      'video rendering stays inside the SDK.';
+}
 
 const _mib = 1024 * 1024;
 
-const biliPlayerResiliencePolicy = VesperPlaybackResiliencePolicy.streaming();
+const mediaPlayerResiliencePolicy = VesperPlaybackResiliencePolicy.streaming();
 
-const biliPlayerTrackPreferencePolicy = VesperTrackPreferencePolicy(
+const mediaPlayerTrackPreferencePolicy = VesperTrackPreferencePolicy(
   preferredAudioLanguage: 'zh',
   preferredSubtitleLanguage: 'zh-Hans',
   subtitleSelection: VesperTrackSelection.disabled(),
 );
 
-const biliPlayerPreloadBudgetPolicy = VesperPreloadBudgetPolicy(
+const mediaPlayerPreloadBudgetPolicy = VesperPreloadBudgetPolicy(
   maxConcurrentTasks: 2,
   maxMemoryBytes: 16 * _mib,
   maxDiskBytes: 256 * _mib,
   warmupWindowMs: 30000,
 );
 
-const biliDlnaFormatAdaptationConfig =
+const mediaDlnaFormatAdaptationConfig =
     VesperExternalFormatAdaptationConfig.dlnaRemux(
       allowRemoteDashMediaReferences: true,
       remoteDashMediaRequestHeaders: <String>{
@@ -32,7 +40,7 @@ const biliDlnaFormatAdaptationConfig =
       },
     );
 
-VesperBenchmarkConfiguration biliPlayerBenchmarkConfiguration() {
+VesperBenchmarkConfiguration mediaPlayerBenchmarkConfiguration() {
   if (!kDebugMode) {
     return const VesperBenchmarkConfiguration.disabled();
   }
@@ -44,52 +52,16 @@ VesperBenchmarkConfiguration biliPlayerBenchmarkConfiguration() {
   );
 }
 
-final class BiliPlayerPluginResolver {
-  const BiliPlayerPluginResolver({
-    MethodChannel channel = const MethodChannel(
-      'dev.ikaros.vesper_player/player_plugins',
-    ),
-  }) : _channel = channel;
-
-  final MethodChannel _channel;
-
-  Future<List<String>> bundledSourceNormalizerPluginLibraryPaths() async {
-    try {
-      final result = await _channel.invokeListMethod<String>(
-        'bundledSourceNormalizerPluginLibraryPaths',
-      );
-      return (result ?? const <String>[])
-          .where((value) => value.trim().isNotEmpty)
-          .toList(growable: false);
-    } on MissingPluginException {
-      return const <String>[];
-    } on PlatformException {
-      return const <String>[];
-    }
-  }
-}
-
 Future<VesperSourceNormalizerConfiguration>
-biliPlayerSourceNormalizerConfiguration({
-  BiliPlayerPluginResolver pluginResolver = const BiliPlayerPluginResolver(),
-}) async {
+mediaPlayerSourceNormalizerConfiguration() async {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
     return const VesperSourceNormalizerConfiguration();
   }
 
-  final pluginLibraryPaths = await pluginResolver
-      .bundledSourceNormalizerPluginLibraryPaths();
-  if (pluginLibraryPaths.isEmpty) {
-    return const VesperSourceNormalizerConfiguration();
-  }
-
-  return VesperSourceNormalizerConfiguration(
-    mode: VesperSourceNormalizerMode.preferNormalized,
-    pluginLibraryPaths: pluginLibraryPaths,
-  );
+  return VesperSourceNormalizerConfiguration.preferBundled();
 }
 
-VesperSystemPlaybackMetadata biliPlayerSystemPlaybackMetadata({
+VesperSystemPlaybackMetadata mediaPlayerSystemPlaybackMetadata({
   required String title,
   String? subtitle,
   String? artist,
@@ -112,7 +84,7 @@ VesperSystemPlaybackMetadata biliPlayerSystemPlaybackMetadata({
   );
 }
 
-VesperSystemPlaybackConfiguration biliPlayerSystemPlaybackConfiguration({
+VesperSystemPlaybackConfiguration mediaPlayerSystemPlaybackConfiguration({
   required VesperSystemPlaybackMetadata metadata,
   VesperBackgroundPlaybackMode backgroundMode =
       VesperBackgroundPlaybackMode.continueAudio,

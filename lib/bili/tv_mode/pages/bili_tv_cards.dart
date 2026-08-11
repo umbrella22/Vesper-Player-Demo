@@ -201,10 +201,7 @@ class _TvRegionVideoGrid extends StatelessWidget {
           constraints.crossAxisExtent,
         );
         final coverCacheWidth = biliTvCoverCacheWidth(
-          tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-            constraints.crossAxisExtent,
-            maxCrossAxisExtent: maxCrossAxisExtent,
-          ),
+          tileWidth: _tvCoverDecodeLogicalWidth,
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
         );
         return SliverGrid.builder(
@@ -372,6 +369,7 @@ class _TvVideoCard extends StatelessWidget {
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,
+                                gaplessPlayback: true,
                                 errorBuilder: (_, _, _) =>
                                     const ColoredBox(color: Color(0xFF1A1A24)),
                               ),
@@ -546,6 +544,7 @@ class _TvHistoryCard extends StatelessWidget {
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,
+                                gaplessPlayback: true,
                                 errorBuilder: (_, _, _) =>
                                     const ColoredBox(color: Color(0xFF1A1A24)),
                               ),

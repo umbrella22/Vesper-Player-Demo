@@ -1,5 +1,10 @@
 part of 'bili_library_page.dart';
 
+const _tvLibraryVideoMaxCrossAxisExtent = 278.0;
+// Decode at the largest library tile size so rail animation never changes the
+// ResizeImage key for an already visible cover.
+const _tvLibraryCoverDecodeLogicalWidth = _tvLibraryVideoMaxCrossAxisExtent;
+
 int _tvLibraryCoverCacheWidth(BuildContext context, double logicalWidth) {
   return (logicalWidth * MediaQuery.devicePixelRatioOf(context))
       .ceil()
@@ -192,6 +197,7 @@ class _TvLibraryStatusView extends StatelessWidget {
     this.secondaryLabel,
     this.secondaryIcon,
     this.onSecondary,
+    this.autofocusPrimary = true,
   });
 
   final IconData icon;
@@ -203,6 +209,7 @@ class _TvLibraryStatusView extends StatelessWidget {
   final String? secondaryLabel;
   final IconData? secondaryIcon;
   final VoidCallback? onSecondary;
+  final bool autofocusPrimary;
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +250,7 @@ class _TvLibraryStatusView extends StatelessWidget {
                   runSpacing: 12,
                   children: [
                     _TvLibraryActionButton(
-                      autofocus: true,
+                      autofocus: autofocusPrimary,
                       icon: primaryIcon ?? Icons.check_rounded,
                       label: primaryLabel!,
                       primary: true,
@@ -341,107 +348,6 @@ class _TvLibraryActionButton extends StatelessWidget {
   }
 }
 
-class _TvFollowingCard extends StatelessWidget {
-  const _TvFollowingCard({
-    super.key,
-    required this.user,
-    required this.autofocus,
-    required this.onTap,
-  });
-
-  final BiliFollowingUser user;
-  final bool autofocus;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatarCacheWidth = _tvLibraryCoverCacheWidth(context, 76);
-    return TvFocusableSurface(
-      autofocus: autofocus,
-      useOverlayLift: false,
-      focusPadding: 0,
-      scale: 1.045,
-      borderRadius: 12,
-      focusArea: TvFocusArea.content,
-      debugLabel: 'tv_library_following_${user.mid}',
-      onTap: onTap,
-      builder: (context, focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: focused
-                ? Colors.white.withValues(alpha: 0.16)
-                : Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: focused
-                  ? AppVisualTokens.primaryBlue
-                  : const Color(0x18FFFFFF),
-              width: focused ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ClipOval(
-                child: SizedBox(
-                  width: 76,
-                  height: 76,
-                  child: ColoredBox(
-                    color: const Color(0xFF262630),
-                    child: user.avatarUrl.isEmpty
-                        ? const Icon(
-                            Icons.person_outline_rounded,
-                            color: Color(0x88FFFFFF),
-                            size: 38,
-                          )
-                        : Image.network(
-                            user.avatarUrl,
-                            fit: BoxFit.cover,
-                            cacheWidth: avatarCacheWidth,
-                            errorBuilder: (_, _, _) => const Icon(
-                              Icons.person_outline_rounded,
-                              color: Color(0x88FFFFFF),
-                              size: 38,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                user.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                user.sign.isEmpty ? (user.officialLabel ?? '已关注') : user.sign,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0x88FFFFFF),
-                  fontSize: 12,
-                  height: 1.25,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
 class _TvLibraryVideoCard extends StatelessWidget {
   const _TvLibraryVideoCard({
     super.key,
@@ -453,6 +359,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
     required this.autofocus,
     required this.debugLabel,
     required this.onTap,
+    this.durationLabel,
+    this.onFocusChange,
     this.removeKey,
     this.onRemove,
   });
@@ -465,6 +373,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
   final bool autofocus;
   final String debugLabel;
   final VoidCallback onTap;
+  final String? durationLabel;
+  final ValueChanged<bool>? onFocusChange;
   final Key? removeKey;
   final VoidCallback? onRemove;
 
@@ -475,10 +385,10 @@ class _TvLibraryVideoCard extends StatelessWidget {
         ? 0.0
         : (progressMs / durationMs).clamp(0.0, 1.0).toDouble();
     return LayoutBuilder(
-      builder: (context, constraints) {
+      builder: (context, _) {
         final cacheWidth = _tvLibraryCoverCacheWidth(
           context,
-          constraints.maxWidth,
+          _tvLibraryCoverDecodeLogicalWidth,
         );
         return Stack(
           clipBehavior: Clip.none,
@@ -490,6 +400,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
                 borderRadius: AppVisualTokens.contentRadius,
                 focusArea: TvFocusArea.content,
                 debugLabel: debugLabel,
+                onFocusChange: onFocusChange,
                 onTap: onTap,
                 builder: (context, focused) {
                   return Column(
@@ -525,6 +436,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                           coverUrl,
                                           fit: BoxFit.cover,
                                           cacheWidth: cacheWidth,
+                                          gaplessPlayback: true,
                                           errorBuilder: (_, _, _) => ColoredBox(
                                             color: visualTheme.surfaceRaised,
                                             child: Icon(
@@ -545,6 +457,32 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                         alpha: 0.42,
                                       ),
                                       color: AppVisualTokens.primaryBlue,
+                                    ),
+                                  ),
+                                if (durationLabel != null &&
+                                    durationLabel!.isNotEmpty)
+                                  Align(
+                                    alignment: Alignment.bottomRight,
+                                    child: Container(
+                                      margin: const EdgeInsets.all(7),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.68,
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        durationLabel!,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],

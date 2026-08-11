@@ -6,9 +6,7 @@ import 'bili_api_core.dart';
 import 'bili_storage_directory.dart';
 
 final class BiliHistoryStore {
-  const BiliHistoryStore({Directory? baseDirectory, Directory? legacyDirectory})
-    : _baseDirectory = baseDirectory,
-      _legacyDirectory = legacyDirectory;
+  const BiliHistoryStore({this._baseDirectory, this._legacyDirectory});
 
   static final Map<String, Future<void>> _writeChains =
       <String, Future<void>>{};

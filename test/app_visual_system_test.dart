@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_visual_previews.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -79,13 +79,13 @@ void main() {
         home: Builder(
           builder: (context) => FilledButton(
             onPressed: () async {
-              result = await showBiliGlassDialog<bool>(
+              result = await showMediaGlassDialog<bool>(
                 context: context,
                 title: '确认',
                 message: '继续操作？',
                 actions: const [
-                  BiliGlassDialogAction(label: '取消', value: false),
-                  BiliGlassDialogAction(
+                  MediaGlassDialogAction(label: '取消', value: false),
+                  MediaGlassDialogAction(
                     label: '继续',
                     value: true,
                     isPrimary: true,
@@ -108,6 +108,61 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 240));
 
+    expect(result, isTrue);
+  });
+
+  testWidgets('readable glass dialog uses an opaque themed surface', (
+    tester,
+  ) async {
+    bool? result;
+    const message = '分区内容需要登录后才能观看，请先登录 Bilibili 账号。';
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileLightTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () async {
+              result = await showMediaGlassDialog<bool>(
+                context: context,
+                title: '需要登录',
+                message: message,
+                appearance: MediaGlassDialogAppearance.readable,
+                actions: const [
+                  MediaGlassDialogAction(label: '取消', value: false),
+                  MediaGlassDialogAction(
+                    label: '登录',
+                    value: true,
+                    isPrimary: true,
+                  ),
+                ],
+              );
+            },
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pump(const Duration(milliseconds: 240));
+
+    final dialog = find.byKey(
+      const ValueKey<String>('media-readable-glass-dialog'),
+    );
+    expect(dialog, findsOneWidget);
+    expect(find.byType(GlassDialog), findsNothing);
+    expect(
+      tester.widget<Material>(dialog).color,
+      AppVisualTokens.mobileSurface,
+    );
+    expect(
+      tester.widget<Text>(find.text(message)).style?.color,
+      AppVisualTokens.mobileTextSecondary,
+    );
+    expect(find.widgetWithText(FilledButton, '登录'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, '登录'));
+    await tester.pump(const Duration(milliseconds: 240));
     expect(result, isTrue);
   });
 
@@ -177,7 +232,7 @@ void main() {
         home: Builder(
           builder: (context) => FilledButton(
             onPressed: () async {
-              result = await showBiliGlassSheet<String>(
+              result = await showMediaGlassSheet<String>(
                 context: context,
                 maxContentHeightFactor: 0.5,
                 builder: (sheetContext) => SizedBox(

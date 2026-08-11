@@ -12,7 +12,7 @@ import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
 
 import 'design/app_theme_controller.dart';
-import 'design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 class VesperApp extends StatefulWidget {
   const VesperApp({

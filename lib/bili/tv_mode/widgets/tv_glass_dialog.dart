@@ -2,9 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
 final class BiliTvDialogAction<T> {
   const BiliTvDialogAction({

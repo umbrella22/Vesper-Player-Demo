@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 /// Keeps App-owned Material widgets on the split `material_ui` tree while
 /// `liquid_glass_widgets` builds its scaffold with Flutter's legacy Material

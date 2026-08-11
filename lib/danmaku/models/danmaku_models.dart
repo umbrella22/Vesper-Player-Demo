@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/media.dart';
 
 enum BiliDanmakuMode {
   scroll,
@@ -43,26 +44,5 @@ final class BiliDanmakuEntry {
   }
 }
 
-final class DanmakuOverlaySettings {
-  const DanmakuOverlaySettings({
-    this.enabled = true,
-    this.opacity = 0.82,
-    this.density = 0.6,
-  });
-
-  final bool enabled;
-  final double opacity;
-  final double density;
-
-  DanmakuOverlaySettings copyWith({
-    bool? enabled,
-    double? opacity,
-    double? density,
-  }) {
-    return DanmakuOverlaySettings(
-      enabled: enabled ?? this.enabled,
-      opacity: opacity ?? this.opacity,
-      density: density ?? this.density,
-    );
-  }
-}
+/// 兼容别名：弹幕 overlay 设置已泛化为 [MediaDanmakuOverlaySettings]（lib/media）。
+typedef DanmakuOverlaySettings = MediaDanmakuOverlaySettings;

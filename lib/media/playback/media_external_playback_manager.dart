@@ -4,29 +4,43 @@ import 'package:flutter/foundation.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 
-import '../../../player/player_sdk_options.dart';
-import '../models/bili_models.dart';
-import '../services/bili_api_core.dart';
+import '../models/media_detail.dart';
+import '../models/resolved_media.dart';
+import '../player/media_text.dart';
+import '../player/player_options.dart';
 
-enum BiliDlnaState { idle, discovering, connecting, connected, error }
+enum MediaDlnaState { idle, discovering, connecting, connected, error }
 
-typedef BiliResolvedPlaybackRefresh = Future<BiliResolvedPlayback> Function();
+typedef ResolvedMediaPlaybackRefresh = Future<ResolvedMediaPlayback> Function();
 
-class BiliExternalPlaybackManager {
-  BiliExternalPlaybackManager({
-    required BiliVideoDetail detail,
+/// 通用 DLNA 投屏管理器：状态机、设备发现、投屏加载与失败诊断。
+///
+/// 平台私有部分（请求头等）通过 [formatAdaptation] 注入，
+/// 由适配器的 [MediaPlatformAdapter.dlnaConfig] 提供。
+/// [formatAdaptation] 为 null 表示平台未声明 DLNA 能力，管理器保持
+/// [MediaDlnaState.idle]，所有投屏操作为 no-op。
+class MediaExternalPlaybackManager {
+  MediaExternalPlaybackManager({
+    required this._detail,
+    VesperExternalFormatAdaptationConfig? formatAdaptation,
     VesperExternalPlaybackController? dlnaController,
-  }) : _detail = detail,
+  }) : _formatAdaptation = formatAdaptation,
        _dlnaController = dlnaController ?? VesperExternalPlaybackController() {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        formatAdaptation != null) {
       _sessionSubscription = _dlnaController.events.listen(_handleSessionEvent);
     }
   }
 
-  final BiliVideoDetail _detail;
+  final MediaDetail _detail;
+  final VesperExternalFormatAdaptationConfig? _formatAdaptation;
   final VesperExternalPlaybackController _dlnaController;
 
-  BiliDlnaState _state = BiliDlnaState.idle;
+  /// 平台是否声明 DLNA 能力（有格式适配配置才允许投屏）。
+  bool get enabled => _formatAdaptation != null;
+
+  MediaDlnaState _state = MediaDlnaState.idle;
   List<VesperExternalPlaybackRoute> _routes =
       const <VesperExternalPlaybackRoute>[];
   String? _message;
@@ -45,7 +59,7 @@ class BiliExternalPlaybackManager {
   VoidCallback? _onChanged;
   final Set<VoidCallback> _listeners = <VoidCallback>{};
 
-  BiliDlnaState get state => _state;
+  MediaDlnaState get state => _state;
 
   List<VesperExternalPlaybackRoute> get routes => _routes;
 
@@ -78,9 +92,12 @@ class BiliExternalPlaybackManager {
   }
 
   Future<void> startDiscovery() async {
-    if (_state == BiliDlnaState.discovering ||
-        _state == BiliDlnaState.connecting ||
-        _state == BiliDlnaState.connected) {
+    if (!enabled) {
+      return;
+    }
+    if (_state == MediaDlnaState.discovering ||
+        _state == MediaDlnaState.connecting ||
+        _state == MediaDlnaState.connected) {
       return;
     }
     _message = null;
@@ -88,21 +105,21 @@ class BiliExternalPlaybackManager {
     _disconnectFailureRouteId = null;
     _routes = const <VesperExternalPlaybackRoute>[];
     _routesSubscription ??= _dlnaController.routes.listen(_handleRoutes);
-    _setState(BiliDlnaState.discovering);
+    _setState(MediaDlnaState.discovering);
     try {
       await _dlnaController.startDiscovery();
     } catch (error) {
       _routesSubscription?.cancel();
       _routesSubscription = null;
-      _message = 'DLNA 设备发现启动失败：${biliErrorMessage(error)}';
-      _setState(BiliDlnaState.error);
+      _message = 'DLNA 设备发现启动失败：${mediaErrorMessage(error)}';
+      _setState(MediaDlnaState.error);
     }
   }
 
   Future<void> stopDiscovery() async {
-    if (_state == BiliDlnaState.idle ||
-        _state == BiliDlnaState.connecting ||
-        _state == BiliDlnaState.connected) {
+    if (_state == MediaDlnaState.idle ||
+        _state == MediaDlnaState.connecting ||
+        _state == MediaDlnaState.connected) {
       return;
     }
     try {
@@ -110,15 +127,15 @@ class BiliExternalPlaybackManager {
     } catch (_) {}
     _routesSubscription?.cancel();
     _routesSubscription = null;
-    _setState(BiliDlnaState.idle);
+    _setState(MediaDlnaState.idle);
   }
 
   Future<String?> connect(String routeId) async {
-    if (_state != BiliDlnaState.discovering) {
+    if (_state != MediaDlnaState.discovering) {
       return '设备列表已过期，请重新刷新。';
     }
     try {
-      _setState(BiliDlnaState.connecting);
+      _setState(MediaDlnaState.connecting);
       await _dlnaController.stopDiscovery();
       _routesSubscription?.cancel();
       _routesSubscription = null;
@@ -129,24 +146,24 @@ class BiliExternalPlaybackManager {
         _disconnectFailureMessage = null;
         _disconnectFailureRouteId = null;
         _message = result.message;
-        _setState(BiliDlnaState.connected);
+        _setState(MediaDlnaState.connected);
         return null;
       }
       await _failConnection(result.message ?? '连接失败。');
       return _message;
     } catch (error) {
       if (_disposed) return null;
-      await _failConnection('DLNA 连接失败：${biliErrorMessage(error)}');
+      await _failConnection('DLNA 连接失败：${mediaErrorMessage(error)}');
       return _message;
     }
   }
 
   Future<String?> loadMedia({
-    required BiliResolvedPlayback resolved,
-    BiliVideoPageEntry? selectedPage,
-    BiliResolvedPlaybackRefresh? refreshResolved,
+    required ResolvedMediaPlayback resolved,
+    MediaPlaybackEntry? selectedPage,
+    ResolvedMediaPlaybackRefresh? refreshResolved,
   }) async {
-    if (_state != BiliDlnaState.connected || _connectedRouteId == null) {
+    if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
       return '请先连接 DLNA 设备。';
     }
     _loadingMedia = true;
@@ -165,16 +182,16 @@ class BiliExternalPlaybackManager {
       if (refreshResolved != null && _shouldRetryLoadFailure(result.message)) {
         _message = '播放地址可能已过期，正在刷新投屏资源…';
         _notify();
-        BiliResolvedPlayback refreshed;
+        ResolvedMediaPlayback refreshed;
         try {
           refreshed = await refreshResolved();
         } catch (error) {
           if (_disposed) return null;
-          await _failConnection('播放地址刷新失败：${biliErrorMessage(error)}');
+          await _failConnection('播放地址刷新失败：${mediaErrorMessage(error)}');
           return _message;
         }
         if (_disposed) return null;
-        if (_state != BiliDlnaState.connected || _connectedRouteId == null) {
+        if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
           return _message ?? 'DLNA 连接已断开。';
         }
         _retryableLoadDiagnosticMessage = null;
@@ -194,7 +211,7 @@ class BiliExternalPlaybackManager {
       return _message;
     } catch (error) {
       if (_disposed) return null;
-      await _failConnection('投屏播放失败：${biliErrorMessage(error)}');
+      await _failConnection('投屏播放失败：${mediaErrorMessage(error)}');
       return _message;
     } finally {
       _loadingMedia = false;
@@ -204,22 +221,32 @@ class BiliExternalPlaybackManager {
   }
 
   Future<VesperExternalPlaybackResult> _loadResolvedMedia({
-    required BiliResolvedPlayback resolved,
-    BiliVideoPageEntry? selectedPage,
+    required ResolvedMediaPlayback resolved,
+    MediaPlaybackEntry? selectedPage,
   }) {
+    final formatAdaptation = _formatAdaptation;
+    if (formatAdaptation == null) {
+      // 平台未声明 DLNA 能力：不发起投屏。
+      return Future<VesperExternalPlaybackResult>.value(
+        const VesperExternalPlaybackResult(
+          status: VesperExternalPlaybackResultStatus.failed,
+          message: '当前平台未声明 DLNA 投屏能力。',
+        ),
+      );
+    }
     final source = resolved.toSource();
     final metadata = buildSystemPlaybackMetadata(resolved, selectedPage);
     final item = VesperExternalPlaybackMediaItem(
       sources: <VesperPlayerSource>[source],
       metadata: metadata,
       proxyPolicy: VesperExternalProxyPolicy.auto,
-      formatAdaptation: biliDlnaFormatAdaptationConfig,
+      formatAdaptation: formatAdaptation,
     );
     return _dlnaController.load(item);
   }
 
   String? _completeLoadSuccess() {
-    if (_state != BiliDlnaState.connected || _connectedRouteId == null) {
+    if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
       return _message ?? 'DLNA 连接已断开。';
     }
     _pausedLocalPlayback = true;
@@ -229,7 +256,7 @@ class BiliExternalPlaybackManager {
   }
 
   Future<String?> disconnect() async {
-    if (_state != BiliDlnaState.connected) {
+    if (_state != MediaDlnaState.connected) {
       return null;
     }
     _disconnectFailureMessage = null;
@@ -239,7 +266,7 @@ class BiliExternalPlaybackManager {
     } catch (_) {}
     _clearConnection();
     _message = null;
-    _setState(BiliDlnaState.idle);
+    _setState(MediaDlnaState.idle);
     return null;
   }
 
@@ -258,12 +285,12 @@ class BiliExternalPlaybackManager {
   }
 
   VesperSystemPlaybackMetadata buildSystemPlaybackMetadata(
-    BiliResolvedPlayback resolved,
-    BiliVideoPageEntry? page,
+    ResolvedMediaPlayback resolved,
+    MediaPlaybackEntry? page,
   ) {
     final durationSeconds = page?.durationSeconds ?? 0;
     final durationMs = durationSeconds > 0 ? durationSeconds * 1000 : null;
-    return biliPlayerSystemPlaybackMetadata(
+    return mediaPlayerSystemPlaybackMetadata(
       title: resolved.title,
       subtitle: resolved.subtitle,
       artist: _detail.ownerName,
@@ -293,7 +320,7 @@ class BiliExternalPlaybackManager {
         _disconnectFailureMessage = null;
         _disconnectFailureRouteId = null;
         _message = '已连接到 ${_connectedRouteName ?? 'DLNA 设备'}';
-        _setState(BiliDlnaState.connected);
+        _setState(MediaDlnaState.connected);
       case VesperExternalPlaybackSessionEventKind.routeDisconnected:
         final failureMessage = _disconnectFailureMessage;
         _clearConnection();
@@ -302,11 +329,11 @@ class BiliExternalPlaybackManager {
                 event.routeId == null ||
                 event.routeId == _disconnectFailureRouteId)) {
           _message = failureMessage;
-          _setState(BiliDlnaState.error);
+          _setState(MediaDlnaState.error);
           return;
         }
         _message = 'DLNA 连接已断开。';
-        _setState(BiliDlnaState.idle);
+        _setState(MediaDlnaState.idle);
       case VesperExternalPlaybackSessionEventKind.playing:
         _pausedLocalPlayback = true;
         _notify();
@@ -358,8 +385,8 @@ class BiliExternalPlaybackManager {
     _disconnectFailureMessage = message;
     _disconnectFailureRouteId = routeId ?? _connectedRouteId;
     final shouldDisconnect =
-        _state == BiliDlnaState.connecting ||
-        _state == BiliDlnaState.connected ||
+        _state == MediaDlnaState.connecting ||
+        _state == MediaDlnaState.connected ||
         _connectedRouteId != null;
     if (shouldDisconnect) {
       try {
@@ -371,7 +398,7 @@ class BiliExternalPlaybackManager {
     }
     _clearConnection();
     _message = message;
-    _setState(BiliDlnaState.error);
+    _setState(MediaDlnaState.error);
   }
 
   void _clearConnection() {
@@ -380,7 +407,7 @@ class BiliExternalPlaybackManager {
     _pausedLocalPlayback = false;
   }
 
-  void _setState(BiliDlnaState newState) {
+  void _setState(MediaDlnaState newState) {
     if (_disposed) return;
     _state = newState;
     _notify();
@@ -418,8 +445,8 @@ class BiliExternalPlaybackManager {
     if (severity != 'warning' && severity != 'error') {
       return false;
     }
-    if (_state != BiliDlnaState.connected &&
-        _state != BiliDlnaState.connecting &&
+    if (_state != MediaDlnaState.connected &&
+        _state != MediaDlnaState.connecting &&
         _connectedRouteId == null) {
       return false;
     }

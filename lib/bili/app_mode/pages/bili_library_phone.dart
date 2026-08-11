@@ -28,9 +28,10 @@ class _LibraryLoadMoreButton extends StatelessWidget {
 }
 
 class _FollowingTile extends StatelessWidget {
-  const _FollowingTile({required this.user});
+  const _FollowingTile({required this.user, required this.onTap});
 
   final BiliFollowingUser user;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +40,7 @@ class _FollowingTile extends StatelessWidget {
       color: visualTheme.surface,
       borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       child: ListTile(
+        onTap: onTap,
         leading: CircleAvatar(
           radius: 24,
           backgroundColor: AppVisualTokens.biliSourcePink.withValues(

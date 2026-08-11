@@ -11,10 +11,10 @@ final class BiliOfflineMediaExportException implements Exception {
 
 class BiliOfflineMediaExporter {
   const BiliOfflineMediaExporter({
-    MethodChannel channel = const MethodChannel(
+    this._channel = const MethodChannel(
       'dev.ikaros.vesper_player/media_export',
     ),
-  }) : _channel = channel;
+  });
 
   final MethodChannel _channel;
 

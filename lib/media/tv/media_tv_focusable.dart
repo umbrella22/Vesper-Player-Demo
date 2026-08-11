@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 const _tvWhiteRamp = Color(0xFFFFFFFF);
 const _tvBlackRamp = Color(0xFF000000);
 
 enum TvFocusArea {
+  /// The persistent first-level navigation rail owned by the TV home page.
+  homeRail,
   rail,
   content,
   recommendGrid,
@@ -101,6 +103,7 @@ class TvFocusable extends StatefulWidget {
     this.duration = AppVisualTokens.tvFocusDuration,
     this.showGlow = true,
     this.onFocusChange,
+    this.onDirectionalMove,
     this.debugLabel,
     this.focusArea,
   });
@@ -116,6 +119,7 @@ class TvFocusable extends StatefulWidget {
   final Duration duration;
   final bool showGlow;
   final ValueChanged<bool>? onFocusChange;
+  final bool Function(TraversalDirection direction)? onDirectionalMove;
   final String? debugLabel;
   final TvFocusArea? focusArea;
 
@@ -228,6 +232,9 @@ class _TvFocusableState extends State<TvFocusable> {
   }
 
   KeyEventResult _moveFocus(TraversalDirection direction) {
+    if (widget.onDirectionalMove?.call(direction) == true) {
+      return KeyEventResult.handled;
+    }
     final moved = moveTvFocusSpatially(_node, direction);
     if (moved) {
       revealFocusedTvControl(direction);
@@ -318,6 +325,7 @@ class TvGlassSelectable extends StatefulWidget {
     this.scale = 1.035,
     this.padding = EdgeInsets.zero,
     this.onFocusChange,
+    this.onDirectionalMove,
     this.useOwnLayer = true,
   });
 
@@ -332,6 +340,7 @@ class TvGlassSelectable extends StatefulWidget {
   final double scale;
   final EdgeInsetsGeometry padding;
   final ValueChanged<bool>? onFocusChange;
+  final bool Function(TraversalDirection direction)? onDirectionalMove;
   final bool useOwnLayer;
 
   @override
@@ -414,6 +423,7 @@ class _TvGlassSelectableState extends State<TvGlassSelectable> {
       focusArea: widget.focusArea,
       debugLabel: widget.debugLabel,
       onFocusChange: _handleFocusChange,
+      onDirectionalMove: widget.onDirectionalMove,
       onTap: widget.onTap,
       child: Listener(
         onPointerDown: (_) => _setPressed(true),
@@ -897,6 +907,12 @@ bool moveTvFocusSpatially(
               current,
               direction,
               allowedAreas: {TvFocusArea.rail},
+            ) ||
+            _restoreRememberedTvFocus(current, TvFocusArea.homeRail) ||
+            _moveTvFocusSpatially(
+              current,
+              direction,
+              allowedAreas: {TvFocusArea.homeRail},
             );
       }
       return false;
@@ -913,6 +929,31 @@ bool moveTvFocusSpatially(
           current,
           direction,
           allowedAreas: {TvFocusArea.rail},
+        ) ||
+        _moveTvFocusSpatially(
+          current,
+          direction,
+          allowedAreas: {TvFocusArea.homeRail},
+        );
+  }
+  if (currentArea == TvFocusArea.homeRail &&
+      direction == TraversalDirection.right) {
+    return _restoreRememberedTvFocus(current, TvFocusArea.rail) ||
+        _moveTvFocusSpatially(
+          current,
+          direction,
+          allowedAreas: {TvFocusArea.rail},
+        ) ||
+        _restoreRememberedTvContentFocus(current) ||
+        _moveTvFocusSpatially(
+          current,
+          direction,
+          allowedAreas: const {
+            TvFocusArea.content,
+            TvFocusArea.recommendGrid,
+            TvFocusArea.regionCategories,
+            TvFocusArea.regionGrid,
+          },
         );
   }
   if (currentArea == TvFocusArea.rail &&
@@ -927,6 +968,14 @@ bool moveTvFocusSpatially(
             TvFocusArea.regionCategories,
             TvFocusArea.regionGrid,
           },
+        );
+  }
+  if (currentArea == TvFocusArea.rail && direction == TraversalDirection.left) {
+    return _restoreRememberedTvFocus(current, TvFocusArea.homeRail) ||
+        _moveTvFocusSpatially(
+          current,
+          direction,
+          allowedAreas: {TvFocusArea.homeRail},
         );
   }
   return _moveTvFocusSpatially(
@@ -991,11 +1040,22 @@ Set<TvFocusArea>? _defaultAllowedAreas(
   TraversalDirection direction,
 ) {
   return switch (currentArea) {
+    TvFocusArea.homeRail when direction == TraversalDirection.right => {
+      TvFocusArea.rail,
+      TvFocusArea.content,
+      TvFocusArea.recommendGrid,
+      TvFocusArea.regionCategories,
+      TvFocusArea.regionGrid,
+    },
+    TvFocusArea.homeRail => {TvFocusArea.homeRail},
     TvFocusArea.rail when direction == TraversalDirection.right => {
       TvFocusArea.content,
       TvFocusArea.recommendGrid,
       TvFocusArea.regionCategories,
       TvFocusArea.regionGrid,
+    },
+    TvFocusArea.rail when direction == TraversalDirection.left => {
+      TvFocusArea.homeRail,
     },
     TvFocusArea.rail => {TvFocusArea.rail},
     TvFocusArea.content when direction == TraversalDirection.down => {

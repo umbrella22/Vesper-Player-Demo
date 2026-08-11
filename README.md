@@ -116,7 +116,7 @@ third_party/
 ```sh
 git submodule update --init --recursive
 bash scripts/prepare_flutter_workspace.sh
-bash third_party/vesper-player-sdk/scripts/ios/build-player-ffi-xcframework.sh release
+third_party/vesper-player-sdk/scripts/vesper ios ffi release
 flutter analyze
 flutter test
 flutter run

@@ -3,18 +3,26 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
-import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:vesper_player/vesper_player.dart';
+
+const _librarySessionCookies = <String, String>{
+  'SESSDATA': 'sess',
+  'bili_jct': 'csrf',
+  'DedeUserID': '42',
+  'buvid3': 'b3',
+  'buvid4': 'b4',
+};
 
 void main() {
   test('parses following, remote history, and watch-later payloads', () async {
@@ -51,6 +59,81 @@ void main() {
     );
   });
 
+  test(
+    'account-only follow and space APIs reject before transport warm-up',
+    () async {
+      final httpClient = _LibraryHttpClient();
+      final client = BiliClient(httpClient: httpClient);
+      addTearDown(() => client.transport.httpClient.close(force: true));
+
+      final matcher = isA<BiliApiException>().having(
+        (error) => error.code,
+        'code',
+        -101,
+      );
+      await expectLater(client.fetchFollowingUsers(), throwsA(matcher));
+      await expectLater(client.fetchUserSpaceProfile(7), throwsA(matcher));
+      await expectLater(client.fetchUserSpaceVideos(mid: 7), throwsA(matcher));
+      await expectLater(
+        client.fetchUserSpaceVideoByBvid(mid: 7, bvid: 'BV1space0001'),
+        throwsA(matcher),
+      );
+
+      expect(httpClient.requestedUris, isEmpty);
+    },
+  );
+
+  test('parses user-space profile and archive list', () async {
+    final httpClient = _LibraryHttpClient();
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    final profile = await client.fetchUserSpaceProfile(7);
+    final page = await client.fetchUserSpaceVideos(mid: 7, keyword: '空间');
+
+    expect(profile.name, '测试 UP 空间');
+    expect(profile.followerCount, 12000);
+    expect(profile.archiveCount, 3);
+    expect(page.videos.single.bvid, 'BV1space0001');
+    expect(page.videos.single.durationLabel, '02:03');
+    expect(page.videos.single.playCountLabel, '1.2万');
+    expect(
+      httpClient.requestedUris.map((uri) => uri.path),
+      containsAll(<String>['/x/web-interface/card', '/x/space/wbi/arc/search']),
+    );
+  });
+
+  test('exact BV lookup rejects a video owned by another UP', () async {
+    final httpClient = _LibraryHttpClient(spaceVideoOwnerMid: 999);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    final result = await client.fetchUserSpaceVideoByBvid(
+      mid: 7,
+      bvid: 'BV1space0001',
+    );
+
+    expect(result, isNull);
+    expect(
+      httpClient.requestedUris.map((uri) => uri.path),
+      contains('/x/web-interface/view'),
+    );
+  });
+
   testWidgets('following list loads another ATV page on demand', (
     WidgetTester tester,
   ) async {
@@ -84,6 +167,298 @@ void main() {
           .map((uri) => uri.queryParameters['pn']),
       <String?>['1', '2'],
     );
+  });
+
+  testWidgets('tapping a followed UP opens its mobile space page', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    await tester.pumpWidget(MaterialApp(home: BiliLibraryPage(client: client)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('测试 UP'));
+
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-user-space-video-search')),
+    );
+
+    expect(find.text('UP 主空间'), findsOneWidget);
+    expect(find.text('测试 UP 空间'), findsOneWidget);
+    expect(find.text('空间视频'), findsOneWidget);
+    expect(
+      httpClient.requestedUris.map((uri) => uri.path),
+      containsAll(<String>['/x/web-interface/card', '/x/space/wbi/arc/search']),
+    );
+  });
+
+  testWidgets('mobile space routes title and BV searches to separate APIs', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+
+    await tester.pumpWidget(MaterialApp(home: BiliLibraryPage(client: client)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('测试 UP'));
+    final search = find.byKey(
+      const ValueKey<String>('bili-user-space-video-search'),
+    );
+    await _pumpLibraryUntilFound(tester, search);
+
+    await tester.enterText(search, '空间');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await _pumpLibraryUntilFound(tester, find.text('搜索结果'));
+    final archiveRequests = httpClient.requestedUris
+        .where((uri) => uri.path == '/x/space/wbi/arc/search')
+        .toList(growable: false);
+    expect(archiveRequests.last.queryParameters['keyword'], '空间');
+
+    await tester.enterText(search, 'BV1other0001');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-user-space-content')),
+    );
+    expect(
+      httpClient.requestedUris.map((uri) => uri.path),
+      contains('/x/web-interface/view'),
+    );
+  });
+
+  testWidgets('TV following browser collapses and restores its UP rail', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true);
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(const <String, String>{
+        'SESSDATA': 'sess',
+        'bili_jct': 'csrf',
+        'DedeUserID': '42',
+        'buvid3': 'b3',
+        'buvid4': 'b4',
+      });
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
+        home: Scaffold(body: BiliLibraryPage.tvFollowingPane(client: client)),
+      ),
+    );
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+    );
+    final videoGrid = find.byKey(
+      const ValueKey<String>('bili-tv-space-video-grid'),
+    );
+    expect(tester.widget<GridView>(videoGrid).clipBehavior, Clip.hardEdge);
+    expect(
+      tester.getTopLeft(videoGrid).dy,
+      greaterThan(
+        tester
+            .getBottomLeft(
+              find.byKey(const ValueKey<String>('bili-tv-space-video-search')),
+            )
+            .dy,
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+    final userFinder = find.byKey(
+      const ValueKey<String>('bili-tv-following-user-7'),
+    );
+    await tester.tap(userFinder);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    final followingSearch = find.byKey(
+      const ValueKey<String>('bili-tv-following-search'),
+    );
+    await tester.enterText(followingSearch, '测试');
+    await tester.tap(userFinder);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+
+    int requestCount(String path) =>
+        httpClient.requestedUris.where((uri) => uri.path == path).length;
+    final followingRequests = requestCount('/x/relation/followings');
+    final profileRequests = requestCount('/x/web-interface/card');
+    final archiveRequests = requestCount('/x/space/wbi/arc/search');
+    expect(followingRequests, 1);
+    expect(profileRequests, 1);
+    expect(archiveRequests, 1);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    expect(tester.widget<TextField>(followingSearch).controller?.text, '测试');
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+      findsOneWidget,
+    );
+    expect(requestCount('/x/relation/followings'), followingRequests);
+    expect(requestCount('/x/web-interface/card'), profileRequests);
+    expect(requestCount('/x/space/wbi/arc/search'), archiveRequests);
+  });
+
+  testWidgets('TV following login clears an UP removed by the refreshed list', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true)
+      ..spaceAuthenticationFailuresRemaining = 1;
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(_librarySessionCookies);
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
+        home: Scaffold(
+          body: BiliLibraryPage.tvFollowingPane(
+            client: client,
+            onLoginTap: () async {
+              httpClient.followingEmpty = true;
+              client.restoreCookies(_librarySessionCookies);
+            },
+          ),
+        ),
+      ),
+    );
+    await _pumpLibraryUntilFound(tester, find.text('需要重新登录'));
+
+    await tester.tap(find.text('登录'));
+    await _pumpLibraryUntilFound(tester, find.text('选择一位 UP 主'));
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+      findsNothing,
+    );
+    expect(httpClient.requestedSpaceMids, <int>[7]);
+  });
+
+  testWidgets('TV following login requests only the refreshed first UP', (
+    WidgetTester tester,
+  ) async {
+    final httpClient = _LibraryHttpClient(emptyFollowingAvatars: true)
+      ..spaceAuthenticationFailuresRemaining = 1;
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(_librarySessionCookies);
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
+        home: Scaffold(
+          body: BiliLibraryPage.tvFollowingPane(
+            client: client,
+            onLoginTap: () async {
+              httpClient.followingMid = 8;
+              client.restoreCookies(_librarySessionCookies);
+            },
+          ),
+        ),
+      ),
+    );
+    await _pumpLibraryUntilFound(tester, find.text('需要重新登录'));
+
+    await tester.tap(find.text('登录'));
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0008')),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+      findsNothing,
+    );
+    expect(httpClient.requestedProfileMids, <int>[7, 8]);
+    expect(httpClient.requestedSpaceMids, <int>[7, 8]);
+  });
+
+  testWidgets('TV following skips stale UP videos after switching users', (
+    WidgetTester tester,
+  ) async {
+    final staleProfileGate = Completer<void>();
+    final httpClient = _LibraryHttpClient(
+      multipleFollowingPages: true,
+      emptyFollowingAvatars: true,
+      profileGates: <int, Future<void>>{1000: staleProfileGate.future},
+    );
+    final client = BiliClient(httpClient: httpClient)
+      ..restoreCookies(_librarySessionCookies);
+    addTearDown(() => client.transport.httpClient.close(force: true));
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
+        home: Scaffold(body: BiliLibraryPage.tvFollowingPane(client: client)),
+      ),
+    );
+    final nextUser = find.byKey(
+      const ValueKey<String>('bili-tv-following-user-1001'),
+    );
+    await _pumpLibraryUntilFound(tester, nextUser);
+
+    await tester.tap(nextUser);
+    await _pumpLibraryUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space1001')),
+    );
+    expect(httpClient.requestedProfileMids, <int>[1000, 1001]);
+    expect(httpClient.requestedSpaceMids, <int>[1001]);
+
+    staleProfileGate.complete();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+
+    expect(httpClient.requestedSpaceMids, <int>[1001]);
   });
 
   testWidgets('phone library aligns its selected glass tabs with content', (
@@ -159,7 +534,7 @@ void main() {
     expect(find.text('请先登录 Bilibili 后查看此内容。'), findsOneWidget);
   });
 
-  testWidgets('tv history library uses the dark grid without following', (
+  testWidgets('tv history library keeps its dark grid without following', (
     WidgetTester tester,
   ) async {
     final historyRoot = Directory(
@@ -1047,11 +1422,13 @@ final class _LibraryHttpClient implements HttpClient {
     this.subtitleCueTo = 1.5,
     this.multipleFollowingPages = false,
     this.emptyFollowingAvatars = false,
+    this.spaceVideoOwnerMid = 7,
     this.historyPaginationAuthExpires = false,
     this.emptyHistoryCovers = false,
     this.emptyWatchLaterCovers = false,
     this.subtitleGates = const <Future<void>>[],
     this.subtitleBvids,
+    this.profileGates = const <int, Future<void>>{},
   });
 
   final bool durationAsClockLabel;
@@ -1066,6 +1443,10 @@ final class _LibraryHttpClient implements HttpClient {
   final double subtitleCueTo;
   final bool multipleFollowingPages;
   final bool emptyFollowingAvatars;
+  bool followingEmpty = false;
+  int followingMid = 7;
+  int spaceAuthenticationFailuresRemaining = 0;
+  final int spaceVideoOwnerMid;
   final bool historyPaginationAuthExpires;
   final bool emptyHistoryCovers;
   final bool emptyWatchLaterCovers;
@@ -1078,11 +1459,24 @@ final class _LibraryHttpClient implements HttpClient {
   /// When non-null, only player-v2 responses for these bvids advertise
   /// subtitles. Keeps gated requests from blocking unrelated materializations.
   final Set<String>? subtitleBvids;
+  final Map<int, Future<void>> profileGates;
   final List<Uri> requestedUris = <Uri>[];
   final Map<Uri, Map<String, String>> requestHeaders =
       <Uri, Map<String, String>>{};
   final List<_RecordedPost> posts = <_RecordedPost>[];
   String? _userAgent;
+
+  List<int> get requestedProfileMids => requestedUris
+      .where((uri) => uri.path == '/x/web-interface/card')
+      .map((uri) => int.tryParse(uri.queryParameters['mid'] ?? ''))
+      .whereType<int>()
+      .toList(growable: false);
+
+  List<int> get requestedSpaceMids => requestedUris
+      .where((uri) => uri.path == '/x/space/wbi/arc/search')
+      .map((uri) => int.tryParse(uri.queryParameters['mid'] ?? ''))
+      .whereType<int>()
+      .toList(growable: false);
 
   @override
   String? get userAgent => _userAgent;
@@ -1095,6 +1489,13 @@ final class _LibraryHttpClient implements HttpClient {
     requestedUris.add(url);
     final headers = <String, String>{};
     requestHeaders[url] = headers;
+    if (url.path == '/x/web-interface/card') {
+      final mid = int.tryParse(url.queryParameters['mid'] ?? '');
+      final gate = mid == null ? null : profileGates[mid];
+      if (gate != null) {
+        await gate;
+      }
+    }
     if (url.host == 'subtitle.example' && subtitleGates.isNotEmpty) {
       await subtitleGates.removeAt(0);
     }
@@ -1134,14 +1535,20 @@ final class _LibraryHttpClient implements HttpClient {
     }
     if (url.path == '/x/relation/followings') {
       final page = int.tryParse(url.queryParameters['pn'] ?? '') ?? 1;
-      final count = multipleFollowingPages ? (page == 1 ? 50 : 1) : 1;
+      final count = followingEmpty
+          ? 0
+          : multipleFollowingPages
+          ? (page == 1 ? 50 : 1)
+          : 1;
       return _json(<String, Object?>{
         'code': 0,
         'data': <String, Object?>{
           'list': List<Object?>.generate(
             count,
             (index) => <String, Object?>{
-              'mid': multipleFollowingPages ? page * 1000 + index : 7,
+              'mid': multipleFollowingPages
+                  ? page * 1000 + index
+                  : followingMid,
               'uname': multipleFollowingPages
                   ? '测试 UP ${(page - 1) * 50 + index + 1}'
                   : '测试 UP',
@@ -1150,6 +1557,99 @@ final class _LibraryHttpClient implements HttpClient {
               'official_verify': <String, Object?>{'desc': '认证'},
             },
           ),
+        },
+      });
+    }
+    if (url.path == '/x/web-interface/card') {
+      final mid =
+          int.tryParse(url.queryParameters['mid'] ?? '') ?? followingMid;
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'card': <String, Object?>{
+            'mid': mid,
+            'name': mid == 7 ? '测试 UP 空间' : '测试 UP $mid 空间',
+            'face': emptyFollowingAvatars
+                ? ''
+                : '//example.com/space-avatar.jpg',
+            'sign': '空间简介',
+            'friend': 12,
+            'fans': 12000,
+            'official_verify': <String, Object?>{'desc': '认证'},
+          },
+          'follower': 12000,
+          'archive_count': 3,
+        },
+      });
+    }
+    if (url.path == '/x/space/wbi/arc/search') {
+      final mid =
+          int.tryParse(url.queryParameters['mid'] ?? '') ?? followingMid;
+      if (spaceAuthenticationFailuresRemaining > 0) {
+        spaceAuthenticationFailuresRemaining -= 1;
+        return _json(<String, Object?>{'code': -101, 'message': '账号未登录'});
+      }
+      final keyword = url.queryParameters['keyword'] ?? '';
+      final hasMatch = keyword.isEmpty || keyword.contains('空间');
+      final bvid = mid == 7
+          ? 'BV1space0001'
+          : 'BV1space${mid.toString().padLeft(4, '0')}';
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'list': <String, Object?>{
+            'vlist': hasMatch
+                ? <Object?>[
+                    <String, Object?>{
+                      'aid': mid * 10,
+                      'bvid': bvid,
+                      'title': mid == 7 ? '空间视频' : '空间视频 $mid',
+                      'pic': emptyFollowingAvatars
+                          ? ''
+                          : '//example.com/space-video.jpg',
+                      'length': '02:03',
+                      'created': 1710000000,
+                      'play': 12000,
+                      'mid': mid,
+                      'author': mid == 7 ? '测试 UP 空间' : '测试 UP $mid 空间',
+                      'description': '投稿简介',
+                    },
+                  ]
+                : const <Object?>[],
+          },
+          'page': <String, Object?>{
+            'pn': int.tryParse(url.queryParameters['pn'] ?? '') ?? 1,
+            'ps': int.tryParse(url.queryParameters['ps'] ?? '') ?? 30,
+            'count': hasMatch ? 1 : 0,
+          },
+        },
+      });
+    }
+    if (url.path == '/x/web-interface/view') {
+      final bvid = url.queryParameters['bvid'] ?? 'BV1space0001';
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'aid': 70,
+          'bvid': bvid,
+          'title': '空间视频',
+          'pic': '//example.com/space-video.jpg',
+          'desc': '投稿简介',
+          'pubdate': 1710000000,
+          'owner': <String, Object?>{
+            'mid': spaceVideoOwnerMid,
+            'name': '测试 UP 空间',
+            'face': '//example.com/space-avatar.jpg',
+          },
+          'stat': <String, Object?>{'view': 12000},
+          'pages': <Object?>[
+            <String, Object?>{
+              'cid': 701,
+              'page': 1,
+              'part': 'P1',
+              'duration': 123,
+            },
+          ],
         },
       });
     }
@@ -1327,11 +1827,7 @@ final class _LibraryHttpClient implements HttpClient {
 }
 
 final class _LibraryHttpClientRequest implements HttpClientRequest {
-  _LibraryHttpClientRequest(
-    this._response, {
-    this.onClose,
-    void Function(String name, Object value)? onHeader,
-  }) : _onHeader = onHeader;
+  _LibraryHttpClientRequest(this._response, {this.onClose, this._onHeader});
 
   final _LibraryHttpClientResponse _response;
   final void Function(String body)? onClose;

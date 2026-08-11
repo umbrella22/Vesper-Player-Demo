@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/app_version.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -22,7 +22,7 @@ import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
 import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
@@ -33,10 +33,21 @@ part 'bili_tv_hero.dart';
 part 'bili_tv_cards.dart';
 part 'bili_tv_account.dart';
 
-enum _TvNavItem { recommend, regions, search, history, mine, settings }
+enum _TvNavItem {
+  recommend,
+  following,
+  regions,
+  search,
+  history,
+  mine,
+  settings,
+}
 
 const _tvGridMaxCrossAxisExtent = 184.0;
 const _tvGridMaxCrossAxisExtentCeiling = 320.0;
+// Keep ResizeImage keys independent from the animated rail constraint. Use
+// the largest supported TV tile width for every cover in this page.
+const _tvCoverDecodeLogicalWidth = _tvGridMaxCrossAxisExtentCeiling;
 const _tvGridGrowthStartWidth = 1100.0;
 const _tvGridGrowthEndWidth = 2600.0;
 const _tvGridMainAxisSpacing = 14.0;
@@ -46,6 +57,7 @@ const _tvCardFocusPadding = 12.0;
 const _tvGridFocusInset = 32.0;
 const _tvHeroFocusDelay = Duration(milliseconds: 120);
 const _tvHeroCrossFadeDuration = Duration(milliseconds: 260);
+const _tvNestedRailGap = 12.0;
 
 enum _TvHeroSource { history, feed, region, search }
 
@@ -220,6 +232,7 @@ extension on _TvNavItem {
   String label() {
     return switch (this) {
       _TvNavItem.recommend => '为你推荐',
+      _TvNavItem.following => '关注列表',
       _TvNavItem.regions => '分区',
       _TvNavItem.search => '搜索',
       _TvNavItem.history => '历史记录',
@@ -231,6 +244,7 @@ extension on _TvNavItem {
   IconData icon() {
     return switch (this) {
       _TvNavItem.recommend => Icons.home_rounded,
+      _TvNavItem.following => Icons.people_alt_rounded,
       _TvNavItem.regions => Icons.grid_view_rounded,
       _TvNavItem.search => Icons.search_rounded,
       _TvNavItem.history => Icons.history_rounded,
@@ -281,6 +295,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   final ScrollController _continueShelfController = ScrollController();
 
   _TvNavItem _selectedNav = _TvNavItem.recommend;
+  _TvNavItem _lastPrimaryNav = _TvNavItem.recommend;
+  bool _followingPaneActivated = false;
+  bool _homeRailExpanded = true;
   bool _forceTvMode = false;
   bool _initialForceTvMode = false;
   bool _feedLoadMoreQueued = false;
@@ -298,7 +315,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   String? _regionErrorMessage;
   bool _restorePresentationOnDispose = true;
   bool _exitDialogVisible = false;
-  TvFocusArea? _activeFocusArea = TvFocusArea.rail;
+  TvFocusArea? _activeFocusArea = TvFocusArea.homeRail;
   _TvHeroItem? _heroItem;
   Timer? _heroUpdateTimer;
   bool _heroHasUserSelection = false;
@@ -487,10 +504,43 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   void _handleFocusAreaChanged(TvFocusArea? area) {
-    if (!mounted || _activeFocusArea == area) {
+    if (!mounted) {
       return;
     }
-    setState(() => _activeFocusArea = area);
+    final previousArea = _activeFocusArea;
+    if (previousArea == area) {
+      return;
+    }
+    setState(() {
+      _activeFocusArea = area;
+      if (area == TvFocusArea.homeRail && previousArea != null) {
+        _homeRailExpanded = previousArea != TvFocusArea.homeRail;
+      } else if (area == TvFocusArea.rail || area == TvFocusArea.content) {
+        _homeRailExpanded = false;
+      }
+    });
+  }
+
+  bool _handleFollowingNavDirection(TraversalDirection direction) {
+    if (_selectedNav != _TvNavItem.following) {
+      return false;
+    }
+    if (direction == TraversalDirection.right && !_homeRailExpanded) {
+      setState(() => _homeRailExpanded = true);
+      return true;
+    }
+    if (direction == TraversalDirection.left && _homeRailExpanded) {
+      setState(() => _homeRailExpanded = false);
+      return true;
+    }
+    return false;
+  }
+
+  void _handleRailItemFocus(_TvNavItem item, bool focused) {
+    if (!focused || item == _TvNavItem.following || _homeRailExpanded) {
+      return;
+    }
+    setState(() => _homeRailExpanded = true);
   }
 
   void _ensureInitialHero(List<BiliFeedVideo> feedItems) {
@@ -773,7 +823,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   void _requestMoreFeed() {
-    if (_feedLoadMoreQueued ||
+    if (_selectedNav != _TvNavItem.recommend ||
+        _feedLoadMoreQueued ||
         _viewModel.isRefreshingFeed.value ||
         _viewModel.isLoadingMoreFeed.value ||
         !_viewModel.hasMoreFeed.value) {
@@ -840,7 +891,8 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   }
 
   void _requestMoreRegion() {
-    if (_regionLoadMoreQueued ||
+    if (_selectedNav != _TvNavItem.regions ||
+        _regionLoadMoreQueued ||
         _regionLoading ||
         _regionLoadingMore ||
         !_hasMoreRegion) {
@@ -934,12 +986,18 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               body: LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 1440;
-                  final railExpanded = _activeFocusArea == TvFocusArea.rail;
+                  final railExpanded = _homeRailExpanded;
+                  final collapsedRailWidth = wide ? 88.0 : 80.0;
                   final railWidth = railExpanded
                       ? (wide ? 300.0 : 260.0)
-                      : (wide ? 88.0 : 80.0);
+                      : collapsedRailWidth;
                   final margin = wide ? 28.0 : 20.0;
-                  final contentInset = railWidth + margin + (wide ? 52 : 36);
+                  final followingSelected =
+                      _selectedNav == _TvNavItem.following;
+                  final contentInset = followingSelected
+                      ? collapsedRailWidth + margin + _tvNestedRailGap
+                      : (wide ? 300.0 : 260.0) + margin + (wide ? 52 : 36);
+                  final followingRailOffset = railWidth - collapsedRailWidth;
                   final duration = AppVisualTokens.motionDuration(
                     context,
                     AppVisualTokens.overlayDuration,
@@ -958,7 +1016,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                         bottom: 0,
                         child: TvFocusAreaScope(
                           area: TvFocusArea.content,
-                          child: _buildContentArea(),
+                          child: _buildContentArea(
+                            followingRailOffset: followingRailOffset,
+                            followingVerticalInset: margin,
+                          ),
                         ),
                       ),
                       AnimatedPositioned(
@@ -969,7 +1030,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                         bottom: margin,
                         width: railWidth,
                         child: TvFocusAreaScope(
-                          area: TvFocusArea.rail,
+                          area: TvFocusArea.homeRail,
                           child: _buildLeftRail(expanded: railExpanded),
                         ),
                       ),
@@ -1055,6 +1116,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
                     cacheWidth: cacheWidth,
+                    gaplessPlayback: true,
                     filterQuality: FilterQuality.medium,
                     errorBuilder: (_, _, _) =>
                         const ColoredBox(color: AppVisualTokens.tvBackground),
@@ -1350,9 +1412,13 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         useOwnLayer: false,
         scale: 1,
         borderRadius: 12,
-        focusArea: TvFocusArea.rail,
+        focusArea: TvFocusArea.homeRail,
         debugLabel: 'nav_${item.name}',
         onTap: () => unawaited(_handleNavTap(item)),
+        onFocusChange: (focused) => _handleRailItemFocus(item, focused),
+        onDirectionalMove: item == _TvNavItem.following
+            ? _handleFollowingNavDirection
+            : null,
         builder: (context, state) {
           final focused =
               state == TvGlassSelectableState.focused ||
@@ -1380,7 +1446,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                   ),
                 ),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: expanded ? 10 : 0),
+                  padding: EdgeInsets.only(
+                    left: expanded ? 10 : 0,
+                    right: expanded ? 10 : 0,
+                  ),
                   child: Row(
                     mainAxisAlignment: expanded
                         ? MainAxisAlignment.start
@@ -1410,6 +1479,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                         SizedBox(width: compact ? 9 : 11),
                         Expanded(
                           child: Text(
+                            key: ValueKey<String>(
+                              'bili-tv-rail-label-${item.name}',
+                            ),
                             item.label(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1437,8 +1509,71 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     );
   }
 
-  Widget _buildContentArea() {
-    if (_selectedNav == _TvNavItem.recommend) {
+  Widget _buildContentArea({
+    required double followingRailOffset,
+    required double followingVerticalInset,
+  }) {
+    final followingSelected = _selectedNav == _TvNavItem.following;
+    final followingSessionIdentity = _followingSessionIdentity();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: Offstage(
+            offstage: followingSelected,
+            child: TickerMode(
+              enabled: !followingSelected,
+              child: ExcludeFocus(
+                excluding: followingSelected,
+                child: _buildPrimaryContentArea(_lastPrimaryNav),
+              ),
+            ),
+          ),
+        ),
+        if (_followingPaneActivated)
+          Positioned.fill(
+            child: Offstage(
+              offstage: !followingSelected,
+              child: TickerMode(
+                enabled: followingSelected,
+                child: ExcludeFocus(
+                  excluding: !followingSelected,
+                  child: KeyedSubtree(
+                    key: const ValueKey<String>('bili-tv-home-following-pane'),
+                    child: BiliLibraryPage.tvFollowingPane(
+                      key: ValueKey<String>(
+                        'bili-tv-home-following-session-'
+                        '$followingSessionIdentity',
+                      ),
+                      client: _viewModel.client,
+                      historyStore: _viewModel.historyStore,
+                      offlineController: _viewModel.offlineController,
+                      onLoginTap: _openQrLogin,
+                      forceCompactTvFollowingRail:
+                          _activeFocusArea != TvFocusArea.rail,
+                      tvFollowingRailOffset: followingRailOffset,
+                      tvFollowingVerticalInset: followingVerticalInset,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _followingSessionIdentity() {
+    final client = _viewModel.client;
+    if (!client.hasAuthenticatedSession) {
+      return 'logged-out';
+    }
+    final mid = client.snapshotCookies()['DedeUserID']?.trim();
+    return mid == null || mid.isEmpty ? 'authenticated' : 'mid-$mid';
+  }
+
+  Widget _buildPrimaryContentArea(_TvNavItem item) {
+    if (item == _TvNavItem.recommend) {
       return _buildRecommendPage();
     }
     return Column(
@@ -1447,7 +1582,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
           child: Text(
-            _selectedNav.label(),
+            item.label(),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 30,
@@ -1458,8 +1593,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         ),
         const SizedBox(height: 14),
         Expanded(
-          child: switch (_selectedNav) {
+          child: switch (item) {
             _TvNavItem.recommend => const SizedBox.shrink(),
+            _TvNavItem.following => const SizedBox.shrink(),
             _TvNavItem.regions => _buildRegionsPage(),
             _TvNavItem.search => _buildSearchPage(),
             _TvNavItem.history => _buildHistoryPage(),
@@ -1493,6 +1629,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     }
     setState(() {
       _selectedNav = item;
+      if (item == _TvNavItem.following) {
+        _followingPaneActivated = true;
+        _homeRailExpanded = false;
+      } else {
+        _lastPrimaryNav = item;
+      }
     });
     if (item == _TvNavItem.search) {
       _requestSearchFocusAfterFrame();
@@ -1500,7 +1642,9 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     if (item == _TvNavItem.history) {
       unawaited(_loadHistory());
     }
-    if (item == _TvNavItem.recommend) {
+    if (item == _TvNavItem.recommend &&
+        _viewModel.feedItems.value.isEmpty &&
+        !_viewModel.isRefreshingFeed.value) {
       unawaited(_viewModel.loadFeed());
     }
     if (item == _TvNavItem.regions && _regionItems.isEmpty) {
@@ -1810,7 +1954,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     required double cardWidth,
   }) {
     final coverCacheWidth = biliTvCoverCacheWidth(
-      tileWidth: cardWidth,
+      tileWidth: _tvCoverDecodeLogicalWidth,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
     return _TvMediaShelf(
@@ -1847,10 +1991,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           gridCrossAxisExtent,
         );
         final coverCacheWidth = biliTvCoverCacheWidth(
-          tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-            gridCrossAxisExtent,
-            maxCrossAxisExtent: maxCrossAxisExtent,
-          ),
+          tileWidth: _tvCoverDecodeLogicalWidth,
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
         );
         return SliverPadding(
@@ -2150,10 +2291,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                             gridCrossAxisExtent,
                           );
                       final coverCacheWidth = biliTvCoverCacheWidth(
-                        tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-                          gridCrossAxisExtent,
-                          maxCrossAxisExtent: maxCrossAxisExtent,
-                        ),
+                        tileWidth: _tvCoverDecodeLogicalWidth,
                         devicePixelRatio: MediaQuery.devicePixelRatioOf(
                           context,
                         ),
@@ -2247,8 +2385,12 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 onTap: () {
                   setState(() {
                     _selectedNav = _TvNavItem.recommend;
+                    _lastPrimaryNav = _TvNavItem.recommend;
                   });
-                  unawaited(_viewModel.loadFeed());
+                  if (_viewModel.feedItems.value.isEmpty &&
+                      !_viewModel.isRefreshingFeed.value) {
+                    unawaited(_viewModel.loadFeed());
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -2284,10 +2426,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
             gridCrossAxisExtent,
           );
           final coverCacheWidth = biliTvCoverCacheWidth(
-            tileWidth: biliTvVideoGridTileWidthForCrossAxisExtent(
-              gridCrossAxisExtent,
-              maxCrossAxisExtent: maxCrossAxisExtent,
-            ),
+            tileWidth: _tvCoverDecodeLogicalWidth,
             devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           );
           return GridView.builder(

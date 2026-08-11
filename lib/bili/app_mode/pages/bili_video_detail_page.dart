@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';

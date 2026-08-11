@@ -1,15 +1,14 @@
-import 'package:vesper_media/bili/common/models/bili_models.dart';
-import 'package:vesper_media/bili/common/view_models/bili_external_playback_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vesper_media/media/media.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('BiliExternalPlaybackManager', () {
+  group('MediaExternalPlaybackManager', () {
     const channel = MethodChannel(
       'dev.ikaros.vesper_player_test/external_playback',
     );
@@ -20,7 +19,7 @@ void main() {
       'dev.ikaros.vesper_player_test/external_playback/events',
     );
     late _ExternalPlaybackHarness externalPlayback;
-    late BiliExternalPlaybackManager manager;
+    late MediaExternalPlaybackManager manager;
 
     setUp(() {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -29,8 +28,9 @@ void main() {
         routesChannel: routesChannel,
         eventsChannel: eventsChannel,
       )..install();
-      manager = BiliExternalPlaybackManager(
+      manager = MediaExternalPlaybackManager(
         detail: _detail,
+        formatAdaptation: mediaDlnaFormatAdaptationConfig,
         dlnaController: VesperExternalPlaybackController(
           methodChannel: channel,
           routesEventChannel: routesChannel,
@@ -46,7 +46,7 @@ void main() {
     });
 
     test('initializes in idle state', () {
-      expect(manager.state, BiliDlnaState.idle);
+      expect(manager.state, MediaDlnaState.idle);
     });
 
     test('initializes with empty routes', () {
@@ -58,9 +58,7 @@ void main() {
     });
 
     test('builds system playback metadata with resolved data', () {
-      final resolved = BiliResolvedPlayback(
-        bvid: 'BV1xx411c7mD',
-        cid: 11,
+      final resolved = ResolvedMediaPlayback(
         title: '测试视频',
         subtitle: 'P1 · 正片',
         uri: 'https://example.com/video.mpd',
@@ -71,8 +69,8 @@ void main() {
 
       final metadata = manager.buildSystemPlaybackMetadata(
         resolved,
-        const BiliVideoPageEntry(
-          cid: 11,
+        const MediaPlaybackEntry(
+          entryId: '11',
           pageNumber: 1,
           title: '正片',
           durationSeconds: 120,
@@ -99,7 +97,7 @@ void main() {
         message,
         'Host-prepared relay remux v1 only accepts remote HTTP(S) DASH sources.',
       );
-      expect(manager.state, BiliDlnaState.error);
+      expect(manager.state, MediaDlnaState.error);
       expect(manager.message, message);
       expect(
         externalPlayback.calls.map((call) => call.method),
@@ -136,7 +134,7 @@ void main() {
 
         expect(message, isNull);
         expect(refreshCount, 1);
-        expect(manager.state, BiliDlnaState.connected);
+        expect(manager.state, MediaDlnaState.connected);
         expect(manager.message, '已投放到 DLNA 设备');
         expect(
           externalPlayback.calls.where((call) => call.method == 'load'),
@@ -180,7 +178,7 @@ void main() {
           message,
           'Failed to fetch DASH sidx for host-prepared relay remux.',
         );
-        expect(manager.state, BiliDlnaState.error);
+        expect(manager.state, MediaDlnaState.error);
         expect(
           externalPlayback.calls.where((call) => call.method == 'load'),
           hasLength(2),
@@ -230,7 +228,7 @@ void main() {
         );
 
         expect(message, isNull);
-        expect(manager.state, BiliDlnaState.connected);
+        expect(manager.state, MediaDlnaState.connected);
         expect(
           externalPlayback.calls.where((call) => call.method == 'load'),
           hasLength(2),
@@ -259,7 +257,7 @@ void main() {
       });
       await Future<void>.delayed(Duration.zero);
 
-      expect(manager.state, BiliDlnaState.error);
+      expect(manager.state, MediaDlnaState.error);
       expect(
         manager.message,
         'Host-prepared relay remux v1 only accepts remote HTTP(S) DASH sources.',
@@ -290,7 +288,7 @@ void main() {
         });
         await Future<void>.delayed(Duration.zero);
 
-        expect(manager.state, BiliDlnaState.error);
+        expect(manager.state, MediaDlnaState.error);
         expect(
           manager.message,
           'DASH references must stay within the source origin for relay remux.',
@@ -313,7 +311,7 @@ void main() {
       });
       await Future<void>.delayed(Duration.zero);
 
-      expect(manager.state, BiliDlnaState.error);
+      expect(manager.state, MediaDlnaState.error);
       expect(manager.message, 'DLNA playback failed.');
       expect(
         externalPlayback.calls.map((call) => call.method),
@@ -323,26 +321,14 @@ void main() {
   });
 }
 
-const _detail = BiliVideoDetail(
-  aid: 1,
-  bvid: 'BV1xx411c7mD',
+const _detail = MediaDetail(
+  mediaId: 'BV1xx411c7mD',
   title: '测试视频',
-  ownerMid: 2,
-  ownerName: '测试UP',
-  ownerAvatarUrl: '',
   coverUrl: '',
-  description: '',
-  publishedAtLabel: null,
-  playCountLabel: '100',
-  danmakuCountLabel: '10',
-  replyCountLabel: '5',
-  likeCountLabel: '20',
-  coinCountLabel: '3',
-  favoriteCountLabel: '8',
-  shareCountLabel: '2',
-  pages: <BiliVideoPageEntry>[
-    BiliVideoPageEntry(
-      cid: 11,
+  ownerName: '测试UP',
+  pages: <MediaPlaybackEntry>[
+    MediaPlaybackEntry(
+      entryId: '11',
       pageNumber: 1,
       title: '正片',
       durationSeconds: 120,
@@ -350,9 +336,7 @@ const _detail = BiliVideoDetail(
   ],
 );
 
-final _resolvedPlayback = BiliResolvedPlayback(
-  bvid: 'BV1xx411c7mD',
-  cid: 11,
+final _resolvedPlayback = ResolvedMediaPlayback(
   title: '测试视频',
   subtitle: 'P1 · 正片',
   uri: 'https://example.com/video.mpd',
@@ -361,9 +345,7 @@ final _resolvedPlayback = BiliResolvedPlayback(
   isLocalFile: false,
 );
 
-final _refreshedPlayback = BiliResolvedPlayback(
-  bvid: 'BV1xx411c7mD',
-  cid: 11,
+final _refreshedPlayback = ResolvedMediaPlayback(
   title: '测试视频',
   subtitle: 'P1 · 正片',
   uri: 'https://example.com/refreshed.mpd',
@@ -373,7 +355,7 @@ final _refreshedPlayback = BiliResolvedPlayback(
 );
 
 Future<void> _connectToRoute(
-  BiliExternalPlaybackManager manager,
+  MediaExternalPlaybackManager manager,
   _ExternalPlaybackHarness externalPlayback,
 ) async {
   await manager.startDiscovery();
@@ -389,7 +371,7 @@ Future<void> _connectToRoute(
 
   final error = await manager.connect('uuid:tv');
   expect(error, isNull);
-  expect(manager.state, BiliDlnaState.connected);
+  expect(manager.state, MediaDlnaState.connected);
 }
 
 final class _ExternalPlaybackHarness {

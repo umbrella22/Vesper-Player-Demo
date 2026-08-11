@@ -5,7 +5,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
@@ -13,7 +13,7 @@ import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_visuals.dart';
 
@@ -378,7 +378,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     final detailFuture = _resolveVideoDetail(item);
 
     if (isPortrait) {
-      await showBiliGlassSheet<void>(
+      await showMediaGlassSheet<void>(
         context: context,
         builder: (_) => _RegionCacheSurface(
           detailFuture: detailFuture,

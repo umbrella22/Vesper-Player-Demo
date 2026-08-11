@@ -3,10 +3,10 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
 import 'app_glass_controls.dart';
-import 'app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 @Preview(group: 'Vesper Mobile', name: 'Home - light', size: Size(390, 844))
 Widget appMobileHomeLightPreview() => _previewApp(
@@ -274,48 +274,37 @@ class _MobilePlaybackPreview extends StatelessWidget {
                             ),
                             const SizedBox(height: 18),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: const [
-                                _PlaybackPreviewAction(
-                                  icon: Icons.thumb_up_alt_outlined,
-                                  label: '2.8万',
-                                ),
-                                _PlaybackPreviewAction(
-                                  icon: Icons.monetization_on_outlined,
-                                  label: '1,204',
-                                ),
-                                _PlaybackPreviewAction(
-                                  icon: Icons.star_border_rounded,
-                                  label: '8,642',
-                                ),
-                                _PlaybackPreviewAction(
-                                  icon: Icons.ios_share_rounded,
-                                  label: '分享',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Material(
-                              color: visualTheme.surfaceRaised,
-                              borderRadius: BorderRadius.circular(8),
-                              child: ListTile(
-                                minTileHeight: 56,
-                                leading: const Icon(
-                                  Icons.watch_later_outlined,
-                                  color: AppVisualTokens.primaryBlue,
-                                ),
-                                title: Text(
-                                  '加入稍后再看',
-                                  style: TextStyle(
-                                    color: visualTheme.textPrimary,
-                                    fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: _PlaybackPreviewAction(
+                                    icon: Icons.thumb_up_alt_outlined,
+                                    label: '2.8万',
                                   ),
                                 ),
-                                trailing: Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: visualTheme.textTertiary,
+                                Expanded(
+                                  child: _PlaybackPreviewAction(
+                                    icon: Icons.monetization_on_outlined,
+                                    label: '1,204',
+                                  ),
                                 ),
-                              ),
+                                Expanded(
+                                  child: _PlaybackPreviewAction(
+                                    icon: Icons.star_border_rounded,
+                                    label: '8,642',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _PlaybackPreviewAction(
+                                    icon: Icons.ios_share_rounded,
+                                    label: '326',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _PlaybackPreviewAction(
+                                    icon: Icons.bookmark_border_rounded,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 22),
                             Text(
@@ -387,30 +376,33 @@ class _MobilePlaybackPreview extends StatelessWidget {
 }
 
 class _PlaybackPreviewAction extends StatelessWidget {
-  const _PlaybackPreviewAction({required this.icon, required this.label});
+  const _PlaybackPreviewAction({required this.icon, this.label});
 
   final IconData icon;
-  final String label;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     return SizedBox(
-      width: 58,
+      height: 56,
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: visualTheme.textSecondary, size: 24),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: visualTheme.textTertiary,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+          Icon(icon, color: visualTheme.textSecondary, size: 22),
+          if (label != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              label!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: visualTheme.textTertiary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

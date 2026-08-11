@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -15,7 +15,7 @@ import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
 import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
@@ -162,7 +162,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
     final isPortrait =
         MediaQuery.sizeOf(context).height >= MediaQuery.sizeOf(context).width;
     if (isPortrait) {
-      await showBiliGlassSheet<void>(
+      await showMediaGlassSheet<void>(
         context: context,
         builder: (_) => _HomeCacheSurface(
           client: _viewModel.client,
@@ -280,13 +280,14 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Future<bool?> _confirmRegionLogin() {
-    return showBiliGlassDialog<bool>(
+    return showMediaGlassDialog<bool>(
       context: context,
       title: '需要登录',
       message: '分区内容需要登录后才能观看，请先登录 Bilibili 账号。',
+      appearance: MediaGlassDialogAppearance.readable,
       actions: const [
-        BiliGlassDialogAction(label: '取消', value: false),
-        BiliGlassDialogAction(label: '登录', value: true, isPrimary: true),
+        MediaGlassDialogAction(label: '取消', value: false),
+        MediaGlassDialogAction(label: '登录', value: true, isPrimary: true),
       ],
     );
   }

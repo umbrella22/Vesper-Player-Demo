@@ -1,26 +1,26 @@
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:vesper_player/vesper_player.dart';
+
+typedef BiliDownloadPluginReferenceLoader =
+    Future<List<VesperPluginReference>> Function();
 
 final class BiliDownloadPluginResolver {
-  const BiliDownloadPluginResolver({
-    MethodChannel channel = const MethodChannel(
-      'dev.ikaros.vesper_player/download_plugin',
-    ),
-  }) : _channel = channel;
+  const BiliDownloadPluginResolver({this.loader});
 
-  final MethodChannel _channel;
+  final BiliDownloadPluginReferenceLoader? loader;
 
-  Future<List<String>> bundledDownloadPluginLibraryPaths() async {
-    try {
-      final result = await _channel.invokeListMethod<String>(
-        'bundledDownloadPluginLibraryPaths',
-      );
-      return (result ?? const <String>[])
-          .where((value) => value.trim().isNotEmpty)
-          .toList(growable: false);
-    } on MissingPluginException {
-      return const <String>[];
-    } on PlatformException {
-      return const <String>[];
+  Future<List<VesperPluginReference>> bundledDownloadPluginReferences() async {
+    final configuredLoader = loader;
+    if (configuredLoader != null) {
+      return List<VesperPluginReference>.unmodifiable(await configuredLoader());
     }
+
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      return const <VesperPluginReference>[];
+    }
+
+    return <VesperPluginReference>[VesperBundledPluginReferences.remuxFfmpeg];
   }
 }

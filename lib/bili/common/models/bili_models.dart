@@ -1,4 +1,16 @@
+import 'package:vesper_media/media/media.dart';
 import 'package:vesper_player/vesper_player.dart';
+
+/// 兼容别名：DLNA 状态已泛化为 [MediaDlnaState]（lib/media），
+/// 播放页在 Phase 2 迁移后移除本别名。
+typedef BiliDlnaState = MediaDlnaState;
+
+/// 兼容别名：播放恢复提示已泛化为 [MediaPlaybackRecoveryNotice]（lib/media），
+/// 播放页在 Phase 2 迁移后移除本别名。
+typedef BiliPlaybackRecoveryNotice = MediaPlaybackRecoveryNotice;
+
+/// 兼容别名：播放页呈现模式已泛化为 [MediaPlaybackPresentationMode]（lib/media）。
+typedef BiliPlaybackPresentationMode = MediaPlaybackPresentationMode;
 
 final class BiliSearchResult {
   const BiliSearchResult({
@@ -145,6 +157,91 @@ final class BiliFollowingUser {
   final String? officialLabel;
   final String? vipLabel;
   final bool isSpecial;
+}
+
+/// 基于空间卡片的 UP 主资料。关注列表中的精简用户可以通过
+/// [fromFollowing] 作为加载过程中的占位资料。
+final class BiliUserSpaceProfile {
+  const BiliUserSpaceProfile({
+    required this.mid,
+    required this.name,
+    required this.avatarUrl,
+    this.sign = '',
+    this.followerCount = 0,
+    this.followingCount = 0,
+    this.archiveCount = 0,
+    this.officialLabel,
+    this.vipLabel,
+  });
+
+  factory BiliUserSpaceProfile.fromFollowing(BiliFollowingUser user) {
+    return BiliUserSpaceProfile(
+      mid: user.mid,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      sign: user.sign,
+      officialLabel: user.officialLabel,
+      vipLabel: user.vipLabel,
+    );
+  }
+
+  final int mid;
+  final String name;
+  final String avatarUrl;
+  final String sign;
+  final int followerCount;
+  final int followingCount;
+  final int archiveCount;
+  final String? officialLabel;
+  final String? vipLabel;
+}
+
+/// 用户空间中的投稿视频。它只保存列表展示和打开播放页所需的稳定元数据，
+/// 播放地址仍由 [BiliClient] 的播放解析链路负责。
+final class BiliUserSpaceVideo {
+  const BiliUserSpaceVideo({
+    required this.aid,
+    required this.bvid,
+    required this.title,
+    required this.coverUrl,
+    required this.durationLabel,
+    required this.publishedAtLabel,
+    required this.playCountLabel,
+    required this.ownerMid,
+    required this.ownerName,
+    this.description = '',
+  });
+
+  final int aid;
+  final String bvid;
+  final String title;
+  final String coverUrl;
+  final String durationLabel;
+  final String publishedAtLabel;
+  final String playCountLabel;
+  final int ownerMid;
+  final String ownerName;
+  final String description;
+}
+
+final class BiliUserSpaceVideoPage {
+  const BiliUserSpaceVideoPage({
+    required this.mid,
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.videos,
+    required this.hasMore,
+    this.keyword = '',
+  });
+
+  final int mid;
+  final int page;
+  final int pageSize;
+  final int total;
+  final List<BiliUserSpaceVideo> videos;
+  final bool hasMore;
+  final String keyword;
 }
 
 /// A video item returned by Bilibili's server-side playback history API.

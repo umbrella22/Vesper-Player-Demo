@@ -27,15 +27,11 @@ final class BiliOfflineDownloadException implements Exception {
 
 class BiliOfflineDownloadController extends ChangeNotifier {
   BiliOfflineDownloadController({
-    required BiliClient client,
-    BiliOfflineDownloadStore store = const BiliOfflineDownloadStore(),
-    BiliDownloadPluginResolver pluginResolver =
-        const BiliDownloadPluginResolver(),
-    BiliDownloadManagerHost? manager,
-  }) : _client = client,
-       _store = store,
-       _pluginResolver = pluginResolver,
-       _manager = manager;
+    required this._client,
+    this._store = const BiliOfflineDownloadStore(),
+    this._pluginResolver = const BiliDownloadPluginResolver(),
+    this._manager,
+  });
 
   static final BiliOfflineDownloadController instance =
       BiliOfflineDownloadController(client: BiliClient.instance);
@@ -54,7 +50,8 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   VesperDownloadSnapshot _snapshot = const VesperDownloadSnapshot.initial();
   StreamSubscription<VesperDownloadSnapshot>? _snapshotSubscription;
   Directory? _cacheRoot;
-  List<String> _pluginLibraryPaths = const <String>[];
+  List<VesperPluginReference> _postDownloadPluginReferences =
+      const <VesperPluginReference>[];
   final Map<int, String> _lastTaskLogFingerprints = <int, String>{};
   Future<void>? _initializing;
   Future<void> _metadataWriteChain = Future<void>.value();
@@ -80,7 +77,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
   bool get isInitialized => _initialized && !_disposed;
 
-  bool get hasRemuxPlugin => _pluginLibraryPaths.isNotEmpty;
+  bool get hasRemuxPlugin => _postDownloadPluginReferences.isNotEmpty;
 
   List<BiliOfflineDownloadEntry> get entries {
     return BiliOfflineCacheInventory.build(
@@ -143,7 +140,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     if (manager == null || cacheRoot == null) {
       throw const BiliOfflineDownloadException('离线缓存管理器未初始化。');
     }
-    if (_pluginLibraryPaths.isEmpty) {
+    if (_postDownloadPluginReferences.isEmpty) {
       throw const BiliOfflineDownloadException('缺少 MP4 合成插件，当前安装包无法生成离线 MP4。');
     }
 
@@ -460,24 +457,28 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     await cacheRoot.create(recursive: true);
     _ensureNotDisposedDuringInitialize();
     _cacheRoot = cacheRoot;
-    _pluginLibraryPaths = await _pluginResolver
-        .bundledDownloadPluginLibraryPaths();
+    _postDownloadPluginReferences = await _pluginResolver
+        .bundledDownloadPluginReferences();
     _ensureNotDisposedDuringInitialize();
 
     var manager = _manager;
     if (manager == null) {
-      final created = VesperDownloadManagerAdapter(
-        await VesperDownloadManager.create(
-          configuration: VesperDownloadConfiguration(
-            baseDirectory: cacheRoot.path,
-            pluginLibraryPaths: _pluginLibraryPaths,
-            runPostProcessorsOnCompletion: true,
-            restoreTasksOnStartup: true,
-            resumePartialDownloads: true,
-          ),
-          staleResourceRecovery: _recoverStaleDownloadPlan,
-        ),
-      );
+      VesperDownloadManagerAdapter created;
+      try {
+        created = await _createDownloadManager(
+          cacheRoot: cacheRoot,
+          postDownloadPluginReferences: _postDownloadPluginReferences,
+        );
+      } catch (_) {
+        if (_postDownloadPluginReferences.isEmpty) {
+          rethrow;
+        }
+        _postDownloadPluginReferences = const <VesperPluginReference>[];
+        created = await _createDownloadManager(
+          cacheRoot: cacheRoot,
+          postDownloadPluginReferences: const <VesperPluginReference>[],
+        );
+      }
       // 原生 manager 已创建但初始化被 dispose 打断：销毁它而不是泄漏，
       // 再以 StateError 结束本次 initialize。
       if (_disposed) {
@@ -508,6 +509,24 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     _ensureNotDisposedDuringInitialize();
     _initialized = true;
     notifyListeners();
+  }
+
+  Future<VesperDownloadManagerAdapter> _createDownloadManager({
+    required Directory cacheRoot,
+    required List<VesperPluginReference> postDownloadPluginReferences,
+  }) async {
+    return VesperDownloadManagerAdapter(
+      await VesperDownloadManager.create(
+        configuration: VesperDownloadConfiguration(
+          baseDirectory: cacheRoot.path,
+          postDownloadPluginReferences: postDownloadPluginReferences,
+          runPostProcessorsOnCompletion: true,
+          restoreTasksOnStartup: true,
+          resumePartialDownloads: true,
+        ),
+        staleResourceRecovery: _recoverStaleDownloadPlan,
+      ),
+    );
   }
 
   /// Aborts [_doInitialize] when the controller was disposed while one of its

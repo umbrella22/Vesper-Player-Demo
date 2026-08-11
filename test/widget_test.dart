@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:vesper_media/app/app.dart';
 import 'package:vesper_media/app/home_page.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
@@ -24,7 +25,7 @@ import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
@@ -664,6 +665,9 @@ BiliVideoComment _playbackCommentReply({
 final class _FakePlaybackClient extends BiliClient {
   _FakePlaybackClient();
 
+  /// 测试可覆盖的解析结果；非空时优先于 [_resolvedPlaybackFor]。
+  BiliResolvedPlayback Function()? resolveOverride;
+
   final List<BiliFeedVideo> relatedVideos = const <BiliFeedVideo>[
     BiliFeedVideo(
       aid: 9001,
@@ -755,6 +759,10 @@ final class _FakePlaybackClient extends BiliClient {
     required TargetPlatform platform,
   }) async {
     resolvedPlaybackRequests.add(page.cid);
+    final override = resolveOverride;
+    if (override != null) {
+      return override();
+    }
     final blockedResolution = blockedPlaybackResolutions.remove(page.cid);
     if (blockedResolution != null) {
       return blockedResolution.future;
@@ -951,6 +959,7 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   final selectedSources = <VesperPlayerSource>[];
   final seekRatios = <double>[];
   final seekDeltas = <int>[];
+  final playbackRates = <double>[];
   final subtitleSelections = <VesperTrackSelection>[];
   VesperSourceNormalizerConfiguration? lastSourceNormalizerConfiguration;
   VesperFrameProcessorConfiguration? lastFrameProcessorConfiguration;
@@ -986,6 +995,8 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
         const VesperFrameProcessorConfiguration(),
     VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
         const VesperNativeFramePipelineConfiguration(),
+    VesperPipelineEventHookConfiguration pipelineEventHookConfiguration =
+        const VesperPipelineEventHookConfiguration(),
   }) async {
     lastRenderSurfaceKind = renderSurfaceKind;
     lastSourceNormalizerConfiguration = sourceNormalizerConfiguration;
@@ -1083,7 +1094,9 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   Future<void> seekToLiveEdge(String playerId) async {}
 
   @override
-  Future<void> setPlaybackRate(String playerId, double rate) async {}
+  Future<void> setPlaybackRate(String playerId, double rate) async {
+    playbackRates.add(rate);
+  }
 
   @override
   Future<void> setVideoTrackSelection(
@@ -1146,7 +1159,7 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-List<BiliFeedVideo> _tvFeedItems([int count = 18]) {
+List<BiliFeedVideo> _tvFeedItems([int count = 18, bool withCovers = false]) {
   return List<BiliFeedVideo>.generate(
     count,
     (index) => BiliFeedVideo(
@@ -1154,7 +1167,7 @@ List<BiliFeedVideo> _tvFeedItems([int count = 18]) {
       bvid: 'BVTV${index.toString().padLeft(8, '0')}',
       title: '推荐视频 $index',
       author: 'UP $index',
-      coverUrl: '',
+      coverUrl: withCovers ? 'https://example.test/tv-cover-$index.jpg' : '',
       durationLabel: '03:${index.toString().padLeft(2, '0')}',
       playCountLabel: '${index + 1}万',
       danmakuCountLabel: '${index + 10}',
@@ -1181,18 +1194,41 @@ List<BiliPlaybackHistoryEntry> _tvHistoryEntries([int count = 18]) {
 }
 
 final class _FakeTvHomeClient extends BiliClient {
-  _FakeTvHomeClient({List<BiliFeedVideo>? feedItems})
-    : feedItems = feedItems ?? _tvFeedItems();
+  factory _FakeTvHomeClient({
+    List<BiliFeedVideo>? feedItems,
+    bool emptyFollowing = false,
+  }) {
+    final libraryHttpClient = _FakeTvHomeLibraryHttpClient(
+      emptyFollowing: emptyFollowing,
+    );
+    return _FakeTvHomeClient._(libraryHttpClient, feedItems: feedItems);
+  }
+
+  _FakeTvHomeClient._(this.libraryHttpClient, {List<BiliFeedVideo>? feedItems})
+    : feedItems = feedItems ?? _tvFeedItems(),
+      super(httpClient: libraryHttpClient);
 
   final List<BiliFeedVideo> feedItems;
+  final _FakeTvHomeLibraryHttpClient libraryHttpClient;
   final List<BiliRegionSection> requestedSections = <BiliRegionSection>[];
   final List<String> requestedVideoDetails = <String>[];
+  var recommendedFeedRequests = 0;
   Completer<List<BiliSearchResult>>? searchCompleter;
   bool loggedIn = false;
   int generatedQrTickets = 0;
 
+  int get followingRequests =>
+      libraryHttpClient.requestCount('/x/relation/followings');
+
+  int get spaceProfileRequests =>
+      libraryHttpClient.requestCount('/x/web-interface/card');
+
+  int get spaceVideoRequests =>
+      libraryHttpClient.requestCount('/x/space/wbi/arc/search');
+
   @override
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
+    recommendedFeedRequests += 1;
     return page == 1 ? feedItems : const <BiliFeedVideo>[];
   }
 
@@ -1278,11 +1314,198 @@ final class _FakeTvHomeClient extends BiliClient {
   }
 }
 
+final class _FakeTvHomeLibraryHttpClient implements HttpClient {
+  _FakeTvHomeLibraryHttpClient({this.emptyFollowing = false});
+
+  final bool emptyFollowing;
+  final List<Uri> requestedUris = <Uri>[];
+  String? _userAgent;
+
+  int requestCount(String path) =>
+      requestedUris.where((uri) => uri.path == path).length;
+
+  @override
+  String? get userAgent => _userAgent;
+
+  @override
+  set userAgent(String? value) => _userAgent = value;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    requestedUris.add(url);
+    return _FakeTvHomeHttpRequest(_responseFor(url));
+  }
+
+  _FakeTvHomeHttpResponse _responseFor(Uri url) {
+    if (url.path == '/x/web-interface/nav') {
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'isLogin': true,
+          'mid': 42,
+          'wbi_img': <String, Object?>{
+            'img_url': 'https://i0.hdslb.com/bfs/wbi/img.png',
+            'sub_url': 'https://i0.hdslb.com/bfs/wbi/sub.png',
+          },
+        },
+      });
+    }
+    if (url.path == '/x/relation/followings') {
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'list': emptyFollowing
+              ? const <Object?>[]
+              : <Object?>[
+                  <String, Object?>{
+                    'mid': 7,
+                    'uname': '测试 UP',
+                    'face': '',
+                    'sign': '简介',
+                  },
+                ],
+        },
+      });
+    }
+    if (url.path == '/x/web-interface/card') {
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'card': <String, Object?>{
+            'mid': 7,
+            'name': '测试 UP 空间',
+            'face': '',
+            'sign': '空间简介',
+            'fans': 12000,
+          },
+          'follower': 12000,
+          'archive_count': 1,
+        },
+      });
+    }
+    if (url.path == '/x/space/wbi/arc/search') {
+      return _json(<String, Object?>{
+        'code': 0,
+        'data': <String, Object?>{
+          'list': <String, Object?>{
+            'vlist': <Object?>[
+              <String, Object?>{
+                'aid': 70,
+                'bvid': 'BV1space0001',
+                'title': '空间视频',
+                'pic': '',
+                'length': '02:03',
+                'created': 1786291200,
+                'play': 12000,
+                'mid': 7,
+                'author': '测试 UP 空间',
+              },
+            ],
+          },
+          'page': <String, Object?>{'pn': 1, 'ps': 30, 'count': 1},
+        },
+      });
+    }
+    return _json(<String, Object?>{'code': 0, 'data': <String, Object?>{}});
+  }
+
+  _FakeTvHomeHttpResponse _json(Map<String, Object?> value) {
+    return _FakeTvHomeHttpResponse(jsonEncode(value));
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _FakeTvHomeHttpRequest implements HttpClientRequest {
+  _FakeTvHomeHttpRequest(this.response);
+
+  final _FakeTvHomeHttpResponse response;
+  final HttpHeaders _headers = _FakeTvHomeHttpHeaders();
+  int _contentLength = -1;
+
+  @override
+  HttpHeaders get headers => _headers;
+
+  @override
+  int get contentLength => _contentLength;
+
+  @override
+  set contentLength(int value) => _contentLength = value;
+
+  @override
+  void add(List<int> data) {}
+
+  @override
+  Future<HttpClientResponse> close() async => response;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _FakeTvHomeHttpResponse extends Stream<List<int>>
+    implements HttpClientResponse {
+  const _FakeTvHomeHttpResponse(this.body);
+
+  final String body;
+
+  @override
+  int get statusCode => HttpStatus.ok;
+
+  @override
+  List<Cookie> get cookies => const <Cookie>[];
+
+  @override
+  HttpHeaders get headers => _FakeTvHomeHttpHeaders();
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    return Stream<List<int>>.value(utf8.encode(body)).listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _FakeTvHomeHttpHeaders implements HttpHeaders {
+  ContentType? _contentType;
+
+  @override
+  ContentType? get contentType => _contentType;
+
+  @override
+  set contentType(ContentType? value) => _contentType = value;
+
+  @override
+  void set(String name, Object value, {bool preserveHeaderCase = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final class _PlaybackHarness {
-  const _PlaybackHarness({required this.client, required this.platform});
+  _PlaybackHarness({
+    required this.client,
+    required this.platform,
+    required this.historyStore,
+  });
 
   final _FakePlaybackClient client;
   final _FakePlaybackVesperPlatform platform;
+  final BiliHistoryStore historyStore;
 }
 
 final class _ExternalPlaybackHarness {
@@ -1398,11 +1621,11 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   BiliVideoPageEntry? initialPage,
   BiliPlaybackPresentationMode presentationMode =
       BiliPlaybackPresentationMode.phone,
-  List<String> sourceNormalizerPluginPaths = const <String>[],
   Size surfaceSize = const Size(1200, 900),
   VesperPlayerSnapshot? initialSnapshot,
   int initialPositionMs = 0,
   void Function(_FakePlaybackClient client)? configureClient,
+  BiliResolvedPlayback? initialResolvedPlayback,
   ThemeData? theme,
   bool externalPlaybackMockInstalled = false,
 }) async {
@@ -1415,25 +1638,6 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
     VesperPlayerPlatform.instance = previousPlatform;
   });
   addTearDown(platform.closeEvents);
-  const playerPluginsChannel = MethodChannel(
-    'dev.ikaros.vesper_player/player_plugins',
-  );
-  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-    playerPluginsChannel,
-    (call) async {
-      switch (call.method) {
-        case 'bundledSourceNormalizerPluginLibraryPaths':
-          return sourceNormalizerPluginPaths;
-      }
-      return null;
-    },
-  );
-  addTearDown(() {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      playerPluginsChannel,
-      null,
-    );
-  });
   const externalPlaybackEventsChannel = EventChannel(
     'io.github.ikaros.vesper_player_external_playback/events',
   );
@@ -1458,6 +1662,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   final historyRoot = Directory(
     '${Directory.systemTemp.path}/bili-playback-widget-test-${DateTime.now().microsecondsSinceEpoch}',
   );
+  final historyStore = BiliHistoryStore(baseDirectory: historyRoot);
   addTearDown(() async {
     if (await historyRoot.exists()) {
       await historyRoot.delete(recursive: true);
@@ -1477,8 +1682,10 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
         detail: playbackDetail,
         initialPage: page,
         client: client,
-        historyStore: BiliHistoryStore(baseDirectory: historyRoot),
-        initialResolvedPlayback: _resolvedPlaybackFor(playbackDetail, page),
+        historyStore: historyStore,
+        initialResolvedPlayback:
+            initialResolvedPlayback ??
+            _resolvedPlaybackFor(playbackDetail, page),
         initialPositionMs: initialPositionMs,
         presentationMode: presentationMode,
       ),
@@ -1489,7 +1696,11 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   await _flushRealAsync(tester);
   await tester.pump();
 
-  return _PlaybackHarness(client: client, platform: platform);
+  return _PlaybackHarness(
+    client: client,
+    platform: platform,
+    historyStore: historyStore,
+  );
 }
 
 Future<_TvHomeHarness> _pumpTvHomePage(
@@ -1502,6 +1713,8 @@ Future<_TvHomeHarness> _pumpTvHomePage(
       const <BiliPlaybackHistoryEntry>[],
   bool skipBootstrap = false,
   bool loggedIn = false,
+  bool authenticatedSession = false,
+  bool emptyFollowing = false,
 }) async {
   final root = Directory(
     '${Directory.systemTemp.path}/bili-tv-home-widget-test-${DateTime.now().microsecondsSinceEpoch}',
@@ -1510,7 +1723,7 @@ Future<_TvHomeHarness> _pumpTvHomePage(
   await tester.runAsync(() => settings.setForceTvMode(initialForceTvMode));
 
   final harness = _TvHomeHarness(
-    client: _FakeTvHomeClient(),
+    client: _FakeTvHomeClient(emptyFollowing: emptyFollowing),
     historyStore: BiliHistoryStore(
       baseDirectory: Directory('${root.path}/history'),
     ),
@@ -1521,6 +1734,15 @@ Future<_TvHomeHarness> _pumpTvHomePage(
     appSettings: settings,
   );
   harness.client.loggedIn = loggedIn;
+  if (authenticatedSession) {
+    harness.client.restoreCookies(const <String, String>{
+      'SESSDATA': 'sess',
+      'bili_jct': 'csrf',
+      'DedeUserID': '42',
+      'buvid3': 'b3',
+      'buvid4': 'b4',
+    });
+  }
 
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -2049,7 +2271,7 @@ void main() {
   ) async {
     await _pumpTvHomePage(tester, surfaceSize: const Size(760, 430));
 
-    for (var index = 0; index < 5; index += 1) {
+    for (var index = 0; index < 6; index += 1) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump(const Duration(milliseconds: 180));
     }
@@ -2235,6 +2457,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 180));
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump(const Duration(milliseconds: 180));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 180));
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_search');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -2313,6 +2537,459 @@ void main() {
     expect(tester.getSize(rail).width, 80);
   });
 
+  testWidgets('tv cover decode width stays stable while the rail animates', (
+    WidgetTester tester,
+  ) async {
+    final feed = _tvFeedItems(18, true);
+    await _pumpTvHomePage(tester, initialFeedItems: feed, skipBootstrap: true);
+
+    final firstCard = find.byKey(ValueKey<String>('feed_${feed.first.bvid}'));
+    Finder coverImage() =>
+        find.descendant(of: firstCard, matching: find.byType(Image)).first;
+    int cacheWidth() {
+      final provider = tester.widget<Image>(coverImage()).image;
+      return (provider as ResizeImage).width!;
+    }
+
+    final initialCacheWidth = cacheWidth();
+    expect(tester.widget<Image>(coverImage()).gaplessPlayback, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(cacheWidth(), initialCacheWidth);
+
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(cacheWidth(), initialCacheWidth);
+  });
+
+  testWidgets('tv home keeps the nested following browser alive', (
+    WidgetTester tester,
+  ) async {
+    final harness = await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+    );
+    final recommendScrollElement = tester.element(
+      find.byKey(const ValueKey<String>('bili-tv-recommend-scroll')),
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-home-following-pane')),
+      findsOneWidget,
+    );
+    expect(harness.client.followingRequests, 1);
+    expect(harness.client.spaceProfileRequests, 1);
+    expect(harness.client.spaceVideoRequests, 1);
+
+    final mainRail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
+    await tester.pump(AppVisualTokens.overlayDuration);
+    expect(tester.getSize(mainRail).width, 80);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.getSize(mainRail).width, 260);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      startsWith('tv_following_'),
+    );
+    expect(tester.getSize(mainRail).width, 80);
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('bili-tv-following-user-7')),
+    );
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_following_user_7',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      startsWith('tv_space_'),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.getSize(mainRail).width, 80);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.getSize(mainRail).width, 80);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    expect(find.text('推荐视频 0'), findsWidgets);
+    expect(
+      tester.element(
+        find.byKey(const ValueKey<String>('bili-tv-recommend-scroll')),
+      ),
+      same(recommendScrollElement),
+    );
+    expect(harness.client.recommendedFeedRequests, 0);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+      findsOneWidget,
+    );
+    expect(harness.client.followingRequests, 1);
+    expect(harness.client.spaceProfileRequests, 1);
+    expect(harness.client.spaceVideoRequests, 1);
+  });
+
+  testWidgets('tv nested following rails fit compact landscape', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      surfaceSize: const Size(760, 430),
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+    final mainRail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
+    final followingRail = find.byKey(
+      const ValueKey<String>('bili-tv-following-rail'),
+    );
+    final contentArea = find.byKey(
+      const ValueKey<String>('bili-tv-following-content-area'),
+    );
+    await tester.pump(AppVisualTokens.overlayDuration);
+    final compactContentWidth = tester.getRect(contentArea).width;
+    final compactMainRect = tester.getRect(mainRail);
+    final compactFollowingRect = tester.getRect(followingRail);
+    expect(tester.getSize(mainRail).width, 80);
+    expect(compactFollowingRect.left - compactMainRect.right, closeTo(12, 0.5));
+    expect(compactFollowingRect.top, closeTo(compactMainRect.top, 0.5));
+    expect(compactFollowingRect.bottom, closeTo(compactMainRect.bottom, 0.5));
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.getSize(mainRail).width, 260);
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      startsWith('tv_following_'),
+    );
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getSize(mainRail).width, 80);
+    final expandedMainRect = tester.getRect(mainRail);
+    final expandedFollowingRect = tester.getRect(followingRail);
+    expect(
+      expandedFollowingRect.left - expandedMainRect.right,
+      closeTo(12, 0.5),
+    );
+    expect(expandedFollowingRect.top, closeTo(expandedMainRect.top, 0.5));
+    expect(expandedFollowingRect.bottom, closeTo(expandedMainRect.bottom, 0.5));
+    expect(
+      tester.getRect(contentArea).width,
+      closeTo(compactContentWidth, 0.5),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+    expect(
+      tester.getRect(contentArea).width,
+      closeTo(compactContentWidth, 0.5),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+    expect(tester.getSize(mainRail).width, 260);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getSize(mainRail).width, 80);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tv primary rail items share icon and label alignment', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    final iconRects = <Rect>[];
+    final labelRects = <Rect>[];
+    for (final item in <String>['recommend', 'following', 'regions']) {
+      iconRects.add(
+        tester.getRect(find.byKey(ValueKey<String>('bili-tv-rail-icon-$item'))),
+      );
+      labelRects.add(
+        tester.getRect(
+          find.byKey(ValueKey<String>('bili-tv-rail-label-$item')),
+        ),
+      );
+    }
+    for (var index = 1; index < iconRects.length; index += 1) {
+      expect(
+        iconRects[index].center.dx,
+        closeTo(iconRects.first.center.dx, 0.5),
+      );
+      expect(labelRects[index].left, closeTo(labelRects.first.left, 0.5));
+    }
+  });
+
+  testWidgets(
+    'tv following pane resets when the authenticated session changes',
+    (WidgetTester tester) async {
+      final harness = await _pumpTvHomePage(
+        tester,
+        initialFeedItems: _tvFeedItems(),
+        skipBootstrap: true,
+        loggedIn: true,
+        authenticatedSession: true,
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await _pumpUntilFound(
+        tester,
+        find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+      );
+      final oldPaneElement = tester.element(
+        find.byKey(const ValueKey<String>('bili-tv-following-pane')),
+      );
+      expect(
+        find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+        findsOneWidget,
+      );
+
+      harness.client.clearSession();
+      await _pumpTvHomeFrame(
+        tester,
+        harness,
+        surfaceSize: const Size(1280, 720),
+        initialFeedItems: _tvFeedItems(),
+        skipBootstrap: true,
+      );
+      await _pumpUntilFound(tester, find.text('暂时无法显示'));
+      expect(
+        find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+        findsNothing,
+      );
+      expect(
+        tester.element(
+          find.byKey(const ValueKey<String>('bili-tv-following-pane')),
+        ),
+        isNot(same(oldPaneElement)),
+      );
+    },
+  );
+
+  testWidgets('tv embedded following login state keeps home rail focus', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilFound(tester, find.text('暂时无法显示'));
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tv empty following rail exposes a compact refresh action', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+      emptyFollowing: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilFound(tester, find.text('选择一位 UP 主'));
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.tvFocusDuration);
+    await tester.pump();
+
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_following_refresh',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tv embedded following does not reload after playback returns', (
+    WidgetTester tester,
+  ) async {
+    final previousPlatform = VesperPlayerPlatform.instance;
+    final platform = _FakePlaybackVesperPlatform(
+      initialSnapshot: _playbackSnapshot,
+    );
+    VesperPlayerPlatform.instance = platform;
+    addTearDown(() => VesperPlayerPlatform.instance = previousPlatform);
+    addTearDown(platform.closeEvents);
+    final externalPlayback = _ExternalPlaybackHarness()..install();
+    addTearDown(externalPlayback.uninstall);
+
+    final harness = await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    final video = find.byKey(
+      const ValueKey<String>('bili-tv-space-video-BV1space0001'),
+    );
+    await _pumpUntilFound(tester, video);
+    final followingRequests = harness.client.followingRequests;
+    final profileRequests = harness.client.spaceProfileRequests;
+    final videoRequests = harness.client.spaceVideoRequests;
+
+    await tester.tap(video);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(BiliPlaybackPage), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(BiliPlaybackPage))).pop();
+    await tester.pump();
+    await _flushRealAsync(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(video, findsOneWidget);
+    expect(harness.client.followingRequests, followingRequests);
+    expect(harness.client.spaceProfileRequests, profileRequests);
+    expect(harness.client.spaceVideoRequests, videoRequests);
+  });
+
   testWidgets('tv hero focus update is debounced and does not load details', (
     WidgetTester tester,
   ) async {
@@ -2349,7 +3026,7 @@ void main() {
     expect(harness.client.requestedVideoDetails, isEmpty);
   });
 
-  testWidgets('tv mine hides following and keeps library actions aligned', (
+  testWidgets('tv mine keeps its two library actions aligned', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
@@ -2362,7 +3039,19 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 240));
 
-    expect(find.text('关注列表'), findsNothing);
+    expect(
+      find.byKey(
+        const ValueKey<String>('tv-glass-selectable-state-nav_following'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('bili-tv-content-area')),
+        matching: find.text('关注列表'),
+      ),
+      findsNothing,
+    );
     final historyAction = find
         .ancestor(of: find.text('历史播放'), matching: find.byType(TvFocusable))
         .last;
@@ -2532,6 +3221,8 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_regions');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -2565,6 +3256,8 @@ void main() {
     );
     await _pumpUntil(tester, () => find.text('测试用户').evaluate().isNotEmpty);
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -2607,6 +3300,8 @@ void main() {
       skipBootstrap: true,
     );
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -3147,6 +3842,52 @@ void main() {
   );
 
   testWidgets(
+    'playback engagement stays in the intro stream below the context tabs',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('playback-shell-engagement-bar')),
+        findsNothing,
+      );
+      final tabsRect = tester.getRect(find.byType(TabBar));
+      final engagementRect = tester.getRect(
+        find.byKey(const ValueKey<String>('bili-intro-engagement-bar')),
+      );
+      final titleRect = tester.getRect(
+        find.byKey(const ValueKey<String>('playback-intro-title')),
+      );
+      expect(engagementRect.top, greaterThan(tabsRect.bottom));
+      expect(engagementRect.top, greaterThan(titleRect.bottom));
+      final actionRects = <Rect>[
+        for (final action in <String>[
+          'like',
+          'coin',
+          'favorite',
+          'share',
+          'watchLater',
+        ])
+          tester.getRect(find.byKey(ValueKey<String>('engagement-$action'))),
+      ];
+      final actionRowTop = actionRects.first.top;
+      final actionWidth = actionRects.first.width;
+      for (final action in <String>[
+        'coin',
+        'favorite',
+        'share',
+        'watchLater',
+      ]) {
+        final rect = tester.getRect(
+          find.byKey(ValueKey<String>('engagement-$action')),
+        );
+        expect(rect.top, closeTo(actionRowTop, 0.5));
+        expect(rect.width, closeTo(actionWidth, 0.5));
+      }
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'playback context tabs center labels and use a compact leading inset',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 640));
@@ -3326,30 +4067,68 @@ void main() {
   );
 
   testWidgets(
+    'playback exit records the current progress into history',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      harness.platform.emitSnapshot(
+        _playingPlaybackSnapshot.copyWith(
+          timeline: const VesperTimeline(
+            kind: VesperTimelineKind.vod,
+            isSeekable: true,
+            seekableRange: null,
+            liveEdgeMs: null,
+            positionMs: 30000,
+            durationMs: 120000,
+          ),
+        ),
+      );
+      await tester.pump();
+      await _flushRealAsync(tester);
+
+      // 退出播放页：dispose 路径持久化当前进度。
+      await tester.pumpWidget(const SizedBox.shrink());
+      List<BiliPlaybackHistoryEntry> entries =
+          const <BiliPlaybackHistoryEntry>[];
+      for (var attempt = 0; attempt < 10 && entries.isEmpty; attempt += 1) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        entries =
+            await tester.runAsync(() => harness.historyStore.loadEntries()) ??
+            const <BiliPlaybackHistoryEntry>[];
+      }
+
+      expect(entries, hasLength(1));
+      expect(entries.single.bvid, 'BV1playback01');
+      expect(entries.single.cid, 101);
+      expect(entries.single.lastPositionMs, 30000);
+      expect(entries.single.durationMs, 120000);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'android playback enables source normalizer without frame processor',
     (WidgetTester tester) async {
-      const pluginPath =
-          '/data/app/lib/arm64/libplayer_source_normalizer_ffmpeg.so';
-
-      final harness = await _pumpPlaybackPage(
-        tester,
-        sourceNormalizerPluginPaths: const <String>[pluginPath],
-      );
+      final harness = await _pumpPlaybackPage(tester);
 
       expect(
         harness.platform.lastSourceNormalizerConfiguration?.mode,
         VesperSourceNormalizerMode.preferNormalized,
       );
       expect(
-        harness.platform.lastSourceNormalizerConfiguration?.pluginLibraryPaths,
-        <String>[pluginPath],
+        harness.platform.lastSourceNormalizerConfiguration?.pluginReferences,
+        <VesperPluginReference>[
+          VesperBundledPluginReferences.sourceNormalizerFfmpeg,
+        ],
       );
       expect(
         harness.platform.lastFrameProcessorConfiguration?.mode,
         VesperFrameProcessorMode.disabled,
       );
       expect(
-        harness.platform.lastFrameProcessorConfiguration?.pluginLibraryPaths,
+        harness.platform.lastFrameProcessorConfiguration?.pluginReferences,
         isEmpty,
       );
     },
@@ -3370,6 +4149,12 @@ void main() {
       expect(find.text('硬币'), findsNothing);
       expect(find.text('收藏'), findsNothing);
       expect(find.text('分享'), findsNothing);
+      // PGC 保留图标化的稍后再看入口（互动动作栏仅声明 watchLater）。
+      expect(
+        find.byKey(const ValueKey<String>('engagement-watchLater')),
+        findsOneWidget,
+      );
+      expect(find.text('加入稍后再看'), findsNothing);
       expect(find.widgetWithText(FilledButton, '关注'), findsNothing);
       expect(find.text('播放页UP'), findsNothing);
     },
@@ -3377,16 +4162,49 @@ void main() {
   );
 
   testWidgets(
-    'playback engagement actions are visible and pending disables follow',
+    'playback engagement actions are icon-only and pending disables follow',
     (WidgetTester tester) async {
       final harness = await _pumpPlaybackPage(tester);
       final followCompleter = Completer<BiliVideoEngagement>();
       harness.client.followCompleter = followCompleter;
 
-      expect(find.text('点赞'), findsOneWidget);
-      expect(find.text('硬币'), findsOneWidget);
-      expect(find.text('收藏'), findsOneWidget);
-      expect(find.text('分享'), findsOneWidget);
+      for (final action in <String>[
+        'like',
+        'coin',
+        'favorite',
+        'share',
+        'watchLater',
+      ]) {
+        expect(
+          find.byKey(ValueKey<String>('engagement-$action')),
+          findsOneWidget,
+        );
+      }
+      for (final label in <String>['点赞', '硬币', '收藏', '分享', '加入稍后再看']) {
+        expect(find.text(label), findsNothing);
+      }
+      final semantics = tester.ensureSemantics();
+      for (final label in <String>[
+        '点赞 1.1万',
+        '硬币 234',
+        '收藏 345',
+        '分享 56',
+        '加入稍后再看',
+      ]) {
+        expect(find.bySemanticsLabel(label), findsOneWidget);
+      }
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('点赞 1.1万')),
+        matchesSemantics(
+          label: '点赞 1.1万',
+          isButton: true,
+          hasTapAction: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasSelectedState: true,
+        ),
+      );
+      semantics.dispose();
       expect(find.widgetWithText(FilledButton, '关注'), findsOneWidget);
       expect(
         tester
@@ -3426,7 +4244,7 @@ void main() {
     (WidgetTester tester) async {
       final harness = await _pumpPlaybackPage(tester);
 
-      await tester.tap(find.text('硬币'));
+      await tester.tap(find.byKey(const ValueKey<String>('engagement-coin')));
       await tester.pump();
 
       expect(harness.client.coinRequests, 1);
@@ -3440,8 +4258,10 @@ void main() {
     (WidgetTester tester) async {
       await _pumpPlaybackPage(tester);
 
-      expect(find.text('加入稍后再看'), findsOneWidget);
-      await tester.tap(find.text('加入稍后再看'));
+      expect(find.text('加入稍后再看'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('engagement-watchLater')),
+      );
       await tester.pump();
 
       expect(find.text('请先登录 Bilibili 后使用稍后再看。'), findsOneWidget);
@@ -3659,6 +4479,13 @@ void main() {
     (WidgetTester tester) async {
       await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 640));
 
+      // 互动动作栏属于简介流，简介列表向下滚动使分 P 入口可见。
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('playback-related')),
+        const Offset(0, -180),
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('合集 · 共 3 个分 P'), findsOneWidget);
       expect(find.text('热门评论'), findsNothing);
 
@@ -3858,6 +4685,90 @@ void main() {
         harness.platform.subtitleSelections.single.trackId,
         'subtitle:bili:3',
       );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback settings show empty copy when resolution has no options',
+    (WidgetTester tester) async {
+      final base = _resolvedPlaybackFor(_playbackDetail(), _playbackPageOne);
+      await _pumpPlaybackPage(
+        tester,
+        initialResolvedPlayback: BiliResolvedPlayback(
+          bvid: base.bvid,
+          cid: base.cid,
+          title: base.title,
+          subtitle: base.subtitle,
+          uri: base.uri,
+          protocol: base.protocol,
+          transportLabel: base.transportLabel,
+          isLocalFile: base.isLocalFile,
+          videoTracks: const <VesperMediaTrack>[],
+          subtitleTracks: const <BiliSubtitleTrack>[],
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('当前播放链路无可选清晰度。'), findsOneWidget);
+      expect(find.text('当前视频没有可用字幕。'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback speed panel applies and restores playback rate',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(tester);
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('1.25x'));
+      await tester.pump();
+      expect(harness.platform.playbackRates, <double>[1.25]);
+
+      await tester.tap(find.text('1.0x'));
+      await tester.pump();
+      expect(harness.platform.playbackRates, <double>[1.25, 1.0]);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback page lays out at compact phone size without overflow',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(360, 640));
+
+      expect(find.text('播放页测试视频'), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback page lays out at standard phone size without overflow',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 844));
+
+      expect(find.text('播放页测试视频'), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'playback page lays out at wide landscape size without overflow',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(1920, 1080));
+
+      expect(find.text('播放页测试视频'), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+      expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -5273,7 +6184,7 @@ void main() {
     expect(find.text('二维码已失效，刷新后重新扫码。'), findsOneWidget);
     expect(find.textContaining('状态更新时间'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('bili-readable-glass-sheet')),
+      find.byKey(const ValueKey<String>('media-readable-glass-sheet')),
       findsOneWidget,
     );
     expect(
@@ -5334,7 +6245,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     final sheet = tester.widget<GlassSheet>(
-      find.byKey(const ValueKey<String>('bili-readable-glass-sheet')),
+      find.byKey(const ValueKey<String>('media-readable-glass-sheet')),
     );
     final title = tester.widget<Text>(find.text('扫码登录哔哩哔哩'));
     final qrSurface = tester.widget<DecoratedBox>(

@@ -1,3 +1,4 @@
+import com.android.build.gradle.LibraryExtension
 import java.io.File
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -7,6 +8,13 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android Gradle plugin.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+data class VesperAppPluginRegistryMetadata(
+    val taskSegment: String,
+    val manifestPath: String,
+    val libraryName: String,
+    val pluginId: String,
+)
 
 val configuredAndroidAbis =
     sequenceOf(
@@ -51,8 +59,6 @@ val playerFfmpegRuntimeOpenSslDirFile = playerFfmpegRuntimeDepsDirFile.resolve("
 val playerFfmpegRuntimeLibxml2DirFile = playerFfmpegRuntimeDepsDirFile.resolve("libxml2")
 val playerFfmpegRuntimeAssetsRootDir = layout.buildDirectory.dir("generated/playerFfmpeg/runtime/assets")
 val playerFfmpegRuntimeAssetsRootDirFile = playerFfmpegRuntimeAssetsRootDir.get().asFile
-val playerFfmpegRuntimeAssetsDirFile =
-    playerFfmpegRuntimeAssetsRootDirFile.resolve("vesper-ffmpeg-runtime")
 val playerFfmpegRuntimeJniLibsDir = layout.buildDirectory.dir("generated/playerFfmpeg/runtime/jniLibs")
 val playerFfmpegRuntimeJniLibsDirFile = playerFfmpegRuntimeJniLibsDir.get().asFile
 val playerFfmpegPluginJniLibsDir = layout.buildDirectory.dir("generated/playerFfmpeg/jniLibs")
@@ -63,7 +69,8 @@ val playerSourceNormalizerPluginJniLibsDirFile =
     playerSourceNormalizerPluginJniLibsDir.get().asFile
 val playerSourceNormalizerAssetsRootDir =
     layout.buildDirectory.dir("generated/playerSourceNormalizerFfmpeg/assets")
-val playerSourceNormalizerAssetsRootDirFile = playerSourceNormalizerAssetsRootDir.get().asFile
+val playerSourceNormalizerAssetsRootDirFile =
+    playerSourceNormalizerAssetsRootDir.get().asFile
 val playerSourceNormalizerMetadataDirFile =
     playerSourceNormalizerAssetsRootDirFile.resolve("vesper-source-normalizer-ffmpeg")
 val playerFfmpegPluginBuildProfile =
@@ -98,6 +105,43 @@ val vesperGradleUserHomeDir =
     providers.gradleProperty("vesper.player.gradle.userHome")
         .orElse(providers.systemProperty("vesper.player.gradle.userHome"))
         .map { path -> file(path) }
+val vesperAppPluginRegistries =
+    listOf(
+        VesperAppPluginRegistryMetadata(
+            taskSegment = "RemuxFfmpeg",
+            manifestPath = "plugins/remux-ffmpeg/vesper-plugin.toml",
+            libraryName = "vesper_remux_ffmpeg",
+            pluginId = "io.github.ikaros.vesper.remux-ffmpeg",
+        ),
+        VesperAppPluginRegistryMetadata(
+            taskSegment = "SourceNormalizerFfmpeg",
+            manifestPath = "plugins/source-normalizer-ffmpeg/vesper-plugin.toml",
+            libraryName = "vesper_source_normalizer_ffmpeg",
+            pluginId = "io.github.ikaros.vesper.source-normalizer-ffmpeg",
+        ),
+    )
+val configuredVesperCli = providers.environmentVariable("VESPER_CLI")
+val defaultVesperCli = vesperSdkBuildRootDirFile.resolve("target/release/vesper")
+val vesperCli =
+    configuredVesperCli
+        .map { configuredPath ->
+            val configuredFile = File(configuredPath)
+            if (configuredFile.isAbsolute) {
+                configuredFile
+            } else {
+                vesperSdkBuildRootDirFile.resolve(configuredPath)
+            }
+        }.orElse(defaultVesperCli)
+val buildVesperPluginCli =
+    tasks.register<Exec>("buildVesperPluginCli") {
+        group = "vesper"
+        description = "Builds the Rust CLI used to generate app plugin registry fragments."
+        onlyIf { !configuredVesperCli.isPresent }
+        workingDir = vesperSdkBuildRootDirFile
+        commandLine("cargo", "build", "-p", "player-cli", "--bin", "vesper", "--release")
+        outputs.file(defaultVesperCli)
+        outputs.upToDateWhen { false }
+    }
 
 android {
     namespace = "dev.ikaros.vesper_player"
@@ -134,12 +178,6 @@ android {
 
     sourceSets {
         getByName("main").jniLibs.directories.add(playerFfmpegPluginJniLibsDirFile.absolutePath)
-        getByName("main").jniLibs.directories.add(
-            playerSourceNormalizerPluginJniLibsDirFile.absolutePath,
-        )
-        getByName("main").jniLibs.directories.add(playerFfmpegRuntimeJniLibsDirFile.absolutePath)
-        getByName("main").assets.srcDir(playerFfmpegRuntimeAssetsRootDirFile)
-        getByName("main").assets.srcDir(playerSourceNormalizerAssetsRootDirFile)
     }
 
     packaging {
@@ -166,40 +204,30 @@ dependencies {
     implementation(project(":vesper-player-kit-source-normalizer-ffmpeg"))
 }
 
-val buildPlayerRemuxFfmpegAndroidPlugin by tasks.registering(Exec::class) {
-    description = "Builds the Android player-remux-ffmpeg plugin libraries used by offline cache."
+val buildPlayerFfmpegRuntimeAndroid = tasks.register<Exec>("buildPlayerFfmpegRuntimeAndroid") {
+    description = "Builds and stages the Android FFmpeg runtime consumed through its AAR module."
     group = "vesper"
 
-    val scriptFile = vesperSdkBuildRootDirFile.resolve(
-        "scripts/android/build-player-remux-ffmpeg-plugin.sh",
-    )
+    val vesperScript = vesperSdkBuildRootDirFile.resolve("scripts/vesper")
 
-    inputs.file(scriptFile)
-    inputs.file(vesperSdkBuildRootDirFile.resolve("scripts/android/build-ffmpeg-runtime-aar.sh"))
+    inputs.file(vesperScript)
     inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.toml"))
     inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.lock"))
-    inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin-remux/player-remux-ffmpeg"))
-    inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin/player-plugin"))
-    listOf(
-        "third_party/ffmpeg/android",
-        "third_party/openssl/android",
-        "third_party/libxml2/android",
-    ).map { relativePath -> vesperSdkBuildRootDirFile.resolve(relativePath) }
-        .filter { directory -> directory.isDirectory }
-        .forEach { directory -> inputs.dir(directory) }
+    inputs.file(vesperSdkBuildRootDirFile.resolve("scripts/ffmpeg-profiles.toml"))
+    inputs.file(vesperSdkBuildRootDirFile.resolve("scripts/ffmpeg-source-policy.toml"))
     inputs.property("abis", configuredAndroidAbis)
-    inputs.property("profile", playerFfmpegPluginBuildProfile)
     inputs.property("ffmpegProfile", playerFfmpegPluginFfmpegProfile)
     inputs.property("opensslVersion", playerFfmpegOpenSslVersion)
     inputs.property("opensslSourceArchive", playerFfmpegOpenSslSourceArchive.map { it.absolutePath })
-    outputs.dir(playerFfmpegPluginJniLibsDirFile)
-    outputs.dir(playerFfmpegRuntimeDepsDirFile)
-    outputs.dir(playerFfmpegRuntimeAssetsRootDirFile)
     outputs.dir(playerFfmpegRuntimeJniLibsDirFile)
+    outputs.dir(playerFfmpegRuntimeAssetsRootDirFile)
 
     workingDir = vesperSdkBuildRootDirFile
 
     doFirst {
+        project.delete(playerFfmpegRuntimeJniLibsDirFile, playerFfmpegRuntimeAssetsRootDirFile)
+        playerFfmpegRuntimeJniLibsDirFile.mkdirs()
+        playerFfmpegRuntimeAssetsRootDirFile.mkdirs()
         environment("RUST_ANDROID_ABIS", configuredAndroidAbis.joinToString(","))
         environment("VESPER_ANDROID_FFMPEG_OUTPUT_DIR", playerFfmpegRuntimePrebuiltsDirFile.absolutePath)
         environment("VESPER_ANDROID_LIBXML2_OUTPUT_DIR", playerFfmpegRuntimeLibxml2DirFile.absolutePath)
@@ -209,113 +237,80 @@ val buildPlayerRemuxFfmpegAndroidPlugin by tasks.registering(Exec::class) {
             "VESPER_ANDROID_OPENSSL_SOURCE_ARCHIVE",
             playerFfmpegOpenSslSourceArchive.get().absolutePath,
         )
+        environment(
+            "VESPER_ANDROID_FFMPEG_RUNTIME_JNI_LIBS",
+            playerFfmpegRuntimeJniLibsDirFile.absolutePath,
+        )
+        environment(
+            "VESPER_ANDROID_FFMPEG_RUNTIME_ASSETS",
+            playerFfmpegRuntimeAssetsRootDirFile.absolutePath,
+        )
         vesperGradleUserHomeDir.orNull?.let { gradleUserHome ->
             environment("GRADLE_USER_HOME", gradleUserHome.absolutePath)
         }
         commandLine(
-            scriptFile.absolutePath,
+            listOf(
+                vesperScript.absolutePath,
+                "ffmpeg",
+                "--platform",
+                "android",
+                "--profile",
+                playerFfmpegPluginFfmpegProfile.get(),
+                "--android-artifact",
+                "runtime-aar",
+            ) + configuredAndroidAbis.flatMap { abi -> listOf("--abi", abi) },
+        )
+    }
+}
+
+val buildPlayerRemuxFfmpegAndroidPlugin = tasks.register<Exec>("buildPlayerRemuxFfmpegAndroidPlugin") {
+    description = "Builds the Android player-remux-ffmpeg plugin libraries used by offline cache."
+    group = "vesper"
+
+    val vesperScript = vesperSdkBuildRootDirFile.resolve("scripts/vesper")
+
+    dependsOn(buildPlayerFfmpegRuntimeAndroid)
+    inputs.file(vesperScript)
+    inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.toml"))
+    inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.lock"))
+    inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin-remux/player-remux-ffmpeg"))
+    inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin/player-plugin"))
+    inputs.property("abis", configuredAndroidAbis)
+    inputs.property("profile", playerFfmpegPluginBuildProfile)
+    inputs.property("ffmpegProfile", playerFfmpegPluginFfmpegProfile)
+    outputs.dir(playerFfmpegPluginJniLibsDirFile)
+
+    workingDir = vesperSdkBuildRootDirFile
+
+    doFirst {
+        environment("RUST_ANDROID_ABIS", configuredAndroidAbis.joinToString(","))
+        environment("VESPER_ANDROID_FFMPEG_OUTPUT_DIR", playerFfmpegRuntimePrebuiltsDirFile.absolutePath)
+        environment("VESPER_ANDROID_LIBXML2_OUTPUT_DIR", playerFfmpegRuntimeLibxml2DirFile.absolutePath)
+        environment("VESPER_ANDROID_OPENSSL_OUTPUT_DIR", playerFfmpegRuntimeOpenSslDirFile.absolutePath)
+        vesperGradleUserHomeDir.orNull?.let { gradleUserHome ->
+            environment("GRADLE_USER_HOME", gradleUserHome.absolutePath)
+        }
+        commandLine(
+            vesperScript.absolutePath,
+            "android",
+            "remux-plugin",
             playerFfmpegPluginJniLibsDirFile.absolutePath,
             playerFfmpegPluginBuildProfile.get(),
             "--profile",
             playerFfmpegPluginFfmpegProfile.get(),
         )
     }
-
-    doLast {
-        project.delete(playerFfmpegRuntimeJniLibsDirFile, playerFfmpegRuntimeAssetsRootDirFile)
-        playerFfmpegRuntimeJniLibsDirFile.mkdirs()
-        playerFfmpegRuntimeAssetsDirFile.mkdirs()
-
-        var expectedProfileHash: String? = null
-        configuredAndroidAbis.forEach { abi ->
-            val ffmpegAbiDir = playerFfmpegRuntimePrebuiltsDirFile.resolve(abi)
-            val ffmpegLibDir = ffmpegAbiDir.resolve("lib")
-            require(ffmpegLibDir.isDirectory) {
-                "Missing FFmpeg runtime libraries for ABI $abi: $ffmpegLibDir"
-            }
-
-            val targetAbiDir = playerFfmpegRuntimeJniLibsDirFile.resolve(abi)
-            targetAbiDir.mkdirs()
-            val runtimeLibraries = ffmpegLibDir.listFiles { file ->
-                file.isFile && file.name.startsWith("lib") && file.name.endsWith(".so")
-            }?.toList().orEmpty()
-            require(runtimeLibraries.isNotEmpty()) {
-                "No FFmpeg runtime .so files found for ABI $abi in $ffmpegLibDir"
-            }
-            runtimeLibraries.forEach { library ->
-                library.copyTo(targetAbiDir.resolve(library.name), overwrite = true)
-            }
-
-            val metadataFile = ffmpegAbiDir.resolve("vesper-ffmpeg-build-metadata.txt")
-            require(metadataFile.isFile) {
-                "Missing FFmpeg build metadata for ABI $abi: $metadataFile"
-            }
-            val metadataText = metadataFile.readText()
-            metadataFile.copyTo(
-                playerFfmpegRuntimeAssetsDirFile.resolve("$abi-metadata.txt"),
-                overwrite = true,
-            )
-            val profileHash = metadataText
-                .lineSequence()
-                .firstOrNull { line -> line.startsWith("profile_hash=") }
-                ?.substringAfter("=")
-                ?.trim()
-            require(!profileHash.isNullOrEmpty()) {
-                "Missing profile_hash in FFmpeg metadata for ABI $abi: $metadataFile"
-            }
-            if (expectedProfileHash == null) {
-                expectedProfileHash = profileHash
-            } else {
-                require(expectedProfileHash == profileHash) {
-                    "Mismatched FFmpeg profile hash for ABI $abi: $profileHash != $expectedProfileHash"
-                }
-            }
-
-            val externalDependencies = metadataText
-                .lineSequence()
-                .firstOrNull { line -> line.startsWith("external_dependencies=") }
-                ?.substringAfter("=")
-                ?.split(",")
-                ?.map(String::trim)
-                ?.filter(String::isNotEmpty)
-                .orEmpty()
-            externalDependencies.forEach { dependency ->
-                val dependencyLibDir = when (dependency) {
-                    "libxml2" -> playerFfmpegRuntimeLibxml2DirFile.resolve("$abi/lib")
-                    "openssl" -> playerFfmpegRuntimeOpenSslDirFile.resolve("$abi/lib")
-                    else -> error("Unsupported FFmpeg external dependency '$dependency' for ABI $abi.")
-                }
-                require(dependencyLibDir.isDirectory) {
-                    "Missing FFmpeg external dependency '$dependency' for ABI $abi: $dependencyLibDir"
-                }
-                val dependencyLibraries = dependencyLibDir.listFiles { file ->
-                    file.isFile && file.name.startsWith("lib") && file.name.endsWith(".so")
-                }?.toList().orEmpty()
-                require(dependencyLibraries.isNotEmpty()) {
-                    "No shared libraries found for FFmpeg external dependency '$dependency' in $dependencyLibDir"
-                }
-                dependencyLibraries.forEach { library ->
-                    library.copyTo(targetAbiDir.resolve(library.name), overwrite = true)
-                }
-            }
-        }
-
-        playerFfmpegRuntimeAssetsDirFile
-            .resolve("profile-hash.txt")
-            .writeText("${requireNotNull(expectedProfileHash)}\n")
-    }
 }
 
-val buildPlayerSourceNormalizerFfmpegAndroidPlugin by tasks.registering(Exec::class) {
+val buildPlayerSourceNormalizerFfmpegAndroidPlugin =
+    tasks.register<Exec>("buildPlayerSourceNormalizerFfmpegAndroidPlugin") {
     description = "Builds the Android player-source-normalizer-ffmpeg plugin libraries."
     group = "vesper"
 
-    val scriptFile = vesperSdkBuildRootDirFile.resolve(
-        "scripts/android/build-player-source-normalizer-ffmpeg-plugin.sh",
-    )
+    val vesperScript = vesperSdkBuildRootDirFile.resolve("scripts/vesper")
 
-    inputs.file(scriptFile)
-    inputs.file(vesperSdkBuildRootDirFile.resolve("scripts/android/build-ffmpeg-runtime-aar.sh"))
+    dependsOn(buildPlayerFfmpegRuntimeAndroid)
+    inputs.file(vesperScript)
     inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.toml"))
     inputs.file(vesperSdkBuildRootDirFile.resolve("Cargo.lock"))
     inputs.file(vesperSdkBuildRootDirFile.resolve("scripts/source-normalizer-profiles.toml"))
@@ -323,38 +318,29 @@ val buildPlayerSourceNormalizerFfmpegAndroidPlugin by tasks.registering(Exec::cl
     inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin/player-source-normalizer-ffmpeg"))
     inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin/player-plugin"))
     inputs.dir(vesperSdkBuildRootDirFile.resolve("crates/plugin/player-plugin-loader"))
-    listOf(
-        "third_party/ffmpeg/android",
-        "third_party/openssl/android",
-        "third_party/libxml2/android",
-    ).map { relativePath -> vesperSdkBuildRootDirFile.resolve(relativePath) }
-        .filter { directory -> directory.isDirectory }
-        .forEach { directory -> inputs.dir(directory) }
     inputs.property("abis", configuredAndroidAbis)
     inputs.property("profile", playerFfmpegPluginBuildProfile)
     inputs.property("ffmpegProfile", playerFfmpegPluginFfmpegProfile)
-    inputs.property("opensslVersion", playerFfmpegOpenSslVersion)
-    inputs.property("opensslSourceArchive", playerFfmpegOpenSslSourceArchive.map { it.absolutePath })
     outputs.dir(playerSourceNormalizerPluginJniLibsDirFile)
     outputs.dir(playerSourceNormalizerAssetsRootDirFile)
 
     workingDir = vesperSdkBuildRootDirFile
 
     doFirst {
+        project.delete(playerSourceNormalizerPluginJniLibsDirFile, playerSourceNormalizerAssetsRootDirFile)
+        playerSourceNormalizerPluginJniLibsDirFile.mkdirs()
+        playerSourceNormalizerAssetsRootDirFile.mkdirs()
         environment("RUST_ANDROID_ABIS", configuredAndroidAbis.joinToString(","))
         environment("VESPER_ANDROID_FFMPEG_OUTPUT_DIR", playerFfmpegRuntimePrebuiltsDirFile.absolutePath)
         environment("VESPER_ANDROID_LIBXML2_OUTPUT_DIR", playerFfmpegRuntimeLibxml2DirFile.absolutePath)
         environment("VESPER_ANDROID_OPENSSL_OUTPUT_DIR", playerFfmpegRuntimeOpenSslDirFile.absolutePath)
-        environment("VESPER_ANDROID_OPENSSL_VERSION", playerFfmpegOpenSslVersion.get())
-        environment(
-            "VESPER_ANDROID_OPENSSL_SOURCE_ARCHIVE",
-            playerFfmpegOpenSslSourceArchive.get().absolutePath,
-        )
         vesperGradleUserHomeDir.orNull?.let { gradleUserHome ->
             environment("GRADLE_USER_HOME", gradleUserHome.absolutePath)
         }
         commandLine(
-            scriptFile.absolutePath,
+            vesperScript.absolutePath,
+            "android",
+            "source-normalizer-plugin",
             playerSourceNormalizerPluginJniLibsDirFile.absolutePath,
             playerFfmpegPluginBuildProfile.get(),
             "--profile",
@@ -376,14 +362,31 @@ tasks.matching { task ->
 
 val ffmpegRuntimeProject = rootProject.project(":vesper-player-kit-ffmpeg-runtime")
 ffmpegRuntimeProject.plugins.withId("com.android.library") {
+    ffmpegRuntimeProject.extensions
+        .getByType(LibraryExtension::class.java)
+        .sourceSets
+        .getByName("main")
+        .apply {
+            jniLibs.setSrcDirs(listOf(playerFfmpegRuntimeJniLibsDirFile))
+            assets.setSrcDirs(listOf(playerFfmpegRuntimeAssetsRootDirFile))
+        }
+    ffmpegRuntimeProject.afterEvaluate {
+        extensions
+            .getByType(LibraryExtension::class.java)
+            .sourceSets
+            .getByName("main")
+            .apply {
+                jniLibs.setSrcDirs(listOf(playerFfmpegRuntimeJniLibsDirFile))
+                assets.setSrcDirs(listOf(playerFfmpegRuntimeAssetsRootDirFile))
+            }
+    }
     ffmpegRuntimeProject.tasks.matching { task ->
         (task.name.startsWith("merge") &&
             (task.name.endsWith("Assets") || task.name.endsWith("JniLibFolders"))) ||
             (task.name.startsWith("generate") && task.name.contains("Lint") && task.name.endsWith("Model")) ||
             (task.name.startsWith("lint") && task.name.contains("Analyze"))
     }.configureEach {
-        dependsOn(buildPlayerRemuxFfmpegAndroidPlugin)
-        dependsOn(buildPlayerSourceNormalizerFfmpegAndroidPlugin)
+        dependsOn(buildPlayerFfmpegRuntimeAndroid)
     }
 }
 
@@ -405,6 +408,22 @@ externalPlaybackProject.plugins.withId("com.android.library") {
 
 val sourceNormalizerFfmpegProject = rootProject.project(":vesper-player-kit-source-normalizer-ffmpeg")
 sourceNormalizerFfmpegProject.plugins.withId("com.android.library") {
+    sourceNormalizerFfmpegProject.extensions
+        .getByType(LibraryExtension::class.java)
+        .sourceSets
+        .getByName("main")
+        .jniLibs
+        .setSrcDirs(listOf(playerSourceNormalizerPluginJniLibsDirFile))
+    sourceNormalizerFfmpegProject.afterEvaluate {
+        extensions
+            .getByType(LibraryExtension::class.java)
+            .sourceSets
+            .getByName("main")
+            .apply {
+                jniLibs.setSrcDirs(listOf(playerSourceNormalizerPluginJniLibsDirFile))
+                assets.setSrcDirs(listOf(playerSourceNormalizerAssetsRootDirFile))
+            }
+    }
     sourceNormalizerFfmpegProject.tasks.matching { task ->
         (task.name.startsWith("merge") &&
             (task.name.endsWith("Assets") || task.name.endsWith("JniLibFolders"))) ||
@@ -416,6 +435,81 @@ sourceNormalizerFfmpegProject.plugins.withId("com.android.library") {
 }
 
 tasks.named("preBuild").configure {
+    dependsOn(buildPlayerFfmpegRuntimeAndroid)
     dependsOn(buildPlayerRemuxFfmpegAndroidPlugin)
     dependsOn(buildPlayerSourceNormalizerFfmpegAndroidPlugin)
+}
+
+listOf("debug", "profile", "release").forEach { variant ->
+    val variantTitle = variant.replaceFirstChar(Char::uppercaseChar)
+    val generatedAssets = layout.buildDirectory.dir("generated/vesperPluginRegistryAssets/$variant")
+    android.sourceSets.maybeCreate(variant).assets.directories.add(
+        generatedAssets.get().asFile.absolutePath,
+    )
+    val stripTaskName = "strip${variantTitle}DebugSymbols"
+    val registryTasks =
+        vesperAppPluginRegistries.map { metadata ->
+            val pluginManifest = vesperSdkBuildRootDirFile.resolve(metadata.manifestPath)
+            val strippedPlugin =
+                layout.buildDirectory.file(
+                    "intermediates/stripped_native_libs/$variant/$stripTaskName/out/" +
+                        "lib/arm64-v8a/lib${metadata.libraryName}.so",
+                )
+            val registryFragment =
+                generatedAssets.map { directory ->
+                    directory.file("vesper/plugins/arm64-v8a/${metadata.pluginId}.json")
+                }
+            tasks.register<Exec>(
+                "generate${variantTitle}Vesper${metadata.taskSegment}PluginRegistry",
+            ) {
+                group = "vesper"
+                description =
+                    "Generates the $variant ${metadata.pluginId} registry from final stripped bytes."
+                dependsOn(stripTaskName)
+                dependsOn(buildVesperPluginCli)
+                inputs.file(vesperCli)
+                inputs.file(pluginManifest)
+                inputs.file(strippedPlugin)
+                inputs.property("target", "aarch64-linux-android")
+                inputs.property("architecture", "arm64-v8a")
+                inputs.property("minimumOs", "26")
+                inputs.property("locatorName", metadata.libraryName)
+                outputs.file(registryFragment)
+
+                doFirst {
+                    registryFragment.get().asFile.parentFile.mkdirs()
+                    commandLine(
+                        vesperCli.get().absolutePath,
+                        "plugin",
+                        "registry-fragment",
+                        pluginManifest.absolutePath,
+                        "--platform",
+                        "android",
+                        "--target",
+                        "aarch64-linux-android",
+                        "--architecture",
+                        "arm64-v8a",
+                        "--minimum-os",
+                        "26",
+                        "--locator-name",
+                        metadata.libraryName,
+                        "--artifact",
+                        strippedPlugin.get().asFile.absolutePath,
+                        "--output",
+                        registryFragment.get().asFile.absolutePath,
+                    )
+                }
+            }
+        }
+    tasks.matching { task ->
+        task.name == "merge${variantTitle}Assets" ||
+            (task.name.startsWith("generate$variantTitle") &&
+                task.name.contains("Lint") &&
+                task.name.endsWith("Model")) ||
+            (task.name.startsWith("lint") &&
+                task.name.contains(variantTitle) &&
+                task.name.contains("Analyze"))
+    }.configureEach {
+        dependsOn(registryTasks)
+    }
 }

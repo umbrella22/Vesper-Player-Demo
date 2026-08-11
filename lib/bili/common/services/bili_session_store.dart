@@ -20,12 +20,12 @@ abstract interface class BiliSessionSecureStorage {
 final class BiliFlutterSessionSecureStorage
     implements BiliSessionSecureStorage {
   const BiliFlutterSessionSecureStorage({
-    FlutterSecureStorage storage = const FlutterSecureStorage(
+    this._storage = const FlutterSecureStorage(
       iOptions: IOSOptions(
         accessibility: KeychainAccessibility.first_unlock_this_device,
       ),
     ),
-  }) : _storage = storage;
+  });
 
   final FlutterSecureStorage _storage;
 
@@ -47,12 +47,10 @@ final class BiliFlutterSessionSecureStorage
 
 final class BiliSessionStore {
   const BiliSessionStore({
-    Directory? baseDirectory,
-    Directory? legacyDirectory,
-    BiliSessionSecureStorage? secureStorage,
-  }) : _baseDirectory = baseDirectory,
-       _legacyDirectory = legacyDirectory,
-       _secureStorage = secureStorage;
+    this._baseDirectory,
+    this._legacyDirectory,
+    this._secureStorage,
+  });
 
   final Directory? _baseDirectory;
   final Directory? _legacyDirectory;

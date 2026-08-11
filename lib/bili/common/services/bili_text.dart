@@ -1,3 +1,5 @@
+import 'package:vesper_media/media/media.dart';
+
 String biliStripHtmlTags(String raw) {
   return biliDecodeHtmlEntities(
     raw.replaceAll(RegExp(r'<[^>]+>'), ''),
@@ -10,9 +12,13 @@ String? biliExtractBvid(String text) {
     return null;
   }
 
-  final directMatch = RegExp(r'(BV[0-9A-Za-z]{10})').firstMatch(normalized);
+  final directMatch = RegExp(
+    r'(BV[0-9A-Za-z]{10})',
+    caseSensitive: false,
+  ).firstMatch(normalized);
   if (directMatch != null) {
-    return directMatch.group(1);
+    final match = directMatch.group(1)!;
+    return 'BV${match.substring(2)}';
   }
 
   final uri = Uri.tryParse(normalized);
@@ -21,9 +27,13 @@ String? biliExtractBvid(String text) {
   }
 
   for (final segment in uri.pathSegments) {
-    final match = RegExp(r'BV[0-9A-Za-z]{10}').firstMatch(segment);
+    final match = RegExp(
+      r'BV[0-9A-Za-z]{10}',
+      caseSensitive: false,
+    ).firstMatch(segment);
     if (match != null) {
-      return match.group(0);
+      final value = match.group(0)!;
+      return 'BV${value.substring(2)}';
     }
   }
 
@@ -54,16 +64,7 @@ String biliFormatCount(num? count) {
 }
 
 String biliFormatDurationSeconds(int seconds) {
-  final hours = seconds ~/ 3600;
-  final minutes = (seconds % 3600) ~/ 60;
-  final remainingSeconds = seconds % 60;
-  if (hours > 0) {
-    return '${hours.toString().padLeft(2, '0')}:'
-        '${minutes.toString().padLeft(2, '0')}:'
-        '${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-  return '${minutes.toString().padLeft(2, '0')}:'
-      '${remainingSeconds.toString().padLeft(2, '0')}';
+  return mediaFormatDurationSeconds(seconds);
 }
 
 String biliDecodeHtmlEntities(String raw) {

@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/app_version.dart';
@@ -17,7 +17,7 @@ import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_logout_service.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
 import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/app/home_page.dart';
 
@@ -184,13 +184,13 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     if (_loggingOut.value || !_hasAuthenticatedSession.value) {
       return;
     }
-    final confirmed = await showBiliGlassDialog<bool>(
+    final confirmed = await showMediaGlassDialog<bool>(
       context: context,
       title: '退出登录',
       message: '将清除本地 cookie 和登录态，并暂停当前离线缓存任务。',
       actions: const [
-        BiliGlassDialogAction(label: '取消', value: false),
-        BiliGlassDialogAction(label: '退出', value: true, isDestructive: true),
+        MediaGlassDialogAction(label: '取消', value: false),
+        MediaGlassDialogAction(label: '退出', value: true, isDestructive: true),
       ],
     );
     if (confirmed != true || !mounted) {
@@ -265,9 +265,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
 
   Future<void> _showThemePicker() async {
     final controller = AppThemeScope.of(context);
-    await showBiliGlassSheet<void>(
+    await showMediaGlassSheet<void>(
       context: context,
-      appearance: BiliGlassSheetAppearance.readable,
+      appearance: MediaGlassSheetAppearance.readable,
       maxContentHeightFactor: 0.62,
       builder: (sheetContext) {
         return Column(

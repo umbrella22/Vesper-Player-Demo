@@ -3,19 +3,23 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'package:vesper_media/download/download.dart';
 
+import 'bili_user_space_page.dart';
+
 part 'bili_library_phone.dart';
 part 'bili_library_tv.dart';
+part 'bili_library_following_tv.dart';
 
 enum BiliLibrarySection { following, history, watchLater }
 
@@ -33,7 +37,23 @@ class BiliLibraryPage extends StatefulWidget {
     this.offlineController,
     this.onLoginTap,
     this.presentationMode = BiliPlaybackPresentationMode.phone,
-  });
+    this.forceCompactTvFollowingRail = false,
+  }) : embeddedTvFollowing = false,
+       tvFollowingRailOffset = 0,
+       tvFollowingVerticalInset = 0;
+
+  const BiliLibraryPage.tvFollowingPane({
+    super.key,
+    required this.client,
+    this.historyStore,
+    this.offlineController,
+    this.onLoginTap,
+    this.forceCompactTvFollowingRail = false,
+    this.tvFollowingRailOffset = 0,
+    this.tvFollowingVerticalInset = 20,
+  }) : initialSection = BiliLibrarySection.following,
+       presentationMode = BiliPlaybackPresentationMode.tv,
+       embeddedTvFollowing = true;
 
   final BiliClient client;
   final BiliLibrarySection initialSection;
@@ -41,6 +61,10 @@ class BiliLibraryPage extends StatefulWidget {
   final BiliOfflineDownloadController? offlineController;
   final Future<void> Function()? onLoginTap;
   final BiliPlaybackPresentationMode presentationMode;
+  final bool embeddedTvFollowing;
+  final bool forceCompactTvFollowingRail;
+  final double tvFollowingRailOffset;
+  final double tvFollowingVerticalInset;
 
   @override
   State<BiliLibraryPage> createState() => _BiliLibraryPageState();
@@ -62,7 +86,9 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   @override
   void initState() {
     super.initState();
-    _visibleSections = _isTv
+    _visibleSections = widget.embeddedTvFollowing
+        ? const <BiliLibrarySection>[BiliLibrarySection.following]
+        : _isTv
         ? const <BiliLibrarySection>[
             BiliLibrarySection.history,
             BiliLibrarySection.watchLater,
@@ -387,6 +413,10 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     if (error is BiliApiException && error.code == -101) {
       return '登录状态已失效，请重新登录后再试。';
     }
+    if (error is BiliApiException &&
+        (error.code == biliRiskControlCode || error.code == -412)) {
+      return 'Bilibili 暂时限制了账户库请求，请稍后重试。';
+    }
     return '加载失败：$error';
   }
 
@@ -455,12 +485,30 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           ),
         ),
       );
-      if (mounted) {
+      if (mounted && !widget.embeddedTvFollowing) {
         await _load(_sectionForIndex(_tabController.index), force: true);
       }
     } catch (error) {
       _showMessage('打开视频失败：$error');
     }
+  }
+
+  Future<void> _openUserSpace(BiliFollowingUser user) async {
+    if (!widget.client.hasAuthenticatedSession) {
+      await _load(BiliLibrarySection.following, force: true);
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliUserSpacePage(
+          client: widget.client,
+          user: user,
+          historyStore: widget.historyStore,
+          offlineController: widget.offlineController,
+          onLoginTap: widget.onLoginTap,
+        ),
+      ),
+    );
   }
 
   Future<void> _removeWatchLater(BiliWatchLaterEntry entry) async {
@@ -512,6 +560,12 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embeddedTvFollowing) {
+      return KeyedSubtree(
+        key: const ValueKey<String>('bili-tv-following-pane'),
+        child: _buildTvSection(context, BiliLibrarySection.following),
+      );
+    }
     if (_isTv) {
       return _buildTvPage(context);
     }
@@ -770,48 +824,78 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         onSecondary: canLogin
             ? () => unawaited(_load(section, force: true))
             : null,
+        autofocusPrimary: !widget.embeddedTvFollowing,
       );
     }
     return switch (section) {
-      BiliLibrarySection.following => _buildTvFollowingGrid(state),
+      BiliLibrarySection.following => _buildTvFollowingBrowser(state),
       BiliLibrarySection.history => _buildTvHistoryGrid(state),
       BiliLibrarySection.watchLater => _buildTvWatchLaterGrid(state),
     };
   }
 
-  Widget _buildTvFollowingGrid(_LibraryLoadState state) {
-    if (state.following.isEmpty) {
-      return _TvLibraryStatusView(
-        icon: Icons.people_alt_outlined,
-        title: '还没有关注内容',
-        message: '关注的 UP 主会显示在这里。',
-        primaryLabel: '刷新',
-        primaryIcon: Icons.refresh_rounded,
-        onPrimary: () =>
-            unawaited(_load(BiliLibrarySection.following, force: true)),
-      );
-    }
-    return _buildTvGrid(
-      section: BiliLibrarySection.following,
-      childAspectRatio: 0.95,
-      itemCount: state.following.length + (state.hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == state.following.length) {
-          return _TvLibraryLoadMoreTile(
-            key: const ValueKey<String>('bili-tv-library-load-more-following'),
-            loading: state.loadingMore,
-            onTap: () => unawaited(_loadMore(BiliLibrarySection.following)),
-          );
-        }
-        final user = state.following[index];
-        return _TvFollowingCard(
-          key: ValueKey<String>('bili-tv-library-card-following-${user.mid}'),
-          user: user,
-          autofocus: index == 0,
-          onTap: () => _showMessage('TV 端暂不支持打开 UP 主空间。'),
-        );
-      },
+  Widget _buildTvFollowingBrowser(_LibraryLoadState state) {
+    return _TvFollowingSpaceBrowser(
+      following: state.following,
+      followingHasMore: state.hasMore,
+      followingLoadingMore: state.loadingMore,
+      autofocusFirstRailItem: !widget.embeddedTvFollowing,
+      initialRailCollapsed: widget.embeddedTvFollowing,
+      forceCompactRail: widget.forceCompactTvFollowingRail,
+      railOffset: widget.tvFollowingRailOffset,
+      padding: widget.embeddedTvFollowing
+          ? EdgeInsets.fromLTRB(
+              0,
+              widget.tvFollowingVerticalInset,
+              28,
+              widget.tvFollowingVerticalInset,
+            )
+          : const EdgeInsets.fromLTRB(28, 8, 28, 30),
+      client: widget.client,
+      onLoadMoreFollowing: () => _loadMore(BiliLibrarySection.following),
+      onSearchFollowing: _loadFollowingPagesForSearch,
+      onRefreshFollowing: () =>
+          _load(BiliLibrarySection.following, force: true),
+      onLogin: widget.onLoginTap == null ? null : _handleLogin,
+      onOpenVideo: (video) =>
+          _openVideo(bvid: video.bvid, aid: video.aid, cid: null),
     );
+  }
+
+  Future<void> _loadFollowingPagesForSearch(String query) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    final state = _stateFor(BiliLibrarySection.following);
+    // Bound one explicit search action to six follow-list pages. This keeps a
+    // typo from walking an unbounded account list while still covering the
+    // first 300 follows; the rail retains an explicit load-more control.
+    for (
+      var loadedPages = 0;
+      loadedPages < 6 && state.hasMore && mounted;
+      loadedPages += 1
+    ) {
+      if (_followingMatches(state.following, normalized)) {
+        return;
+      }
+      await _loadMore(BiliLibrarySection.following);
+      if (state.loadingMore) {
+        return;
+      }
+    }
+  }
+
+  bool _followingMatches(List<BiliFollowingUser> users, String query) {
+    final normalized = query.trim();
+    if (normalized.isEmpty) {
+      return users.isNotEmpty;
+    }
+    if (RegExp(r'^\d+$').hasMatch(normalized)) {
+      return users.any((user) => user.mid.toString() == normalized);
+    }
+    final lowerCase = normalized.toLowerCase();
+    return users.any((user) => user.name.toLowerCase().contains(lowerCase));
   }
 
   Widget _buildTvHistoryGrid(_LibraryLoadState state) {
@@ -979,7 +1063,10 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           );
         }
         final user = state.following[index];
-        return _FollowingTile(user: user);
+        return _FollowingTile(
+          user: user,
+          onTap: () => unawaited(_openUserSpace(user)),
+        );
       },
     );
   }

@@ -1,17 +1,19 @@
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
-enum BiliGlassSheetAppearance { translucent, readable }
+enum MediaGlassSheetAppearance { translucent, readable }
 
-Future<T?> showBiliGlassSheet<T>({
+enum MediaGlassDialogAppearance { translucent, readable }
+
+Future<T?> showMediaGlassSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   double maxContentHeightFactor = 0.74,
   EdgeInsetsGeometry contentPadding = const EdgeInsets.fromLTRB(18, 8, 18, 8),
   GlassQuality? quality,
-  BiliGlassSheetAppearance appearance = BiliGlassSheetAppearance.translucent,
+  MediaGlassSheetAppearance appearance = MediaGlassSheetAppearance.translucent,
   bool barrierDismissible = true,
 }) {
   assert(maxContentHeightFactor > 0 && maxContentHeightFactor <= 1);
@@ -48,14 +50,14 @@ Future<T?> showBiliGlassSheet<T>({
     },
     pageBuilder: (sheetContext, animation, secondaryAnimation) {
       final visualTheme = AppVisualTheme.of(sheetContext);
-      final readable = appearance == BiliGlassSheetAppearance.readable;
+      final readable = appearance == MediaGlassSheetAppearance.readable;
       return SafeArea(
         top: false,
         child: Align(
           alignment: Alignment.bottomCenter,
           child: GlassSheet(
             key: readable
-                ? const ValueKey<String>('bili-readable-glass-sheet')
+                ? const ValueKey<String>('media-readable-glass-sheet')
                 : null,
             quality: quality,
             settings: readable
@@ -98,8 +100,8 @@ Future<T?> showBiliGlassSheet<T>({
   );
 }
 
-final class BiliGlassDialogAction<T> {
-  const BiliGlassDialogAction({
+final class MediaGlassDialogAction<T> {
+  const MediaGlassDialogAction({
     required this.label,
     required this.value,
     this.isPrimary = false,
@@ -112,17 +114,21 @@ final class BiliGlassDialogAction<T> {
   final bool isDestructive;
 }
 
-Future<T?> showBiliGlassDialog<T>({
+Future<T?> showMediaGlassDialog<T>({
   required BuildContext context,
   required String title,
   String? message,
   Widget? content,
-  required List<BiliGlassDialogAction<T>> actions,
+  required List<MediaGlassDialogAction<T>> actions,
   bool barrierDismissible = false,
   double maxWidth = 360,
   GlassQuality? quality,
+  MediaGlassDialogAppearance appearance =
+      MediaGlassDialogAppearance.translucent,
 }) {
   assert(actions.isNotEmpty && actions.length <= 3);
+  final visualTheme = AppVisualTheme.of(context);
+  final readable = appearance == MediaGlassDialogAppearance.readable;
   final transitionDuration = AppVisualTokens.motionDuration(
     context,
     AppVisualTokens.overlayDuration,
@@ -131,7 +137,9 @@ Future<T?> showBiliGlassDialog<T>({
     context: context,
     barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black.withValues(alpha: 0.54),
+    barrierColor: readable
+        ? visualTheme.scrim
+        : Colors.black.withValues(alpha: 0.54),
     transitionDuration: transitionDuration,
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -148,6 +156,15 @@ Future<T?> showBiliGlassDialog<T>({
       );
     },
     pageBuilder: (dialogContext, animation, secondaryAnimation) {
+      if (readable) {
+        return _ReadableMediaGlassDialog<T>(
+          title: title,
+          message: message,
+          content: content,
+          maxWidth: maxWidth,
+          actions: actions,
+        );
+      }
       return GlassDialog(
         title: title,
         message: message,
@@ -166,4 +183,118 @@ Future<T?> showBiliGlassDialog<T>({
       );
     },
   );
+}
+
+/// Opaque, theme-backed dialog used when the content must remain readable over
+/// image-rich app surfaces. The translucent third-party dialog remains the
+/// default for decorative/low-density confirmations.
+final class _ReadableMediaGlassDialog<T> extends StatelessWidget {
+  const _ReadableMediaGlassDialog({
+    required this.title,
+    required this.message,
+    required this.content,
+    required this.maxWidth,
+    required this.actions,
+  });
+
+  final String title;
+  final String? message;
+  final Widget? content;
+  final double maxWidth;
+  final List<MediaGlassDialogAction<T>> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    final theme = Theme.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Material(
+          key: const ValueKey<String>('media-readable-glass-dialog'),
+          color: visualTheme.opaqueGlassFallback,
+          elevation: 12,
+          shadowColor: visualTheme.shadow.withValues(alpha: 0.82),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: visualTheme.glassBorder),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: visualTheme.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (message != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    message!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: visualTheme.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+                if (content != null) ...[const SizedBox(height: 10), content!],
+                const SizedBox(height: 18),
+                _buildActions(context),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    if (actions.length <= 2) {
+      return Row(
+        children: [
+          for (var index = 0; index < actions.length; index += 1) ...[
+            if (index > 0) const SizedBox(width: 10),
+            Expanded(child: _buildAction(context, actions[index])),
+          ],
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < actions.length; index += 1) ...[
+          if (index > 0) const SizedBox(height: 10),
+          _buildAction(context, actions[index]),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAction(BuildContext context, MediaGlassDialogAction<T> action) {
+    final visualTheme = AppVisualTheme.of(context);
+    void onPressed() {
+      Navigator.of(context).pop(action.value);
+    }
+
+    if (action.isPrimary) {
+      return FilledButton(onPressed: onPressed, child: Text(action.label));
+    }
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: action.isDestructive
+            ? visualTheme.destructive
+            : visualTheme.textPrimary,
+        side: BorderSide(color: visualTheme.glassBorder),
+      ),
+      child: Text(action.label),
+    );
+  }
 }

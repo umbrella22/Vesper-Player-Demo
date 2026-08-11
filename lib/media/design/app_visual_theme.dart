@@ -1,6 +1,5 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
-
-import '../system_presentation.dart';
 
 abstract final class AppVisualTokens {
   static const Color primaryBlue = Color(0xFF409EFF);
@@ -140,7 +139,7 @@ abstract final class AppVisualTokens {
         foregroundColor: visualTheme.textPrimary,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        systemOverlayStyle: appSystemUiStyleForBrightness(brightness),
+        systemOverlayStyle: mediaSystemUiStyleForBrightness(brightness),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -438,4 +437,33 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
       )!,
     );
   }
+}
+
+const _appSystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.dark,
+  statusBarBrightness: Brightness.light,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.dark,
+  systemNavigationBarContrastEnforced: false,
+  systemStatusBarContrastEnforced: false,
+);
+
+const _darkSurfaceSystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+  systemNavigationBarContrastEnforced: false,
+  systemStatusBarContrastEnforced: false,
+);
+
+/// 主题库内置的系统栏样式：亮色主题用深色图标，暗色主题用浅色图标。
+/// app 层的 `appSystemUiStyleForBrightness`（bili 语义版本）保留在
+/// `lib/app/system_presentation.dart`，本函数是 media 模板包的自包含版本。
+SystemUiOverlayStyle mediaSystemUiStyleForBrightness(Brightness brightness) {
+  return brightness == Brightness.dark
+      ? _darkSurfaceSystemUiStyle
+      : _appSystemUiStyle;
 }

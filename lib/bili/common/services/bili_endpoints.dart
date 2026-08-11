@@ -47,6 +47,9 @@ String biliVideoUrl(String bvid) => 'https://$biliWebHost/video/$bvid';
 /// 关注/取关 UP 主时的 referer。从 [biliSpaceHost] 派生。
 String biliSpaceReferer(int mid) => 'https://$biliSpaceHost/$mid';
 
+/// 投稿列表页面的 referer。保持空间卡片和投稿请求的来源一致。
+String biliSpaceVideosReferer(int mid) => 'https://$biliSpaceHost/$mid/video';
+
 /// 查看粉丝/关注列表时的 referer。从 [biliSpaceHost] 派生。
 String biliFansFollowReferer(int mid) =>
     'https://$biliSpaceHost/$mid/fans/follow';
@@ -61,6 +64,7 @@ abstract final class BiliApiPaths {
 
   // ---- 视频/导航 ----
   static const videoView = '/x/web-interface/view';
+  static const userCard = '/x/web-interface/card';
   static const nav = '/x/web-interface/nav';
   static const navStat = '/x/web-interface/nav/stat';
   static const feedRcmd = '/x/web-interface/index/top/feed/rcmd';
@@ -89,6 +93,9 @@ abstract final class BiliApiPaths {
   // ---- 关注 ----
   static const relationModify = '/x/relation/modify';
   static const relationFollowings = '/x/relation/followings';
+
+  // ---- 用户空间 ----
+  static const spaceArchiveSearch = '/x/space/wbi/arc/search';
 
   // ---- 播放器 ----
   static const playerV2 = '/x/player/v2';

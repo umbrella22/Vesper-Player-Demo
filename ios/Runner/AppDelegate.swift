@@ -4,7 +4,6 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  private var downloadPluginChannel: FlutterMethodChannel?
   private var storageSpaceChannel: FlutterMethodChannel?
   private var mediaExportChannel: FlutterMethodChannel?
   private var platformInfoChannel: FlutterMethodChannel?
@@ -36,20 +35,6 @@ import UIKit
     }
     platformInfoChannel = platformChannel
 
-    let channel = FlutterMethodChannel(
-      name: "dev.ikaros.vesper_player/download_plugin",
-      binaryMessenger: engineBridge.applicationRegistrar.messenger()
-    )
-    channel.setMethodCallHandler { [weak self] call, result in
-      switch call.method {
-      case "bundledDownloadPluginLibraryPaths":
-        result(self?.bundledDownloadPluginLibraryPaths() ?? [])
-      default:
-        result(FlutterMethodNotImplemented)
-      }
-    }
-    downloadPluginChannel = channel
-
     let storageChannel = FlutterMethodChannel(
       name: "dev.ikaros.vesper_player/storage_space",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -79,21 +64,6 @@ import UIKit
     mediaExportChannel = mediaChannel
 
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-  }
-
-  private func bundledDownloadPluginLibraryPaths() -> [String] {
-    let fileManager = FileManager.default
-    let frameworksPath = Bundle.main.privateFrameworksPath ?? Bundle.main.bundlePath + "/Frameworks"
-    let candidates = [
-      frameworksPath + "/vesper_player_ios.framework/libplayer_remux_ffmpeg.dylib",
-      frameworksPath + "/VesperPlayerKit.framework/libplayer_remux_ffmpeg.dylib",
-      frameworksPath + "/libplayer_remux_ffmpeg.dylib",
-      Bundle.main.bundlePath + "/libplayer_remux_ffmpeg.dylib",
-    ]
-
-    return candidates.compactMap { candidate in
-      fileManager.fileExists(atPath: candidate) ? candidate : nil
-    }
   }
 
   private func deviceStorageUsage() -> [String: Int64] {

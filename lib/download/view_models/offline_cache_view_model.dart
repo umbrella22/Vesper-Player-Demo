@@ -85,11 +85,10 @@ final class OfflineCacheViewModel {
     BiliOfflineDownloadController? controller,
     BiliClient? client,
     BiliHistoryStore? historyStore,
-    BiliOfflineMediaExporter mediaExporter = const BiliOfflineMediaExporter(),
+    this._mediaExporter = const BiliOfflineMediaExporter(),
   }) : controller = controller ?? BiliOfflineDownloadController.instance,
        client = client ?? BiliClient.instance,
-       historyStore = historyStore ?? const BiliHistoryStore(),
-       _mediaExporter = mediaExporter {
+       historyStore = historyStore ?? const BiliHistoryStore() {
     _entries.value = this.controller.entries.toList(growable: false);
     entries = _entries.readonly();
     errorMessage = _errorMessage.readonly();

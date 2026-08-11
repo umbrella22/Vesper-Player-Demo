@@ -5,8 +5,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import '../../bili/common/pages/bili_playback_page.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_history_store.dart';
@@ -222,9 +222,9 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   Future<void> _showEntryActions(BiliOfflineDownloadEntry entry) async {
     final canExport = entry.isCompleted && !entry.isUnplayable;
-    final action = await showBiliGlassSheet<_OfflineEntryAction>(
+    final action = await showMediaGlassSheet<_OfflineEntryAction>(
       context: context,
-      appearance: BiliGlassSheetAppearance.readable,
+      appearance: MediaGlassSheetAppearance.readable,
       maxContentHeightFactor: 0.5,
       builder: (context) {
         return SafeArea(
@@ -275,13 +275,13 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     BiliOfflineDownloadEntry entry, {
     String? reason,
   }) async {
-    final shouldDelete = await showBiliGlassDialog<bool>(
+    final shouldDelete = await showMediaGlassDialog<bool>(
       context: context,
       title: '缓存无法播放',
       message: '${reason ?? entry.unplayableReason}\n\n是否清理这条失效缓存？',
       actions: const [
-        BiliGlassDialogAction(label: '保留', value: false),
-        BiliGlassDialogAction(label: '清理', value: true, isDestructive: true),
+        MediaGlassDialogAction(label: '保留', value: false),
+        MediaGlassDialogAction(label: '清理', value: true, isDestructive: true),
       ],
     );
     if (shouldDelete == true && mounted) {
@@ -294,13 +294,13 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     if (count == 0) {
       return;
     }
-    final shouldDelete = await showBiliGlassDialog<bool>(
+    final shouldDelete = await showMediaGlassDialog<bool>(
       context: context,
       title: '清理失效缓存？',
       message: '发现 $count 条缓存的视频信息已丢失，这些缓存无法播放。清理后不可恢复。',
       actions: const [
-        BiliGlassDialogAction(label: '取消', value: false),
-        BiliGlassDialogAction(
+        MediaGlassDialogAction(label: '取消', value: false),
+        MediaGlassDialogAction(
           label: '清理失效缓存',
           value: true,
           isDestructive: true,

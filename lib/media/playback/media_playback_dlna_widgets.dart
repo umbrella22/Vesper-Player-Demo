@@ -1,116 +1,33 @@
-part of 'bili_playback_page.dart';
+// 通用 DLNA 投屏表面组件：设备发现/连接/投屏面板。
+//
+// 状态与操作全部来自 [MediaExternalPlaybackManager]（由调用方注入），
+// 面板不接触平台类型。
+import 'dart:async';
 
-extension _BiliPlaybackDlna on _BiliPlaybackPageState {
-  Widget? _buildStageProjectionAction(VesperPlayerController controller) {
-    final isAndroid =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-    final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
+import 'package:vesper_player/vesper_player.dart';
+import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
+import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
-    if (isAndroid) {
-      return _StageDlnaProjectionButton(
-        state: _dlnaState,
-        onTap: () => unawaited(_openStageProjectionPicker()),
-      );
-    }
-    if (isIos) {
-      return vesper_ui.VesperAirPlayRouteIconButton(
-        controller: controller,
-        tintColor: Colors.white,
-        activeTintColor: AppVisualTokens.primaryBlue,
-        size: 38,
-      );
-    }
-    return null;
-  }
+import 'media_external_playback_manager.dart';
 
-  Future<void> _openStageProjectionPicker() async {
-    if (_castingSurfaceOpen || _dlnaPickerOpen) {
-      return;
-    }
-    if (!context.mounted) return;
+class StageDlnaProjectionButton extends StatelessWidget {
+  const StageDlnaProjectionButton({
+    super.key,
+    required this.state,
+    required this.onTap,
+  });
 
-    _setCastingSurfaceOpen(true);
-    _ProjectionTarget? target;
-    try {
-      target = await showBiliGlassSheet<_ProjectionTarget>(
-        context: context,
-        maxContentHeightFactor: 0.5,
-        builder: (sheetContext) {
-          return _ProjectionPickerContent(
-            onDlna: () =>
-                Navigator.of(sheetContext).pop(_ProjectionTarget.dlna),
-          );
-        },
-      );
-    } finally {
-      _setCastingSurfaceOpen(false);
-    }
-
-    if (!mounted || target == null) {
-      return;
-    }
-    switch (target) {
-      case _ProjectionTarget.dlna:
-        await Future<void>.delayed(const Duration(milliseconds: 80));
-        if (mounted) {
-          await _openDlnaPicker();
-        }
-    }
-  }
-
-  Future<void> _openDlnaPicker() async {
-    if (_dlnaPickerOpen) {
-      return;
-    }
-
-    final isConnected = _dlnaState == BiliDlnaState.connected;
-    if (isConnected) {
-      final message = await _dlnaManager.disconnect();
-      if (message != null && mounted) {
-        _showMessage(message);
-      }
-      return;
-    }
-
-    if (!context.mounted) return;
-    _setDlnaPickerOpen(true);
-    try {
-      await showBiliGlassSheet<void>(
-        context: context,
-        maxContentHeightFactor: 0.7,
-        builder: (sheetContext) {
-          return _DlnaPickerContent(
-            manager: _dlnaManager,
-            onLoadMedia: _viewModel.loadCurrentPageToDlna,
-            onClose: () => Navigator.of(sheetContext).pop(),
-            onMessage: _showMessage,
-          );
-        },
-      );
-    } finally {
-      _setDlnaPickerOpen(false);
-      if (_dlnaState == BiliDlnaState.discovering ||
-          _dlnaState == BiliDlnaState.error) {
-        unawaited(_dlnaManager.stopDiscovery());
-      }
-    }
-  }
-}
-
-enum _ProjectionTarget { dlna }
-
-class _StageDlnaProjectionButton extends StatelessWidget {
-  const _StageDlnaProjectionButton({required this.state, required this.onTap});
-
-  final BiliDlnaState state;
+  final MediaDlnaState state;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final icon = switch (state) {
-      BiliDlnaState.connected => Icons.cast_connected_rounded,
-      BiliDlnaState.connecting ||
-      BiliDlnaState.discovering => Icons.cast_rounded,
+      MediaDlnaState.connected => Icons.cast_connected_rounded,
+      MediaDlnaState.connecting ||
+      MediaDlnaState.discovering => Icons.cast_rounded,
       _ => Icons.cast_outlined,
     };
     return vesper_ui.VesperStageIconButton(
@@ -124,8 +41,8 @@ class _StageDlnaProjectionButton extends StatelessWidget {
   }
 }
 
-class _ProjectionPickerContent extends StatelessWidget {
-  const _ProjectionPickerContent({required this.onDlna});
+class ProjectionPickerContent extends StatelessWidget {
+  const ProjectionPickerContent({super.key, required this.onDlna});
 
   final VoidCallback onDlna;
 
@@ -150,10 +67,10 @@ class _ProjectionPickerContent extends StatelessWidget {
             const SizedBox(height: 14),
             Row(
               children: [
-                const Expanded(child: _ProjectionCastOption()),
+                const Expanded(child: ProjectionCastOption()),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _ProjectionOptionCard(
+                  child: ProjectionOptionCard(
                     icon: Icons.cast_outlined,
                     label: 'DLNA',
                     onTap: onDlna,
@@ -168,13 +85,13 @@ class _ProjectionPickerContent extends StatelessWidget {
   }
 }
 
-class _ProjectionCastOption extends StatelessWidget {
-  const _ProjectionCastOption();
+class ProjectionCastOption extends StatelessWidget {
+  const ProjectionCastOption({super.key});
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return _ProjectionOptionShell(
+    return ProjectionOptionShell(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -197,8 +114,9 @@ class _ProjectionCastOption extends StatelessWidget {
   }
 }
 
-class _ProjectionOptionCard extends StatelessWidget {
-  const _ProjectionOptionCard({
+class ProjectionOptionCard extends StatelessWidget {
+  const ProjectionOptionCard({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
@@ -211,7 +129,7 @@ class _ProjectionOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return _ProjectionOptionShell(
+    return ProjectionOptionShell(
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -235,8 +153,12 @@ class _ProjectionOptionCard extends StatelessWidget {
   }
 }
 
-class _ProjectionOptionShell extends StatelessWidget {
-  const _ProjectionOptionShell({required this.child, this.onTap});
+class ProjectionOptionShell extends StatelessWidget {
+  const ProjectionOptionShell({
+    super.key,
+    required this.child,
+    this.onTap,
+  });
 
   final Widget child;
   final VoidCallback? onTap;
@@ -256,24 +178,25 @@ class _ProjectionOptionShell extends StatelessWidget {
   }
 }
 
-class _DlnaPickerContent extends StatefulWidget {
-  const _DlnaPickerContent({
+class DlnaPickerContent extends StatefulWidget {
+  const DlnaPickerContent({
+    super.key,
     required this.manager,
     required this.onLoadMedia,
     required this.onClose,
     required this.onMessage,
   });
 
-  final BiliExternalPlaybackManager manager;
+  final MediaExternalPlaybackManager manager;
   final Future<String?> Function() onLoadMedia;
   final VoidCallback onClose;
   final void Function(String) onMessage;
 
   @override
-  State<_DlnaPickerContent> createState() => _DlnaPickerContentState();
+  State<DlnaPickerContent> createState() => DlnaPickerContentState();
 }
 
-class _DlnaPickerContentState extends State<_DlnaPickerContent> {
+class DlnaPickerContentState extends State<DlnaPickerContent> {
   static const Duration _successCloseGracePeriod = Duration(milliseconds: 800);
 
   bool _loadingMedia = false;
@@ -297,7 +220,7 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
   void _handleChanged() {
     if (!mounted) return;
     final state = widget.manager.state;
-    if (state == BiliDlnaState.connected && !_loadingMedia) {
+    if (state == MediaDlnaState.connected && !_loadingMedia) {
       unawaited(_loadMedia());
     }
     setState(() {});
@@ -318,7 +241,7 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
     if (!mounted) {
       return;
     }
-    if (widget.manager.state == BiliDlnaState.error) {
+    if (widget.manager.state == MediaDlnaState.error) {
       _loadingMedia = false;
       return;
     }
@@ -350,7 +273,7 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
               ),
             ),
             const SizedBox(height: 16),
-            if (state == BiliDlnaState.discovering) ...[
+            if (state == MediaDlnaState.discovering) ...[
               Row(
                 children: [
                   const SizedBox(
@@ -371,13 +294,13 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
               const SizedBox(height: 12),
             ],
             if (message != null && message.isNotEmpty) ...[
-              _DlnaStatusMessage(
+              DlnaStatusMessage(
                 message: message,
-                isError: state == BiliDlnaState.error,
+                isError: state == MediaDlnaState.error,
               ),
               const SizedBox(height: 12),
             ],
-            if (state == BiliDlnaState.connecting)
+            if (state == MediaDlnaState.connecting)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
@@ -398,7 +321,7 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
                   ],
                 ),
               ),
-            if (state == BiliDlnaState.discovering &&
+            if (state == MediaDlnaState.discovering &&
                 routes.isEmpty &&
                 (message == null || message.isEmpty))
               Text(
@@ -410,11 +333,11 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
               ),
             if (routes.isNotEmpty)
               ...routes.map(
-                (route) => _DlnaRouteTile(
+                (route) => DlnaRouteTile(
                   route: route,
-                  isLoading: state == BiliDlnaState.connecting,
+                  isLoading: state == MediaDlnaState.connecting,
                   onTap: () {
-                    if (state == BiliDlnaState.connecting) return;
+                    if (state == MediaDlnaState.connecting) return;
                     unawaited(widget.manager.connect(route.routeId));
                   },
                 ),
@@ -434,8 +357,12 @@ class _DlnaPickerContentState extends State<_DlnaPickerContent> {
   }
 }
 
-class _DlnaStatusMessage extends StatelessWidget {
-  const _DlnaStatusMessage({required this.message, required this.isError});
+class DlnaStatusMessage extends StatelessWidget {
+  const DlnaStatusMessage({
+    super.key,
+    required this.message,
+    required this.isError,
+  });
 
   final String message;
   final bool isError;
@@ -486,8 +413,9 @@ class _DlnaStatusMessage extends StatelessWidget {
   }
 }
 
-class _DlnaRouteTile extends StatelessWidget {
-  const _DlnaRouteTile({
+class DlnaRouteTile extends StatelessWidget {
+  const DlnaRouteTile({
+    super.key,
     required this.route,
     required this.isLoading,
     required this.onTap,

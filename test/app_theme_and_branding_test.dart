@@ -5,7 +5,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 
@@ -155,6 +155,25 @@ void main() {
       );
       expect(iosInfo, contains('<string>Vesper</string>'));
       expect(iosInfo, contains('<string>vesper_media</string>'));
+      for (final framework in const <String>[
+        'VesperFFmpegAVCodec',
+        'VesperFFmpegAVFormat',
+        'VesperFFmpegAVUtil',
+        'VesperPlayerRemuxFfmpegPlugin',
+      ]) {
+        expect(
+          iosProject,
+          contains('$framework.xcframework in Embed Frameworks'),
+          reason: 'iOS embeds $framework',
+        );
+        expect(
+          iosProject,
+          contains(
+            'VesperPlayerOptionalPlugins/Artifacts/$framework.xcframework',
+          ),
+          reason: 'iOS resolves $framework from the canonical SDK artifacts',
+        );
+      }
     });
 
     test('MethodChannel names match every native host implementation', () async {
@@ -169,10 +188,6 @@ void main() {
         'device_controls': <String>[
           'lib/bili/common/services/bili_device_controls.dart',
         ],
-        'download_plugin': <String>[
-          'lib/download/services/download_plugin_resolver.dart',
-        ],
-        'player_plugins': <String>['lib/player/player_sdk_options.dart'],
         'storage_space': <String>[
           'lib/download/services/offline_device_storage.dart',
         ],
@@ -194,7 +209,6 @@ void main() {
       }
 
       for (final sharedChannel in const <String>[
-        'download_plugin',
         'storage_space',
         'media_export',
       ]) {

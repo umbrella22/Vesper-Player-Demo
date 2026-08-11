@@ -1,11 +1,11 @@
-import 'package:vesper_media/player/player_sdk_options.dart';
+import 'package:vesper_media/media/player/player_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 void main() {
   group('player SDK options', () {
     test('system playback metadata keeps Bili card labels', () {
-      final metadata = biliPlayerSystemPlaybackMetadata(
+      final metadata = mediaPlayerSystemPlaybackMetadata(
         title: '测试视频',
         subtitle: 'P1',
         artist: 'Owner',
@@ -24,8 +24,8 @@ void main() {
     });
 
     test('system playback configuration enables media card controls', () {
-      final metadata = biliPlayerSystemPlaybackMetadata(title: '测试视频');
-      final configuration = biliPlayerSystemPlaybackConfiguration(
+      final metadata = mediaPlayerSystemPlaybackMetadata(title: '测试视频');
+      final configuration = mediaPlayerSystemPlaybackConfiguration(
         metadata: metadata,
       );
 
@@ -50,8 +50,8 @@ void main() {
     });
 
     test('system playback can disable background audio on risk devices', () {
-      final metadata = biliPlayerSystemPlaybackMetadata(title: '测试视频');
-      final configuration = biliPlayerSystemPlaybackConfiguration(
+      final metadata = mediaPlayerSystemPlaybackMetadata(title: '测试视频');
+      final configuration = mediaPlayerSystemPlaybackConfiguration(
         metadata: metadata,
         backgroundMode: VesperBackgroundPlaybackMode.disabled,
       );
@@ -64,23 +64,23 @@ void main() {
     });
 
     test('DLNA format adaptation enables DASH remux fallback', () {
-      expect(biliDlnaFormatAdaptationConfig.enabled, isTrue);
+      expect(mediaDlnaFormatAdaptationConfig.enabled, isTrue);
       expect(
-        biliDlnaFormatAdaptationConfig.preferredFallback,
+        mediaDlnaFormatAdaptationConfig.preferredFallback,
         VesperExternalFallbackFormat.mpegTs,
       );
-      expect(biliDlnaFormatAdaptationConfig.allowHls, isTrue);
-      expect(biliDlnaFormatAdaptationConfig.enableRangeCache, isTrue);
+      expect(mediaDlnaFormatAdaptationConfig.allowHls, isTrue);
+      expect(mediaDlnaFormatAdaptationConfig.enableRangeCache, isTrue);
       expect(
-        biliDlnaFormatAdaptationConfig.allowRemoteDashMediaReferences,
+        mediaDlnaFormatAdaptationConfig.allowRemoteDashMediaReferences,
         isTrue,
       );
       expect(
-        biliDlnaFormatAdaptationConfig.allowPrivateRemoteDashMediaAddresses,
+        mediaDlnaFormatAdaptationConfig.allowPrivateRemoteDashMediaAddresses,
         isFalse,
       );
       expect(
-        biliDlnaFormatAdaptationConfig.remoteDashMediaRequestHeaders,
+        mediaDlnaFormatAdaptationConfig.remoteDashMediaRequestHeaders,
         <String>{
           'Accept',
           'Accept-Language',

@@ -8,6 +8,7 @@ import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/download/models/offline_download_models.dart';
 import 'package:vesper_media/download/services/download_manager_host.dart';
+import 'package:vesper_media/download/services/download_plugin_resolver.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
 import 'package:vesper_media/download/services/offline_download_store.dart';
 import 'package:vesper_player/vesper_player.dart';
@@ -46,26 +47,17 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);
       });
-      // enqueue 路径要求 MP4 合成插件存在：mock 通道返回非空路径。传入
-      // pluginGate 时挂起该调用，用于"初始化进行中"的竞态测试。
-      const pluginChannel = MethodChannel(
-        'dev.ikaros.vesper_player/download_plugin',
+      final pluginResolver = BiliDownloadPluginResolver(
+        loader: () async {
+          final gate = pluginGate;
+          if (gate != null) {
+            await gate;
+          }
+          return <VesperPluginReference>[
+            VesperBundledPluginReferences.remuxFfmpeg,
+          ];
+        },
       );
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(pluginChannel, (call) async {
-            if (call.method == 'bundledDownloadPluginLibraryPaths') {
-              final gate = pluginGate;
-              if (gate != null) {
-                await gate;
-              }
-              return <String>['/tmp/vesper-plugin/libdownload.so'];
-            }
-            return null;
-          });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(pluginChannel, null);
-      });
       store = BiliOfflineDownloadStore(baseDirectory: root);
       manager = _FakeDownloadManagerHost(
         knownTaskId: knownTaskId,
@@ -78,6 +70,7 @@ void main() {
       controller = BiliOfflineDownloadController(
         client: client ?? BiliClient(),
         store: store,
+        pluginResolver: pluginResolver,
         manager: manager,
       );
     }
@@ -384,7 +377,7 @@ void main() {
         final gate = Completer<void>();
         await createController(knownTaskId: null, pluginGate: gate.future);
         final init = controller.initialize();
-        // 让 initialize 推进到 pluginLibraryPaths 的 gate。
+        // 让 initialize 推进到 plugin references 的 gate。
         await pumpEventQueue(times: 20);
         controller.dispose();
         gate.complete();

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_player/vesper_player.dart';
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 

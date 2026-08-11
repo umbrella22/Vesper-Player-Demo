@@ -23,14 +23,13 @@ class HomePage extends StatefulWidget {
 
   const HomePage.owningUiModeController({
     super.key,
-    required BiliUiModeController uiModeController,
+    required BiliUiModeController this.uiModeController,
     this.client,
     this.historyStore,
     this.sessionStore,
     this.offlineController,
     this.appSettings,
-  }) : uiModeController = uiModeController,
-       _ownsUiModeController = true;
+  }) : _ownsUiModeController = true;
 
   final BiliUiModeController? uiModeController;
   final BiliClient? client;

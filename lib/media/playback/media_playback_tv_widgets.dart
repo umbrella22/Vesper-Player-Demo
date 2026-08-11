@@ -1,7 +1,11 @@
-part of 'bili_playback_page.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
+import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
-class _TvBarButton extends StatelessWidget {
-  const _TvBarButton({
+/// TV 控制条按钮。
+class TvBarButton extends StatelessWidget {
+  const TvBarButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
@@ -49,10 +53,26 @@ class _TvBarButton extends StatelessWidget {
   }
 }
 
-class _TvPanelDrawer extends StatelessWidget {
-  const _TvPanelDrawer({
+/// TV 侧栏面板中的选项（通用：label + 选中态 + 点击）。
+final class TvPanelOption {
+  const TvPanelOption({
+    required this.label,
+    this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+}
+
+/// TV 侧栏面板容器：标题 + 说明 + 选项列表 + 关闭。
+class TvPanelDrawer extends StatelessWidget {
+  const TvPanelDrawer({
     super.key,
-    required this.panel,
+    required this.panelKey,
     required this.label,
     required this.subtitle,
     required this.options,
@@ -60,10 +80,11 @@ class _TvPanelDrawer extends StatelessWidget {
     required this.onClose,
   });
 
-  final TvPlaybackPanelType panel;
+  /// 面板标识（选项列表滚动位置缓存 key）。
+  final String panelKey;
   final String label;
   final String subtitle;
-  final List<_TvPanelOption> options;
+  final List<TvPanelOption> options;
   final String? emptyMessage;
   final VoidCallback onClose;
 
@@ -106,7 +127,7 @@ class _TvPanelDrawer extends StatelessWidget {
                     ),
                   ),
                 )
-              : _TvPanelOptionList(panel: panel, options: options),
+              : TvPanelOptionList(panelKey: panelKey, options: options),
         ),
         TvFocusable(
           autofocus: options.isEmpty,
@@ -142,17 +163,21 @@ class _TvPanelDrawer extends StatelessWidget {
   }
 }
 
-class _TvPanelOptionList extends StatefulWidget {
-  const _TvPanelOptionList({required this.panel, required this.options});
+class TvPanelOptionList extends StatefulWidget {
+  const TvPanelOptionList({
+    super.key,
+    required this.panelKey,
+    required this.options,
+  });
 
-  final TvPlaybackPanelType panel;
-  final List<_TvPanelOption> options;
+  final String panelKey;
+  final List<TvPanelOption> options;
 
   @override
-  State<_TvPanelOptionList> createState() => _TvPanelOptionListState();
+  State<TvPanelOptionList> createState() => _TvPanelOptionListState();
 }
 
-class _TvPanelOptionListState extends State<_TvPanelOptionList> {
+class _TvPanelOptionListState extends State<TvPanelOptionList> {
   late final ScrollController _controller;
   bool _autofocusSelected = true;
 
@@ -171,9 +196,9 @@ class _TvPanelOptionListState extends State<_TvPanelOptionList> {
   }
 
   @override
-  void didUpdateWidget(_TvPanelOptionList oldWidget) {
+  void didUpdateWidget(TvPanelOptionList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.panel != widget.panel ||
+    if (oldWidget.panelKey != widget.panelKey ||
         oldWidget.options.length != widget.options.length ||
         _selectedIndex(oldWidget.options) != _selectedIndex(widget.options)) {
       WidgetsBinding.instance.addPostFrameCallback(
@@ -188,7 +213,7 @@ class _TvPanelOptionListState extends State<_TvPanelOptionList> {
     super.dispose();
   }
 
-  int _selectedIndex(List<_TvPanelOption> options) {
+  int _selectedIndex(List<TvPanelOption> options) {
     final index = options.indexWhere((option) => option.selected);
     return index < 0 ? 0 : index;
   }
@@ -209,7 +234,7 @@ class _TvPanelOptionListState extends State<_TvPanelOptionList> {
   Widget build(BuildContext context) {
     final selectedIndex = _selectedIndex(widget.options);
     return ListView.separated(
-      key: PageStorageKey<String>('tv-panel-list-${widget.panel.name}'),
+      key: PageStorageKey<String>('tv-panel-list-${widget.panelKey}'),
       controller: _controller,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 28),
       itemCount: widget.options.length,
@@ -228,7 +253,7 @@ class _TvPanelOptionListState extends State<_TvPanelOptionList> {
 class _TvPanelOptionTile extends StatefulWidget {
   const _TvPanelOptionTile({required this.option, required this.autofocus});
 
-  final _TvPanelOption option;
+  final TvPanelOption option;
   final bool autofocus;
 
   @override
@@ -371,46 +396,4 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
       ),
     );
   }
-}
-
-class _TvPanelOption {
-  const _TvPanelOption({
-    required this.label,
-    this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String? subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-}
-
-class _TvPlaybackToggleBarIntent extends Intent {
-  const _TvPlaybackToggleBarIntent();
-}
-
-class _TvPlaybackMenuIntent extends Intent {
-  const _TvPlaybackMenuIntent();
-}
-
-class _TvPlayPauseIntent extends Intent {
-  const _TvPlayPauseIntent();
-}
-
-class _TvPlaybackLeftIntent extends Intent {
-  const _TvPlaybackLeftIntent();
-}
-
-class _TvPlaybackRightIntent extends Intent {
-  const _TvPlaybackRightIntent();
-}
-
-class _TvPlaybackUpIntent extends Intent {
-  const _TvPlaybackUpIntent();
-}
-
-class _TvPlaybackDownIntent extends Intent {
-  const _TvPlaybackDownIntent();
 }

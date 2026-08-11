@@ -4,7 +4,7 @@
 #   bash scripts/build_ios_no_codesign.sh [debug|release]
 #
 # 流程：准备 Flutter 工作区（flutter pub get + SwiftPM 平台同步）
-#   → 构建 SDK FFI xcframework → flutter build ios --config-only
+#   → 构建 SDK optional plugin 与 FFI xcframework → flutter build ios --config-only
 #   → xcodebuild（关闭代码签名）。
 #
 # 部署目标从 ios/Flutter/<Configuration>.xcconfig 读取；如需自定义
@@ -38,7 +38,8 @@ if [[ -z "$IOS_DEPLOYMENT_TARGET" ]]; then
   exit 1
 fi
 
-export VESPER_APPLE_FFMPEG_PROFILE="${VESPER_APPLE_FFMPEG_PROFILE:-remux-local}"
+export VESPER_APPLE_FFMPEG_PROFILE="${VESPER_APPLE_FFMPEG_PROFILE:-source-normalizer}"
+OPTIONAL_RELEASE_DIR="${VESPER_IOS_OPTIONAL_RELEASE_DIR:-${TMPDIR:-/tmp}/vesper-ios-optional-plugins-release}"
 
 XCODEBUILD_ARGS=(
   -workspace ios/Runner.xcworkspace
@@ -61,11 +62,16 @@ bash "$ROOT_DIR/scripts/sync_ios_swiftpm_platforms.sh" "$ROOT_DIR"
 
 (
   cd "$ROOT_DIR/third_party/vesper-player-sdk"
-  bash scripts/ios/build-player-ffi-xcframework.sh "$PROFILE"
+  ./scripts/vesper ios stage-optional-plugins-release \
+    "$OPTIONAL_RELEASE_DIR" \
+    --profile "$VESPER_APPLE_FFMPEG_PROFILE" \
+    ios-arm64 \
+    ios-simulator-arm64
+  ./scripts/vesper ios ffi "$PROFILE"
 )
 
-# Flutter resolves local Swift packages during --config-only. The Rust binary
-# target above must exist before this step runs on a clean checkout.
+# Flutter and Xcode resolve local binary targets during --config-only. The
+# optional plugin and Rust FFI artifacts above must exist first on a clean checkout.
 (
   cd "$ROOT_DIR"
   flutter build ios \

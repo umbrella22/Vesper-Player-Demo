@@ -9,6 +9,7 @@ extension BiliClientLibrary on BiliClient {
     int page = 1,
     int pageSize = 20,
   }) async {
+    _requireAuthenticatedAccountLibrary(this);
     await _transport.ensureReady();
     final resolvedMid = mid ?? await _resolveCurrentUserMid();
     if (resolvedMid == null || resolvedMid <= 0) {
@@ -47,6 +48,159 @@ extension BiliClientLibrary on BiliClient {
     int pageSize = 20,
   }) {
     return fetchFollowingUsers(mid: mid, page: page, pageSize: pageSize);
+  }
+
+  /// Loads the small profile card rendered above a followed UP's submissions.
+  ///
+  /// This guard deliberately happens before transport initialization. Space
+  /// browsing is an account-only surface in this app, so a logged-out user
+  /// must not prime cookies, refresh WBI keys, or call the card endpoint.
+  Future<BiliUserSpaceProfile> fetchUserSpaceProfile(int mid) async {
+    _requireAuthenticatedAccountLibrary(this);
+    if (mid <= 0) {
+      throw const BiliApiException('缺少有效的 UP 主 UID。');
+    }
+
+    await _transport.ensureReady();
+    final data = await _transport.getData(
+      host: biliApiHost,
+      path: BiliApiPaths.userCard,
+      params: <String, Object?>{'mid': mid},
+      referer: biliSpaceReferer(mid),
+      ensureReady: false,
+    );
+    final card = readObjectMap(data['card']);
+    final source = card.isEmpty ? data : card;
+    final official = readObjectMap(source['official_verify']);
+    final vip = readObjectMap(source['vip']);
+    final vipLabel = readObjectMap(vip['label']);
+    final officialLabel = readString(official['desc']);
+    final resolvedVipLabel =
+        readString(vipLabel['text']) ??
+        readString(vip['label']) ??
+        readString(vip['nickname_color']);
+
+    return BiliUserSpaceProfile(
+      mid: readInt(source['mid']) ?? mid,
+      name: biliStripHtmlTags(readString(source['name']) ?? 'UP $mid'),
+      avatarUrl: biliNormalizeImageUrl(readString(source['face']) ?? ''),
+      sign: biliStripHtmlTags(readString(source['sign']) ?? ''),
+      followerCount:
+          readInt(data['follower']) ??
+          readInt(source['fans']) ??
+          readInt(source['follower']) ??
+          0,
+      followingCount:
+          readInt(source['friend']) ?? readInt(source['following']) ?? 0,
+      archiveCount:
+          readInt(data['archive_count']) ??
+          readInt(source['archive_count']) ??
+          readInt(source['archiveCount']) ??
+          0,
+      officialLabel: officialLabel == null || officialLabel.isEmpty
+          ? null
+          : officialLabel,
+      vipLabel: resolvedVipLabel == null || resolvedVipLabel.isEmpty
+          ? null
+          : resolvedVipLabel,
+    );
+  }
+
+  /// Retrieves one page of a user's archive list. [keyword] is sent only for
+  /// title search; the server does not provide reliable BV-id search behavior.
+  Future<BiliUserSpaceVideoPage> fetchUserSpaceVideos({
+    required int mid,
+    int page = 1,
+    int pageSize = 30,
+    String keyword = '',
+  }) async {
+    _requireAuthenticatedAccountLibrary(this);
+    if (mid <= 0) {
+      throw const BiliApiException('缺少有效的 UP 主 UID。');
+    }
+
+    final normalizedPage = page < 1 ? 1 : page;
+    final normalizedPageSize = pageSize.clamp(1, 50).toInt();
+    final normalizedKeyword = keyword.trim();
+    await _transport.ensureReady();
+    final data = await _transport.getData(
+      host: biliApiHost,
+      path: BiliApiPaths.spaceArchiveSearch,
+      params: <String, Object?>{
+        'mid': mid,
+        'pn': normalizedPage,
+        'ps': normalizedPageSize,
+        'order': 'pubdate',
+        if (normalizedKeyword.isNotEmpty) 'keyword': normalizedKeyword,
+      },
+      useWbi: true,
+      referer: biliSpaceVideosReferer(mid),
+      ensureReady: false,
+    );
+    final list = readObjectMap(data['list']);
+    final rawVideos = readObjectList(
+      list.isEmpty ? data['vlist'] : list['vlist'],
+    );
+    final videos = rawVideos
+        .whereType<Map<Object?, Object?>>()
+        .map(readObjectMap)
+        .map((value) => _parseUserSpaceVideo(value, fallbackMid: mid))
+        .whereType<BiliUserSpaceVideo>()
+        .toList(growable: false);
+    final pageInfo = readObjectMap(data['page']);
+    final total =
+        readInt(pageInfo['count']) ?? readInt(list['count']) ?? videos.length;
+    final responsePage = readInt(pageInfo['pn']) ?? normalizedPage;
+    final responsePageSize = readInt(pageInfo['ps']) ?? normalizedPageSize;
+    final hasMore = total > 0
+        ? responsePage * responsePageSize < total
+        : videos.length >= normalizedPageSize;
+    return BiliUserSpaceVideoPage(
+      mid: mid,
+      page: responsePage,
+      pageSize: responsePageSize,
+      total: total,
+      videos: videos,
+      hasMore: hasMore,
+      keyword: normalizedKeyword,
+    );
+  }
+
+  /// Resolves an exact BV id for a currently selected UP. A detail belonging
+  /// to another account deliberately returns null rather than leaking into the
+  /// selected account's archive view.
+  Future<BiliUserSpaceVideo?> fetchUserSpaceVideoByBvid({
+    required int mid,
+    required String bvid,
+  }) async {
+    _requireAuthenticatedAccountLibrary(this);
+    if (mid <= 0) {
+      throw const BiliApiException('缺少有效的 UP 主 UID。');
+    }
+    final normalizedBvid = bvid.trim();
+    if (normalizedBvid.isEmpty) {
+      throw const BiliApiException('缺少有效的 BV 号。');
+    }
+
+    final detail = await fetchVideoDetail(normalizedBvid);
+    if (detail.ownerMid != mid) {
+      return null;
+    }
+    final firstPage = detail.pages.isEmpty ? null : detail.pages.first;
+    return BiliUserSpaceVideo(
+      aid: detail.aid,
+      bvid: detail.bvid,
+      title: detail.title,
+      coverUrl: detail.coverUrl,
+      durationLabel: firstPage == null
+          ? '--:--'
+          : biliFormatDurationSeconds(firstPage.durationSeconds),
+      publishedAtLabel: detail.publishedAtLabel ?? '',
+      playCountLabel: detail.playCountLabel,
+      ownerMid: detail.ownerMid,
+      ownerName: detail.ownerName,
+      description: detail.description,
+    );
   }
 
   /// Fetches the server-side history list.  The cursor endpoint uses `max`
@@ -531,6 +685,44 @@ extension BiliClientLibrary on BiliClient {
     );
   }
 
+  BiliUserSpaceVideo? _parseUserSpaceVideo(
+    Map<String, Object?> value, {
+    required int fallbackMid,
+  }) {
+    final aid = readInt(value['aid']) ?? readInt(value['id']) ?? 0;
+    final bvid = readString(value['bvid']) ?? readString(value['bv']) ?? '';
+    if (aid <= 0 && bvid.isEmpty) {
+      return null;
+    }
+    final owner = readObjectMap(value['owner']);
+    final ownerMid =
+        readInt(owner['mid']) ?? readInt(value['mid']) ?? fallbackMid;
+    final ownerName =
+        readString(owner['name']) ??
+        readString(value['author']) ??
+        readString(value['uname']) ??
+        'UP';
+    final viewCount =
+        readDouble(value['play']) ??
+        readDouble(value['view']) ??
+        readDouble(readObjectMap(value['stat'])['view']);
+    return BiliUserSpaceVideo(
+      aid: aid,
+      bvid: bvid,
+      title: biliStripHtmlTags(readString(value['title']) ?? bvid),
+      coverUrl: biliNormalizeImageUrl(
+        readString(value['pic']) ?? readString(value['cover']) ?? '',
+      ),
+      durationLabel: readDurationLabel(value['length'] ?? value['duration']),
+      publishedAtLabel:
+          readPublishedAtLabel(value['pubdate'] ?? value['created']) ?? '',
+      playCountLabel: biliFormatCount(viewCount),
+      ownerMid: ownerMid,
+      ownerName: ownerName,
+      description: biliStripHtmlTags(readString(value['description']) ?? ''),
+    );
+  }
+
   BiliRemoteHistoryEntry? _parseRemoteHistoryEntry(Map<String, Object?> value) {
     final nestedHistory = readObjectMap(value['history']);
     final source = nestedHistory.isEmpty
@@ -994,5 +1186,14 @@ extension BiliClientLibrary on BiliClient {
     final secs = (millis % 60000) ~/ 1000;
     final remainder = millis % 1000;
     return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}.${remainder.toString().padLeft(3, '0')}';
+  }
+}
+
+void _requireAuthenticatedAccountLibrary(BiliClient client) {
+  // This check intentionally precedes BiliTransport.ensureReady(). See the
+  // account-only library contract: logged-out surfaces perform no network
+  // warm-up, WBI refresh, or account endpoint request.
+  if (!client.hasAuthenticatedSession) {
+    throw const BiliApiException('请先登录 Bilibili 后查看关注列表和 UP 主空间。', code: -101);
   }
 }

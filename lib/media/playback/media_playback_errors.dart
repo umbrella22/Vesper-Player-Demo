@@ -1,7 +1,14 @@
-part of 'bili_playback_page.dart';
+import 'dart:async';
 
-class _PlaybackInlineError extends StatelessWidget {
-  const _PlaybackInlineError({
+// 项目组件基座是 vendored 的 material_ui，与播放页共用同一套组件。
+import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
+
+import '../player/media_text.dart';
+
+class PlaybackInlineError extends StatelessWidget {
+  const PlaybackInlineError({
+    super.key,
     required this.title,
     required this.message,
     required this.actionLabel,
@@ -57,8 +64,12 @@ class _PlaybackInlineError extends StatelessWidget {
   }
 }
 
-class _BiliPlaybackErrorState extends StatelessWidget {
-  const _BiliPlaybackErrorState({required this.error, required this.onRetry});
+class MediaPlaybackErrorState extends StatelessWidget {
+  const MediaPlaybackErrorState({
+    super.key,
+    required this.error,
+    required this.onRetry,
+  });
 
   final Object error;
   final Future<void> Function() onRetry;
@@ -99,7 +110,7 @@ class _BiliPlaybackErrorState extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    biliErrorMessage(error),
+                    mediaErrorMessage(error),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: visualTheme.textSecondary,
                       height: 1.6,

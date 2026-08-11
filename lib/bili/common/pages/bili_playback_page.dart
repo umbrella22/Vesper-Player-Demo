@@ -1,49 +1,28 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart';
-import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
-import 'package:vesper_player/vesper_player.dart';
-import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
-import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
-import 'package:vesper_media/app/design/app_visual_theme.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/system_presentation.dart';
-import 'package:vesper_media/bili/common/models/bili_models.dart';
-import 'package:vesper_media/bili/common/services/bili_api_core.dart';
-import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_device_controls.dart';
-import 'package:vesper_media/bili/common/services/bili_history_store.dart';
-import 'package:vesper_media/bili/common/services/bili_text.dart';
-import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
-import 'package:vesper_media/bili/tv_mode/widgets/tv_focusable.dart';
-import 'package:vesper_media/bili/common/view_models/bili_external_playback_manager.dart';
 import 'package:vesper_media/bili/common/view_models/bili_playback_view_model.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
-import 'package:vesper_media/bili/common/widgets/bili_glass_sheet.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
+import 'package:vesper_media/media/media.dart';
+import 'package:vesper_media/media/player/media_glass_sheet.dart';
+import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_media_mapper.dart';
+import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 
-part 'bili_playback_panels.dart';
-part 'bili_playback_settings.dart';
-part 'bili_playback_dlna.dart';
-part 'bili_playback_tuning.dart';
-part 'bili_playback_widgets.dart';
-part 'bili_playback_tv.dart';
-part 'bili_playback_comments.dart';
-part 'bili_playback_lists.dart';
-part 'bili_playback_info.dart';
-part 'bili_playback_errors.dart';
+import 'bili_playback_content_surfaces.dart';
 
-enum BiliPlaybackPresentationMode { phone, tv }
-
-enum TvPlaybackPanelType { none, quality, speed, subtitles, pages }
-
-enum _PlaybackInfoTab { intro, comments }
-
+/// Bilibili 播放页入口（薄包装）：构造 B 站内容状态与平台槽位，
+/// 渲染通用播放页壳 [MediaPlaybackPage]。
 class BiliPlaybackPage extends StatefulWidget {
   const BiliPlaybackPage({
     super.key,
@@ -70,64 +49,15 @@ class BiliPlaybackPage extends StatefulWidget {
   State<BiliPlaybackPage> createState() => _BiliPlaybackPageState();
 }
 
-class _BiliPlaybackPageState extends State<BiliPlaybackPage>
-    with SingleTickerProviderStateMixin {
+class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   late final BiliPlaybackViewModel _viewModel;
-  void Function()? _messageEffect;
-  late final TabController _infoTabController;
-  bool _settingsSurfaceOpen = false;
-  bool _castingSurfaceOpen = false;
-  bool _dlnaPickerOpen = false;
-  bool _introExpanded = false;
-  _PlaybackInfoTab _selectedInfoTab = _PlaybackInfoTab.intro;
-  BiliVideoComment? _openedCommentReplies;
-  final ScrollController _commentsScrollController = ScrollController();
-  final ScrollController _commentRepliesScrollController = ScrollController(
-    keepScrollOffset: false,
-  );
-  final ScrollController _relatedScrollController = ScrollController();
-  final TextEditingController _commentComposerController =
-      TextEditingController();
-  final FocusNode _commentComposerFocusNode = FocusNode(
-    debugLabel: 'comment_composer',
-  );
-  double _mobileStageCollapseOffset = 0;
-  double? _scheduledMobileStageCollapseOffset;
-  bool _mobileStageCollapseFrameScheduled = false;
-  String? _openingRelatedBvid;
-  int _presentationGeneration = 0;
-  final _BiliStageDeviceControls _stageDeviceControls =
-      const _BiliStageDeviceControls();
-  bool _tvControlBarVisible = false;
-  TvPlaybackPanelType _tvPanel = TvPlaybackPanelType.none;
-  final FocusNode _tvPlaybackFocusNode = FocusNode(debugLabel: 'tv_playback');
-  final Map<TvPlaybackPanelType, FocusNode> _tvPanelButtonFocusNodes =
-      <TvPlaybackPanelType, FocusNode>{};
-  TvPlaybackPanelType? _lastOpenedTvPanel;
-  bool _tvPlaybackInitialFocusRequested = false;
-  bool _playbackRecoveryDialogVisible = false;
-  bool _tvBackDispatchPending = false;
 
   bool get _isTvMode =>
       widget.presentationMode == BiliPlaybackPresentationMode.tv;
 
-  bool get _tvPanelOpen => _tvPanel != TvPlaybackPanelType.none;
-
-  bool get _playbackModalRouteOpen =>
-      _settingsSurfaceOpen ||
-      _castingSurfaceOpen ||
-      _dlnaPickerOpen ||
-      _playbackRecoveryDialogVisible;
-
   @override
   void initState() {
     super.initState();
-    _infoTabController = TabController(length: 2, vsync: this)
-      ..addListener(_handleInfoTabChanged);
-    _commentsScrollController.addListener(_handleCommentsScrollPosition);
-    _commentRepliesScrollController.addListener(
-      _handleCommentRepliesScrollPosition,
-    );
     _viewModel = BiliPlaybackViewModel(
       detail: widget.detail,
       initialPage: widget.initialPage,
@@ -137,755 +67,66 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
       initialResolvedPlayback: widget.initialResolvedPlayback,
       initialPositionMs: widget.initialPositionMs,
     );
-    // One-shot messages and playback-recovery notices are surfaced through an
-    // effect that tracks the VM's pending-message signals.
-    _messageEffect = effect(_handleViewModelMessage);
-    HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
-    unawaited(_enterPlaybackPresentation());
-  }
-
-  @override
-  void didUpdateWidget(BiliPlaybackPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.presentationMode != widget.presentationMode) {
-      _tvPlaybackInitialFocusRequested = false;
-    }
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleTvHardwareKeyEvent);
-    _infoTabController.removeListener(_handleInfoTabChanged);
-    _infoTabController.dispose();
-    _commentsScrollController.removeListener(_handleCommentsScrollPosition);
-    _commentsScrollController.dispose();
-    _commentRepliesScrollController.removeListener(
-      _handleCommentRepliesScrollPosition,
-    );
-    _commentRepliesScrollController.dispose();
-    _relatedScrollController.dispose();
-    _commentComposerController.dispose();
-    _commentComposerFocusNode.dispose();
-    _tvPlaybackFocusNode.dispose();
-    for (final node in _tvPanelButtonFocusNodes.values) {
-      node.dispose();
-    }
-    _messageEffect?.call();
     _viewModel.dispose();
-    unawaited(_restoreAppPresentation());
     super.dispose();
   }
 
-  void _requestTvPlaybackFocusAfterFrame() {
-    if (!_isTvMode || _tvPlaybackInitialFocusRequested) {
-      return;
-    }
-    _tvPlaybackInitialFocusRequested = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        FocusScope.of(context).requestFocus(_tvPlaybackFocusNode);
-      }
-    });
-  }
-
-  bool _handleTvHardwareKeyEvent(KeyEvent event) {
-    if (!_isTvMode || event is! KeyDownEvent || !mounted) {
-      return false;
-    }
-    final key = event.logicalKey;
-    final isBackKey =
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.escape;
-    final route = ModalRoute.of(context);
-    if (!isBackKey &&
-        route?.isCurrent == true &&
-        !_playbackModalRouteOpen &&
-        !_tvPanelOpen &&
-        !_tvControlBarVisible) {
-      final controller = _viewModel.controller;
-      if (controller == null) {
-        return false;
-      }
-      final snapshot = controller.snapshot;
-      if (key == LogicalKeyboardKey.arrowLeft) {
-        _seekTvBy(controller, snapshot, -10000);
-        return true;
-      }
-      if (key == LogicalKeyboardKey.arrowRight) {
-        _seekTvBy(controller, snapshot, 10000);
-        return true;
-      }
-      if (key == LogicalKeyboardKey.select ||
-          key == LogicalKeyboardKey.enter ||
-          key == LogicalKeyboardKey.space) {
-        _toggleTvPlayback(controller, snapshot);
-        return true;
-      }
-    }
-    if (!isBackKey) {
-      return false;
-    }
-    if (route != null && !route.isCurrent) {
-      if (_playbackModalRouteOpen) {
-        _handleTvBack();
-        return true;
-      }
-      return false;
-    }
-    _handleTvBack();
-    return true;
-  }
-
-  BiliVideoPageEntry get _selectedPage => _viewModel.selectedPage;
-
-  BiliResolvedPlayback? get _resolvedPlayback => _viewModel.resolvedPlayback;
-
-  BiliVideoEngagement? get _engagement => _viewModel.engagement;
-
-  bool get _engagementLoading => _viewModel.engagementLoading;
-
-  List<BiliVideoComment> get _comments => _viewModel.comments;
-
-  bool get _commentsLoading => _viewModel.commentsLoading;
-
-  bool get _commentsLoadingMore => _viewModel.commentsLoadingMore;
-
-  bool get _commentsHasMore => _viewModel.commentsHasMore;
-
-  List<BiliVideoComment> get _commentReplies => _viewModel.commentReplies;
-
-  bool get _commentRepliesLoading => _viewModel.commentRepliesLoading;
-
-  bool get _commentRepliesLoadingMore => _viewModel.commentRepliesLoadingMore;
-
-  bool get _commentRepliesHasMore => _viewModel.commentRepliesHasMore;
-
-  String? get _commentRepliesError => _viewModel.commentRepliesError;
-
-  int? get _commentRepliesTotalCount => _viewModel.commentRepliesTotalCount;
-
-  bool get _commentSubmitting => _viewModel.commentSubmitting;
-
-  String? get _commentsError => _viewModel.commentsError;
-
-  List<BiliFeedVideo> get _relatedVideos => _viewModel.relatedVideos;
-
-  bool get _relatedVideosLoading => _viewModel.relatedVideosLoading;
-
-  String? get _relatedVideosError => _viewModel.relatedVideosError;
-
-  String get _coinCountLabel => _viewModel.coinCountLabel;
-
-  String get _shareCountLabel => _viewModel.shareCountLabel;
-
-  int get _sentCoinCount => _viewModel.sentCoinCount;
-
-  BiliEngagementAction? get _pendingEngagementAction =>
-      _viewModel.pendingEngagementAction;
-
-  bool get _isInWatchLater => _viewModel.isInWatchLater;
-
-  bool get _watchLaterLoading => _viewModel.watchLaterLoading;
-
-  int? get _selectedBiliQualityId => _viewModel.selectedBiliQualityId;
-
-  BiliCodecStrategy get _selectedCodecStrategy =>
-      _viewModel.selectedCodecStrategy;
-
-  BiliDlnaState get _dlnaState => _viewModel.dlnaState;
-
-  BiliExternalPlaybackManager get _dlnaManager => _viewModel.dlnaManager;
-
-  BiliOfflineDownloadController get _offlineController =>
-      _viewModel.offlineController;
-
-  String get _ownerSubtitle => _viewModel.ownerSubtitle;
-
-  void _setCastingSurfaceOpen(bool value) {
-    if (_castingSurfaceOpen == value) {
-      return;
-    }
-    if (!mounted) {
-      _castingSurfaceOpen = value;
-      return;
-    }
-    setState(() {
-      _castingSurfaceOpen = value;
-    });
-  }
-
-  void _setDlnaPickerOpen(bool value) {
-    if (_dlnaPickerOpen == value) {
-      return;
-    }
-    if (!mounted) {
-      _dlnaPickerOpen = value;
-      return;
-    }
-    setState(() {
-      _dlnaPickerOpen = value;
-    });
-  }
-
-  void _toggleIntroExpanded() {
-    setState(() {
-      _introExpanded = !_introExpanded;
-    });
-  }
-
-  void _handleInfoTabChanged() {
-    _syncSelectedInfoTab(_tabForInfoIndex(_infoTabController.index));
-  }
-
-  void _syncSelectedInfoTab(_PlaybackInfoTab tab) {
-    if (_selectedInfoTab == tab) {
-      return;
-    }
-    final scrollController = _scrollControllerForInfoTab(tab);
-    setState(() {
-      _selectedInfoTab = tab;
-      _mobileStageCollapseOffset = scrollController.hasClients
-          ? scrollController.offset
-          : 0;
-    });
-  }
-
-  _PlaybackInfoTab _tabForInfoIndex(int index) {
-    return index == 1 ? _PlaybackInfoTab.comments : _PlaybackInfoTab.intro;
-  }
-
-  bool _handleMobileContentScroll(ScrollNotification notification) {
-    if (_isTvMode ||
-        notification.depth != 0 ||
-        notification.metrics.axis != Axis.vertical) {
-      return false;
-    }
-    final nextOffset = notification.metrics.pixels.clamp(0.0, 1000.0);
-    if ((nextOffset - _mobileStageCollapseOffset).abs() < 1) {
-      return false;
-    }
-    _scheduledMobileStageCollapseOffset = nextOffset;
-    if (_mobileStageCollapseFrameScheduled) {
-      return false;
-    }
-    _mobileStageCollapseFrameScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mobileStageCollapseFrameScheduled = false;
-      final scheduledOffset = _scheduledMobileStageCollapseOffset;
-      _scheduledMobileStageCollapseOffset = null;
-      if (!mounted ||
-          scheduledOffset == null ||
-          (scheduledOffset - _mobileStageCollapseOffset).abs() < 1) {
-        return;
-      }
-      setState(() {
-        _mobileStageCollapseOffset = scheduledOffset;
-      });
-    });
-    return false;
-  }
-
-  ScrollController _scrollControllerForInfoTab(_PlaybackInfoTab tab) {
-    if (tab != _PlaybackInfoTab.comments) {
-      return _relatedScrollController;
-    }
-    return _openedCommentReplies == null
-        ? _commentsScrollController
-        : _commentRepliesScrollController;
-  }
-
-  ScrollController get _activeInfoScrollController =>
-      _scrollControllerForInfoTab(_selectedInfoTab);
-
-  void _handleCommentsScrollPosition() {
-    if (_selectedInfoTab != _PlaybackInfoTab.comments ||
-        !_commentsScrollController.hasClients) {
-      return;
-    }
-    final position = _commentsScrollController.position;
-    if (position.maxScrollExtent - position.pixels <= 360) {
-      unawaited(_loadMoreComments());
-    }
-  }
-
-  void _handleCommentRepliesScrollPosition() {
-    if (_selectedInfoTab != _PlaybackInfoTab.comments ||
-        _openedCommentReplies == null ||
-        !_commentRepliesScrollController.hasClients) {
-      return;
-    }
-    final position = _commentRepliesScrollController.position;
-    if (position.maxScrollExtent - position.pixels <= 360) {
-      unawaited(_loadMoreCommentReplies());
-    }
-  }
-
-  void _handleMobileStagePointerMove(PointerMoveEvent event) {
-    if (_isTvMode ||
-        _viewModel.isFullscreen ||
-        _viewModel.controller?.snapshot.playbackState ==
-            VesperPlaybackState.playing) {
-      return;
-    }
-    final delta = event.delta;
-    if (delta.dy.abs() < 1 || delta.dy.abs() < delta.dx.abs()) {
-      return;
-    }
-    _updateMobileStageCollapseOffset(_mobileStageCollapseOffset - delta.dy);
-  }
-
-  void _updateMobileStageCollapseOffset(double rawOffset) {
-    final nextOffset = rawOffset.clamp(0.0, 1000.0).toDouble();
-    if ((nextOffset - _mobileStageCollapseOffset).abs() < 1) {
-      return;
-    }
-    final scrollController = _activeInfoScrollController;
-    if (scrollController.hasClients) {
-      final position = scrollController.position;
-      final nextScrollOffset = nextOffset.clamp(
-        position.minScrollExtent,
-        position.maxScrollExtent,
-      );
-      if ((nextScrollOffset - position.pixels).abs() >= 1) {
-        scrollController.jumpTo(nextScrollOffset);
-      }
-    }
-    if (!mounted) {
-      _mobileStageCollapseOffset = nextOffset;
-      return;
-    }
-    setState(() {
-      _mobileStageCollapseOffset = nextOffset;
-    });
-  }
-
-  void _handleViewModelMessage() {
-    final message = _viewModel.consumePendingMessage();
-    if (message != null && mounted) {
-      _showMessage(message);
-    }
-    final recoveryNotice = _viewModel.consumePendingPlaybackRecoveryNotice();
-    if (recoveryNotice != null && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          unawaited(_showPlaybackRecoveryNotice(recoveryNotice));
-        }
-      });
-    }
-  }
-
-  Future<void> _showViewModelMessage(Future<String?> operation) async {
-    final message = await operation;
-    if (message != null && mounted) {
-      _showMessage(message);
-    }
-  }
-
-  Future<void> _reloadCurrentPage() {
-    return _viewModel.reloadCurrentPage();
-  }
-
-  Future<void> _reloadRelatedVideos() {
-    return _viewModel.loadRelatedVideos();
-  }
-
-  Future<void> _reloadComments() {
-    return _viewModel.loadComments();
-  }
-
-  Future<void> _loadMoreComments() {
-    return _viewModel.loadMoreComments();
-  }
-
-  Future<void> _loadMoreCommentReplies() {
-    return _viewModel.loadMoreCommentReplies();
-  }
-
-  Future<void> _retryCommentReplies() {
-    final rootComment = _openedCommentReplies;
-    if (rootComment == null) {
-      return Future<void>.value();
-    }
-    return _viewModel.retryCommentReplies(rootComment);
-  }
-
-  Future<void> _toggleLike() {
-    return _showViewModelMessage(_viewModel.toggleLike());
-  }
-
-  Future<void> _addCoin() {
-    return _showViewModelMessage(_viewModel.addCoin());
-  }
-
-  Future<void> _toggleFavorite() {
-    return _showViewModelMessage(_viewModel.toggleFavorite());
-  }
-
-  Future<void> _toggleFollow() {
-    return _showViewModelMessage(_viewModel.toggleFollow());
-  }
-
-  Future<void> _toggleWatchLater() {
-    return _showViewModelMessage(_viewModel.toggleWatchLater());
-  }
-
-  Future<void> _shareVideo() {
-    return _showViewModelMessage(_viewModel.shareVideo());
-  }
-
-  Future<void> _submitComment(String rawMessage) async {
-    final message = rawMessage.trim();
-    if (message.isEmpty) {
-      _showMessage('评论内容不能为空');
-      return;
-    }
-    final result = await _viewModel.submitComment(message);
-    if (!mounted || result == null) {
-      return;
-    }
-    if (result == '已发送评论') {
-      _commentComposerController.clear();
-      _commentComposerFocusNode.unfocus();
-      if (_commentsScrollController.hasClients) {
-        unawaited(
-          _commentsScrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-          ),
-        );
-      }
-    }
-    _showMessage(result);
-  }
-
-  Future<void> _seekToCommentTime(int seconds) async {
-    final controller = _viewModel.controller;
-    if (controller == null) {
-      _showMessage('播放器尚未准备好。');
-      return;
-    }
-    final durationMs =
-        controller.snapshot.timeline.durationMs ??
-        (_selectedPage.durationSeconds > 0
-            ? _selectedPage.durationSeconds * 1000
-            : 0);
-    if (durationMs <= 0) {
-      _showMessage('当前视频暂不支持按评论时间跳转。');
-      return;
-    }
-    final ratio = (seconds * 1000 / durationMs).clamp(0.0, 1.0).toDouble();
-    await controller.seekToRatio(ratio);
-    if (mounted) {
-      _showMessage('已跳转到 ${biliFormatDurationSeconds(seconds)}');
-    }
-  }
-
-  Future<void> _openRelatedVideo(BiliFeedVideo video) async {
-    if (_openingRelatedBvid != null) {
-      return;
-    }
-    setState(() {
-      _openingRelatedBvid = video.bvid;
-    });
-    try {
-      final detail = await widget.client.fetchVideoDetail(video.bvid);
-      if (!mounted) {
-        return;
-      }
-      final nextPage = detail.pages.isEmpty ? null : detail.pages.first;
-      if (nextPage == null) {
-        _showMessage('这个视频没有可播放分 P。');
-        return;
-      }
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => BiliPlaybackPage(
-            detail: detail,
-            initialPage: nextPage,
-            client: widget.client,
-            historyStore: widget.historyStore,
-            offlineController: widget.offlineController,
-            presentationMode: widget.presentationMode,
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return MediaPlaybackPage(
+      viewModel: _viewModel.playbackViewModel,
+      presentationMode: widget.presentationMode,
+      contentSurfacesBuilder: (host) => BiliPlaybackContentSurfaces(
+        viewModel: _viewModel,
+        detail: widget.detail,
+        host: host,
+      ),
+      deviceControls: const BiliStageDeviceControls(),
+      contentTabsTrailing: DanmakuEntryPill(
+        danmakuCountLabel: widget.detail.danmakuCountLabel,
+      ),
+      tuningCacheEntry: CacheEntryButton(
+        onTap: () => unawaited(_openCacheSurfaceFromSettings(context)),
+      ),
+      tvControlBarExtras: <Widget>[
+        SignalBuilder(
+          builder: (context) => _buildTvWatchLaterButton(),
         ),
-      );
-    } catch (error) {
-      if (mounted) {
-        _showMessage('打开相关视频失败：${biliErrorMessage(error)}');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _openingRelatedBvid = null;
-        });
-      }
-    }
-  }
-
-  Future<void> _showPageSelectionSheet() async {
-    final pages = widget.detail.pages;
-    if (pages.length <= 1 || !mounted) {
-      return;
-    }
-    final isPgc =
-        widget.detail.ownerMid <= 0 && widget.detail.ownerName == '番剧';
-    await showBiliGlassSheet<void>(
-      context: context,
-      maxContentHeightFactor: 0.82,
-      contentPadding: EdgeInsets.zero,
-      builder: (context) {
-        return _PlaybackBottomSheetScaffold(
-          title: isPgc
-              ? '剧集 · 共 ${pages.length} 话/集'
-              : '合集 · 共 ${pages.length} 个分 P',
-          child: _EpisodePreviewList(
-            pages: pages,
-            selectedPage: _selectedPage,
-            coverUrl: widget.detail.coverUrl,
-            onTap: (page) async {
-              Navigator.of(context).pop();
-              await _switchPage(page);
-            },
-            isPgc: isPgc,
-          ),
-        );
-      },
+      ],
+      tvFallbackHome: BiliTvHomePage(
+        client: widget.client,
+        historyStore: widget.historyStore,
+        offlineController: widget.offlineController,
+      ),
+      recoveryDialogBuilder: _showPlaybackRecoveryDialog,
+      presentation: _buildPresentation(),
+      onPushPlayback: _pushRelatedPlayback,
     );
   }
 
-  void _showCommentReplies(BiliVideoComment comment) {
-    if (!mounted) {
-      return;
-    }
-    _commentComposerFocusNode.unfocus();
-    setState(() {
-      _openedCommentReplies = comment;
-      _mobileStageCollapseOffset = 0;
-    });
-    unawaited(_viewModel.loadCommentReplies(comment));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _commentRepliesScrollController.hasClients) {
-        _commentRepliesScrollController.jumpTo(0);
-      }
-    });
-  }
-
-  void _closeCommentReplies() {
-    if (_openedCommentReplies == null) {
-      return;
-    }
-    setState(() {
-      _openedCommentReplies = null;
-      _mobileStageCollapseOffset = _commentsScrollController.hasClients
-          ? _commentsScrollController.offset
-          : 0;
-    });
-    _viewModel.clearCommentReplies();
-  }
-
-  Future<void> _toggleFullscreen() async {
-    final shouldEnterFullscreen = !_viewModel.isFullscreen;
-    if (shouldEnterFullscreen) {
-      _viewModel.setFullscreen(true);
-      await _enterFullscreenPresentation();
-      return;
-    }
-    await _exitFullscreen();
-  }
-
-  Future<void> _enterPlaybackPresentation() async {
-    if (_isTvMode) {
-      await _applySystemPresentation(
-        orientations: biliLandscapeOrientations,
-        systemUiMode: SystemUiMode.immersiveSticky,
-        overlayStyle: biliDarkSurfaceSystemUiStyle,
-      );
-      return;
-    }
-    await _applySystemPresentation(
-      orientations: biliPortraitOrientations,
-      systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: biliDarkSurfaceSystemUiStyle,
+  Widget _buildTvWatchLaterButton() {
+    final inWatchLater = _viewModel.isInWatchLater;
+    final loading = _viewModel.watchLaterLoading;
+    return TvBarButton(
+      label: inWatchLater ? '已加入稍后再看' : '稍后再看',
+      icon: inWatchLater
+          ? Icons.watch_later_rounded
+          : Icons.watch_later_outlined,
+      onTap: loading
+          ? () {}
+          : () => unawaited(_toggleWatchLater()),
     );
   }
 
-  Future<void> _enterFullscreenPresentation() async {
-    await _applySystemPresentation(
-      orientations: biliLandscapeOrientations,
-      systemUiMode: SystemUiMode.immersiveSticky,
-      overlayStyle: biliDarkSurfaceSystemUiStyle,
-    );
-  }
-
-  Future<void> _exitFullscreenPresentation() async {
-    await _applySystemPresentation(
-      orientations: biliPortraitOrientations,
-      systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: biliDarkSurfaceSystemUiStyle,
-    );
-  }
-
-  Future<void> _exitFullscreen() async {
-    if (!_viewModel.isFullscreen) {
-      return;
+  Future<void> _toggleWatchLater() async {
+    final message = await _viewModel.toggleWatchLater();
+    if (message != null && mounted) {
+      _showMessage(message);
     }
-    await _exitFullscreenPresentation();
-    if (!mounted) {
-      return;
-    }
-    _viewModel.setFullscreen(false);
-  }
-
-  Future<void> _restoreAppPresentation() async {
-    if (_isTvMode) {
-      await _applySystemPresentation(
-        orientations: biliLandscapeOrientations,
-        systemUiMode: SystemUiMode.immersiveSticky,
-        overlayStyle: biliDarkSurfaceSystemUiStyle,
-      );
-      return;
-    }
-    await _applySystemPresentation(
-      useAppOrientationPolicy: true,
-      systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: biliAppSystemUiStyle,
-    );
-  }
-
-  Future<void> _applySystemPresentation({
-    List<DeviceOrientation>? orientations,
-    bool useAppOrientationPolicy = false,
-    required SystemUiMode systemUiMode,
-    required SystemUiOverlayStyle overlayStyle,
-  }) async {
-    assert(useAppOrientationPolicy != (orientations != null));
-    final generation = ++_presentationGeneration;
-    if (useAppOrientationPolicy) {
-      await setBiliAppPreferredOrientations();
-    } else {
-      await setBiliPreferredOrientations(orientations!);
-    }
-    if (generation != _presentationGeneration) {
-      return;
-    }
-    await setBiliSystemUiMode(systemUiMode);
-    if (generation != _presentationGeneration) {
-      return;
-    }
-    setBiliSystemUiOverlayStyle(overlayStyle);
-  }
-
-  Future<void> _switchPage(BiliVideoPageEntry page) {
-    return _showViewModelMessage(_viewModel.switchPage(page));
-  }
-
-  Future<void> _setPlaybackRate(double rate) {
-    return _showViewModelMessage(_viewModel.setPlaybackRate(rate));
-  }
-
-  Future<void> _selectBiliQuality(int? qualityId) {
-    return _showViewModelMessage(_viewModel.selectBiliQuality(qualityId));
-  }
-
-  Future<void> _selectCodecStrategy(BiliCodecStrategy strategy) {
-    return _showViewModelMessage(_viewModel.selectCodecStrategy(strategy));
-  }
-
-  Future<void> _selectSubtitle(VesperTrackSelection selection) {
-    return _showViewModelMessage(_viewModel.selectSubtitle(selection));
-  }
-
-  List<double> _playbackRates(VesperPlayerSnapshot snapshot) {
-    return _viewModel.playbackRates(snapshot);
-  }
-
-  List<VesperMediaTrack> _playbackSelectionTracks(
-    VesperPlayerSnapshot snapshot,
-  ) {
-    return _viewModel.playbackSelectionTracks(snapshot);
-  }
-
-  List<VesperMediaTrack> _subtitleTracks(VesperPlayerSnapshot snapshot) {
-    return _viewModel.subtitleTracks(snapshot);
-  }
-
-  VesperTrackSelection _subtitleSelection(VesperPlayerSnapshot snapshot) {
-    return _viewModel.subtitleSelection(snapshot);
-  }
-
-  List<int> _availableBiliQualityIds(List<VesperMediaTrack> tracks) {
-    return _viewModel.availableBiliQualityIds(tracks);
-  }
-
-  bool _hasTrackForSelection(
-    List<VesperMediaTrack> tracks,
-    int? qualityId,
-    BiliCodecStrategy strategy,
-  ) {
-    return _viewModel.hasTrackForSelection(tracks, qualityId, strategy);
-  }
-
-  BiliVideoCodecPreference _currentDownloadCodecPreference() {
-    return _viewModel.currentDownloadCodecPreference();
-  }
-
-  String _playbackStateLabel(VesperPlayerSnapshot snapshot) {
-    return _viewModel.playbackStateLabel(snapshot);
-  }
-
-  String? _biliQualityLabelFromQualityId(int qualityId) {
-    return _viewModel.biliQualityLabelFromQualityId(qualityId);
-  }
-
-  int? _currentBiliQualityId(
-    VesperPlayerSnapshot snapshot,
-    List<VesperMediaTrack> tracks,
-  ) {
-    final selected = _selectedBiliQualityId;
-    if (selected != null) {
-      return selected;
-    }
-
-    final effectiveTrackId = snapshot.effectiveVideoTrackId;
-    if (effectiveTrackId != null) {
-      for (final track in tracks) {
-        if (track.id == effectiveTrackId) {
-          return _viewModel.biliQualityIdForTrack(track);
-        }
-      }
-      final directQualityId = RegExp(
-        r'(?:^|:)video-(\d+)-',
-      ).firstMatch(effectiveTrackId);
-      if (directQualityId != null) {
-        return int.tryParse(directQualityId.group(1)!);
-      }
-    }
-
-    final observation = snapshot.videoVariantObservation;
-    if (observation == null) {
-      return null;
-    }
-    VesperMediaTrack? bestMatch;
-    var bestScore = double.infinity;
-    for (final track in tracks) {
-      final height = track.height;
-      final bitRate = track.bitRate;
-      var score = 0.0;
-      if (height != null && observation.height != null) {
-        score += (height - observation.height!).abs() * 100000.0;
-      }
-      if (bitRate != null && observation.bitRate != null) {
-        score += (bitRate - observation.bitRate!).abs().toDouble();
-      }
-      if (score < bestScore) {
-        bestScore = score;
-        bestMatch = track;
-      }
-    }
-    return bestMatch == null
-        ? null
-        : _viewModel.biliQualityIdForTrack(bestMatch);
   }
 
   void _showMessage(String message) {
@@ -897,1169 +138,223 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _showPlaybackRecoveryNotice(
-    BiliPlaybackRecoveryNotice notice,
-  ) async {
-    if (!mounted || _playbackRecoveryDialogVisible) {
-      return;
-    }
-    _playbackRecoveryDialogVisible = true;
-    bool retry = false;
-    try {
-      final result = _isTvMode
-          ? await showBiliTvGlassDialog<bool>(
-              context: context,
-              title: notice.title,
-              message: notice.message,
-              icon: Icons.sync_problem_rounded,
-              actions: const [
-                BiliTvDialogAction(
-                  label: '知道了',
-                  value: false,
-                  icon: Icons.close_rounded,
-                  autofocus: true,
-                ),
-                BiliTvDialogAction(
-                  label: '重新解析',
-                  value: true,
-                  icon: Icons.refresh_rounded,
-                ),
-              ],
-            )
-          : await showBiliGlassDialog<bool>(
-              context: context,
-              barrierDismissible: false,
-              title: notice.title,
-              message: notice.message,
-              actions: const [
-                BiliGlassDialogAction(label: '知道了', value: false),
-                BiliGlassDialogAction(
-                  label: '重新解析',
-                  value: true,
-                  isPrimary: true,
-                ),
-              ],
-            );
-      retry = result ?? false;
-    } finally {
-      _playbackRecoveryDialogVisible = false;
-    }
-    if (retry && mounted) {
-      await _reloadCurrentPage();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final visualTheme = AppVisualTheme.of(context);
-    return Scaffold(
-      backgroundColor: visualTheme.background,
-      body: SignalBuilder(
-        builder: (context) {
-          // VM state is read deep inside nested element builders where the
-          // signals runtime cannot track reads, so the outer builder only
-          // subscribes to what it directly needs (controller future and
-          // fullscreen). Each layout section wraps its own reads in a leaf
-          // SignalBuilder for fine-grained rebuilds.
-          final isFullscreen = _viewModel.isFullscreen;
-          return FutureBuilder<VesperPlayerController>(
-            future: _viewModel.controllerFuture,
-            builder: (context, asyncSnapshot) {
-              if (asyncSnapshot.hasError) {
-                return _BiliPlaybackErrorState(
-                  error: asyncSnapshot.error!,
-                  onRetry: _reloadCurrentPage,
-                );
-              }
-              if (!asyncSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final controller = asyncSnapshot.data!;
-              final overlayStyle = _isTvMode || isFullscreen
-                  ? biliDarkSurfaceSystemUiStyle
-                  : playbackSystemUiStyleForBrightness(
-                      Theme.of(context).brightness,
-                    );
-              return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: overlayStyle,
-                child: ValueListenableBuilder<VesperPlayerSnapshot>(
-                  valueListenable: controller.snapshotListenable,
-                  builder: (context, snapshot, _) {
-                    return _buildPlaybackLayout(
-                      context,
-                      controller,
-                      snapshot,
-                      isFullscreen: isFullscreen,
-                    );
-                  },
-                ),
-              );
-            },
-          );
-        },
+  MediaPlaybackPresentation _buildPresentation() {
+    return MediaPlaybackPresentation(
+      enterPlaybackTv: () => _applyPresentation(
+        orientations: biliLandscapeOrientations,
+        systemUiMode: SystemUiMode.immersiveSticky,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
       ),
+      enterPlaybackPhone: () => _applyPresentation(
+        orientations: biliPortraitOrientations,
+        systemUiMode: SystemUiMode.edgeToEdge,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
+      ),
+      enterFullscreen: () => _applyPresentation(
+        orientations: biliLandscapeOrientations,
+        systemUiMode: SystemUiMode.immersiveSticky,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
+      ),
+      exitFullscreen: () => _applyPresentation(
+        orientations: biliPortraitOrientations,
+        systemUiMode: SystemUiMode.edgeToEdge,
+        overlayStyle: biliDarkSurfaceSystemUiStyle,
+      ),
+      restoreApp: () => _isTvMode
+          ? _applyPresentation(
+              orientations: biliLandscapeOrientations,
+              systemUiMode: SystemUiMode.immersiveSticky,
+              overlayStyle: biliDarkSurfaceSystemUiStyle,
+            )
+          : _applyPresentation(
+              useAppOrientationPolicy: true,
+              systemUiMode: SystemUiMode.edgeToEdge,
+              overlayStyle: biliAppSystemUiStyle,
+            ),
+      darkSurfaceStyle: biliDarkSurfaceSystemUiStyle,
+      playbackStyleForBrightness: playbackSystemUiStyleForBrightness,
     );
   }
 
-  Widget _buildPlaybackLayout(
-    BuildContext context,
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot, {
-    required bool isFullscreen,
-  }) {
-    if (_isTvMode) {
-      return _buildTvPlaybackLayout(context, controller, snapshot);
+  Future<void> _applyPresentation({
+    List<DeviceOrientation>? orientations,
+    bool useAppOrientationPolicy = false,
+    required SystemUiMode systemUiMode,
+    required SystemUiOverlayStyle overlayStyle,
+  }) async {
+    if (useAppOrientationPolicy) {
+      await setBiliAppPreferredOrientations();
+    } else {
+      await setBiliPreferredOrientations(orientations!);
     }
-
-    final visualTheme = AppVisualTheme.of(context);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final stageCornerPadding = _displayCornerPadding(context);
-        // Stage and bottom surface read different VM signals, so each is
-        // wrapped in its own SignalBuilder to rebuild independently.
-        final stage = SignalBuilder(
-          builder: (context) => _buildStage(
-            controller: controller,
-            snapshot: snapshot,
-            isFullscreen: isFullscreen,
-          ),
-        );
-
-        if (isFullscreen) {
-          return PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, _) {
-              if (!didPop) {
-                unawaited(_exitFullscreen());
-              }
-            },
-            child: ColoredBox(color: Colors.black, child: stage),
-          );
-        }
-
-        final isWide =
-            constraints.maxWidth >= 840 && constraints.maxHeight >= 480;
-        final bottomSurface = _buildBottomSurface(
-          context,
-          snapshot,
-          errorMessage: snapshot.lastError?.message,
-        );
-
-        if (isWide) {
-          final panelWidth = (constraints.maxWidth * 0.36)
-              .clamp(constraints.maxWidth * 0.28, constraints.maxWidth * 0.42)
-              .toDouble();
-          return PopScope(
-            canPop: true,
-            child: ColoredBox(
-              color: visualTheme.background,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildStageFrame(
-                      stage,
-                      padding: stageCornerPadding.add(
-                        const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      ),
-                      safeBottom: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: panelWidth,
-                    child: SafeArea(left: false, child: bottomSurface),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return PopScope(
-          canPop: true,
-          child: ColoredBox(
-            color: visualTheme.background,
-            child: Builder(
-              builder: (context) {
-                final stagePadding = stageCornerPadding.add(
-                  const EdgeInsets.fromLTRB(10, 6, 10, 12),
-                );
-                final expandedStageHeight = _mobileStageExpandedHeight(
-                  context,
-                  constraints,
-                  stagePadding,
-                );
-                final collapsedStageHeight =
-                    MediaQuery.paddingOf(context).top + 64;
-                final collapseDistance =
-                    expandedStageHeight - collapsedStageHeight;
-                final effectiveCollapseOffset =
-                    snapshot.playbackState == VesperPlaybackState.playing
-                    ? 0.0
-                    : _mobileStageCollapseOffset;
-                final collapseProgress = collapseDistance <= 0
-                    ? 0.0
-                    : (effectiveCollapseOffset / collapseDistance)
-                          .clamp(0.0, 1.0)
-                          .toDouble();
-                final stageHeight = ui.lerpDouble(
-                  expandedStageHeight,
-                  collapsedStageHeight,
-                  collapseProgress,
-                )!;
-                return Column(
-                  children: [
-                    SizedBox(
-                      height: stageHeight,
-                      child: _buildCollapsibleStageFrame(
-                        stage,
-                        controller: controller,
-                        snapshot: snapshot,
-                        padding: stagePadding,
-                        progress: collapseProgress,
-                      ),
-                    ),
-                    Expanded(child: bottomSurface),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
+    await setBiliSystemUiMode(systemUiMode);
+    setBiliSystemUiOverlayStyle(overlayStyle);
   }
 
-  double _mobileStageExpandedHeight(
-    BuildContext context,
-    BoxConstraints constraints,
-    EdgeInsetsGeometry padding,
-  ) {
-    final resolvedPadding = padding.resolve(Directionality.of(context));
-    final availableWidth =
-        constraints.maxWidth - resolvedPadding.left - resolvedPadding.right;
-    final videoHeight =
-        availableWidth.clamp(0.0, constraints.maxWidth) * 9 / 16;
-    return MediaQuery.paddingOf(context).top +
-        resolvedPadding.top +
-        videoHeight +
-        resolvedPadding.bottom;
-  }
-
-  Widget _buildCollapsibleStageFrame(
-    Widget stage, {
-    required VesperPlayerController controller,
-    required VesperPlayerSnapshot snapshot,
-    required EdgeInsetsGeometry padding,
-    required double progress,
-  }) {
-    final stageOpacity = (1 - progress * 1.35).clamp(0.0, 1.0).toDouble();
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerMove: _handleMobileStagePointerMove,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (progress < 0.55)
-            IgnorePointer(
-              ignoring: progress > 0.42,
-              child: Opacity(
-                opacity: stageOpacity,
-                child: _buildStageFrame(
-                  stage,
-                  padding: padding,
-                  safeBottom: false,
-                ),
-              ),
-            ),
-          IgnorePointer(
-            ignoring: progress < 0.08,
-            child: Opacity(
-              opacity: progress,
-              child: _CollapsedPlaybackBar(
-                title: _playbackStateLabel(snapshot),
-                isPlaying:
-                    snapshot.playbackState == VesperPlaybackState.playing,
-                onBack: () => Navigator.of(context).maybePop(),
-                onHome: () =>
-                    Navigator.of(context).popUntil((route) => route.isFirst),
-                onPlayPause: () {
-                  if (snapshot.playbackState == VesperPlaybackState.playing) {
-                    unawaited(controller.pause());
-                  } else {
-                    unawaited(controller.play());
-                  }
-                },
-                onMore: () => unawaited(
-                  _openStageSheet(
-                    controller,
-                    vesper_ui.VesperPlayerStageSheet.menu,
-                    true,
-                  ),
-                ),
-              ),
-            ),
+  Future<bool?> _showPlaybackRecoveryDialog(
+    BuildContext dialogContext,
+    MediaPlaybackRecoveryNotice notice,
+  ) async {
+    if (_isTvMode) {
+      return showBiliTvGlassDialog<bool>(
+        context: dialogContext,
+        title: notice.title,
+        message: notice.message,
+        icon: Icons.sync_problem_rounded,
+        actions: const [
+          BiliTvDialogAction(
+            label: '知道了',
+            value: false,
+            icon: Icons.close_rounded,
+            autofocus: true,
+          ),
+          BiliTvDialogAction(
+            label: '重新解析',
+            value: true,
+            icon: Icons.refresh_rounded,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTvPlaybackLayout(
-    BuildContext context,
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
-    final isPlaying = snapshot.playbackState == VesperPlaybackState.playing;
-    _requestTvPlaybackFocusAfterFrame();
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
-          _handleTvBack();
-        }
-      },
-      child: Shortcuts(
-        shortcuts: const <ShortcutActivator, Intent>{
-          SingleActivator(LogicalKeyboardKey.select):
-              _TvPlaybackToggleBarIntent(),
-          SingleActivator(LogicalKeyboardKey.enter):
-              _TvPlaybackToggleBarIntent(),
-          SingleActivator(LogicalKeyboardKey.contextMenu):
-              _TvPlaybackMenuIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPlayPause):
-              _TvPlayPauseIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPlay): _TvPlayPauseIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPause): _TvPlayPauseIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowLeft):
-              _TvPlaybackLeftIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowRight):
-              _TvPlaybackRightIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowUp): _TvPlaybackUpIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowDown):
-              _TvPlaybackDownIntent(),
-        },
-        child: Actions(
-          actions: <Type, Action<Intent>>{
-            _TvPlaybackToggleBarIntent:
-                CallbackAction<_TvPlaybackToggleBarIntent>(
-                  onInvoke: (_) {
-                    _handleTvSelect();
-                    return null;
-                  },
-                ),
-            _TvPlaybackMenuIntent: CallbackAction<_TvPlaybackMenuIntent>(
-              onInvoke: (_) {
-                _showTvControls();
-                return null;
-              },
-            ),
-            _TvPlayPauseIntent: CallbackAction<_TvPlayPauseIntent>(
-              onInvoke: (_) {
-                _toggleTvPlayback(controller, snapshot);
-                return null;
-              },
-            ),
-            _TvPlaybackLeftIntent: CallbackAction<_TvPlaybackLeftIntent>(
-              onInvoke: (_) {
-                _handleTvDirectionalIntent(TraversalDirection.left);
-                return null;
-              },
-            ),
-            _TvPlaybackRightIntent: CallbackAction<_TvPlaybackRightIntent>(
-              onInvoke: (_) {
-                _handleTvDirectionalIntent(TraversalDirection.right);
-                return null;
-              },
-            ),
-            _TvPlaybackUpIntent: CallbackAction<_TvPlaybackUpIntent>(
-              onInvoke: (_) {
-                _handleTvDirectionalIntent(TraversalDirection.up);
-                return null;
-              },
-            ),
-            _TvPlaybackDownIntent: CallbackAction<_TvPlaybackDownIntent>(
-              onInvoke: (_) {
-                _handleTvDirectionalIntent(TraversalDirection.down);
-                return null;
-              },
-            ),
-          },
-          child: Focus(
-            focusNode: _tvPlaybackFocusNode,
-            autofocus: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _handleTvStageTap,
-              child: ColoredBox(
-                color: Colors.black,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned.fill(
-                      child: VesperPlayerView(controller: controller),
-                    ),
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _handleTvStageTap,
-                      ),
-                    ),
-                    if (_tvControlBarVisible || _tvPanelOpen)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: SignalBuilder(
-                          builder: (context) => _buildTvControlBar(
-                            controller,
-                            snapshot,
-                            isPlaying,
-                          ),
-                        ),
-                      ),
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      top: 0,
-                      bottom: 0,
-                      right: _tvPanelOpen ? 0 : -420,
-                      width: 420,
-                      child: IgnorePointer(
-                        ignoring: !_tvPanelOpen,
-                        child: _tvPanelOpen
-                            ? SignalBuilder(
-                                builder: (context) =>
-                                    _buildTvPanel(controller, snapshot),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+      );
+    }
+    return showMediaGlassDialog<bool>(
+      context: dialogContext,
+      barrierDismissible: false,
+      title: notice.title,
+      message: notice.message,
+      actions: const [
+        MediaGlassDialogAction(label: '知道了', value: false),
+        MediaGlassDialogAction(
+          label: '重新解析',
+          value: true,
+          isPrimary: true,
         ),
-      ),
+      ],
     );
   }
 
-  void _handleTvStageTap() {
-    _tvPlaybackFocusNode.requestFocus();
-    if (_tvPanelOpen) {
-      return;
-    }
-    if (_tvControlBarVisible) {
-      _hideTvControlsAndRestoreFocus();
-    } else {
-      _showTvControls();
-    }
-  }
-
-  void _handleTvSelect() {
-    if (_tvPanelOpen) {
-      return;
-    }
-    if (!_tvControlBarVisible) {
-      return;
-    }
-    _hideTvControlsAndRestoreFocus();
-  }
-
-  void _showTvControls() {
-    if (_tvControlBarVisible) {
-      return;
-    }
-    setState(() {
-      _tvControlBarVisible = true;
-    });
-  }
-
-  void _hideTvControlsAndRestoreFocus() {
-    if (!_tvControlBarVisible) {
-      _restoreTvPlaybackFocusAfterFrame();
-      return;
-    }
-    _requestTvPlaybackFocus();
-    setState(() {
-      _tvControlBarVisible = false;
-    });
-    _restoreTvPlaybackFocusAfterFrame();
-  }
-
-  void _restoreTvPlaybackFocusAfterFrame() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestTvPlaybackFocus();
-    });
-  }
-
-  void _requestTvPlaybackFocus() {
-    if (mounted && _tvPlaybackFocusNode.canRequestFocus) {
-      _tvPlaybackFocusNode.requestFocus();
-    }
-  }
-
-  void _toggleTvPlayback(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
-    if (snapshot.isBuffering) {
-      return;
-    }
-    if (snapshot.playbackState == VesperPlaybackState.playing) {
-      unawaited(controller.pause());
-    } else {
-      unawaited(controller.play());
-    }
-  }
-
-  void _handleTvBack() {
-    if (_tvBackDispatchPending) {
-      return;
-    }
-    _tvBackDispatchPending = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _tvBackDispatchPending = false;
-    });
-    if (_playbackModalRouteOpen) {
-      final route = ModalRoute.of(context);
-      if (route != null && !route.isCurrent) {
-        unawaited(Navigator.of(context, rootNavigator: true).maybePop());
-      }
-      return;
-    }
-    if (_tvPanelOpen) {
-      _closeTvPanelAndRestoreFocus();
-      return;
-    }
-    if (_tvControlBarVisible) {
-      _hideTvControlsAndRestoreFocus();
-      return;
-    }
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop();
-      return;
-    }
-    navigator.pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => BiliTvHomePage(
-          client: widget.client,
-          historyStore: widget.historyStore,
-          offlineController: widget.offlineController,
-        ),
-      ),
-    );
-  }
-
-  void _handleTvDirectionalIntent(TraversalDirection direction) {
-    if (_tvPanelOpen) {
-      _moveTvPanelFocus(direction);
-      return;
-    }
-    if (_tvControlBarVisible || _tvPanelOpen) {
-      if (!_moveTvFocus(direction) &&
-          (direction == TraversalDirection.up ||
-              direction == TraversalDirection.down)) {
-        _showTvControls();
-      }
-      return;
-    }
-    if (direction == TraversalDirection.left) {
-      return;
-    }
-    if (direction == TraversalDirection.right) {
-      return;
-    }
-    _showTvControls();
-  }
-
-  bool _moveTvFocus(TraversalDirection direction) {
-    final primaryFocus = FocusManager.instance.primaryFocus;
-    final moved = primaryFocus == null
-        ? false
-        : moveTvFocusSpatially(primaryFocus, direction);
-    if (moved) {
-      revealFocusedTvControl(direction);
-    }
-    return moved;
-  }
-
-  bool _moveTvPanelFocus(TraversalDirection direction) {
-    final primaryFocus = FocusManager.instance.primaryFocus;
-    final moved = primaryFocus == null
-        ? false
-        : moveTvFocusSpatially(
-            primaryFocus,
-            direction,
-            allowedAreas: {TvFocusArea.playbackPanel},
-          );
-    if (moved) {
-      revealFocusedTvControl(direction);
-    }
-    return moved;
-  }
-
-  void _seekTvBy(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-    int deltaMs,
-  ) {
-    final durationMs = snapshot.timeline.durationMs ?? 0;
-    if (durationMs <= 0) {
-      return;
-    }
-    final nextMs = (snapshot.timeline.positionMs + deltaMs).clamp(
-      0,
-      durationMs,
-    );
-    controller.seekToRatio(nextMs / durationMs);
-  }
-
-  void _openTvPanel(TvPlaybackPanelType panel) {
-    final willOpen = _tvPanel != panel;
-    setState(() {
-      _tvControlBarVisible = true;
-      _tvPanel = willOpen ? panel : TvPlaybackPanelType.none;
-      _lastOpenedTvPanel = willOpen ? panel : null;
-    });
-    if (!willOpen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _tvPanelButtonFocusNodes[panel]?.requestFocus();
-      });
-    }
-  }
-
-  List<_TvPanelOption> _tvSubtitlePanelOptions(VesperPlayerSnapshot snapshot) {
-    final tracks = _subtitleTracks(snapshot);
-    if (tracks.isEmpty ||
-        !snapshot.capabilities.supportsSubtitleTrackSelection) {
-      return const <_TvPanelOption>[];
-    }
-    final selection = _subtitleSelection(snapshot);
-    final selectedTrackId = selection.mode == VesperTrackSelectionMode.track
-        ? selection.trackId
-        : null;
-    return <_TvPanelOption>[
-      _TvPanelOption(
-        label: '关闭',
-        selected: selection.mode == VesperTrackSelectionMode.disabled,
-        onTap: () {
-          unawaited(_selectSubtitle(const VesperTrackSelection.disabled()));
-        },
-      ),
-      _TvPanelOption(
-        label: '自动',
-        selected: selection.mode == VesperTrackSelectionMode.auto,
-        onTap: () {
-          unawaited(_selectSubtitle(const VesperTrackSelection.auto()));
-        },
-      ),
-      for (final track in tracks)
-        _TvPanelOption(
-          label: _subtitleTrackLabel(track),
-          selected: selectedTrackId == track.id,
-          onTap: () {
-            unawaited(_selectSubtitle(VesperTrackSelection.track(track.id)));
-          },
-        ),
-    ];
-  }
-
-  String? _tvSubtitlePanelMessage(VesperPlayerSnapshot snapshot) {
-    if (!snapshot.capabilities.supportsSubtitleTrackSelection) {
-      return '当前播放内核不支持字幕切换。';
-    }
-    if (_subtitleTracks(snapshot).isNotEmpty) {
-      return null;
-    }
-    final advertised =
-        _resolvedPlayback?.subtitleTracks ?? const <BiliSubtitleTrack>[];
-    final subtitleError =
-        snapshot.subtitleState.catalogError?.message ??
-        _resolvedPlayback?.subtitleError;
-    if (subtitleError != null) {
-      return subtitleError;
-    }
-    final isLoading =
-        snapshot.subtitleState.catalogState ==
-        VesperSubtitleCatalogState.loading;
-    return advertised.isEmpty && !isLoading ? '当前视频没有可用字幕。' : '字幕正在准备，请稍后重试。';
-  }
-
-  Widget _buildTvPanel(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
-    final tracks = _playbackSelectionTracks(snapshot);
-    final qualityIds = _availableBiliQualityIds(tracks);
-    final currentQualityId = _currentBiliQualityId(snapshot, tracks);
-    final rates = _playbackRates(snapshot);
-    final subtitleOptions = _tvSubtitlePanelOptions(snapshot);
-    final subtitleMessage = _tvSubtitlePanelMessage(snapshot);
-    final pages = widget.detail.pages;
-    final isPgc =
-        widget.detail.ownerMid <= 0 && widget.detail.ownerName == '番剧';
-    final label = switch (_tvPanel) {
-      TvPlaybackPanelType.quality => '清晰度',
-      TvPlaybackPanelType.speed => '倍速',
-      TvPlaybackPanelType.subtitles => '字幕',
-      TvPlaybackPanelType.pages => isPgc ? '选集' : '分P',
-      TvPlaybackPanelType.none => '',
-    };
-    final subtitle = switch (_tvPanel) {
-      TvPlaybackPanelType.quality => '确认后立即切换当前播放清晰度',
-      TvPlaybackPanelType.speed => '确认后立即改变播放速度',
-      TvPlaybackPanelType.subtitles => '字幕语言与显示方式',
-      TvPlaybackPanelType.pages =>
-        isPgc ? '上下选择剧集，确认播放选中的一集' : '上下选择分 P，确认播放选中的分段',
-      TvPlaybackPanelType.none => '',
-    };
-    final options = switch (_tvPanel) {
-      TvPlaybackPanelType.quality =>
-        qualityIds
-            .map(
-              (id) => _TvPanelOption(
-                label: _biliQualityLabelFromQualityId(id) ?? '$id',
-                selected: currentQualityId == id,
-                onTap: () {
-                  unawaited(_selectBiliQuality(id));
-                },
-              ),
-            )
-            .toList(),
-      TvPlaybackPanelType.speed =>
-        rates
-            .map(
-              (rate) => _TvPanelOption(
-                label: '${rate}x',
-                selected: (snapshot.playbackRate - rate).abs() < 0.01,
-                onTap: () {
-                  unawaited(_setPlaybackRate(rate));
-                },
-              ),
-            )
-            .toList(),
-      TvPlaybackPanelType.subtitles => subtitleOptions,
-      TvPlaybackPanelType.pages =>
-        pages
-            .map(
-              (page) => _TvPanelOption(
-                label: isPgc ? '第 ${page.pageNumber} 集' : 'P${page.pageNumber}',
-                subtitle: page.title,
-                selected: _selectedPage.cid == page.cid,
-                onTap: () {
-                  unawaited(_switchPage(page));
-                },
-              ),
-            )
-            .toList(),
-      TvPlaybackPanelType.none => const <_TvPanelOption>[],
-    };
-
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Color(0x00101012), Color(0xF2101012)],
-        ),
-      ),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.horizontal(
-            left: Radius.circular(22),
-          ),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              width: 390,
-              height: double.infinity,
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-              decoration: const BoxDecoration(
-                color: Color(0xD91C1C1E),
-                border: Border(
-                  left: BorderSide(color: Color(0x22FFFFFF), width: 0.5),
-                ),
-              ),
-              child: SafeArea(
-                left: false,
-                child: _TvPanelDrawer(
-                  key: ValueKey<TvPlaybackPanelType>(_tvPanel),
-                  panel: _tvPanel,
-                  label: label,
-                  subtitle: subtitle,
-                  options: options,
-                  emptyMessage: _tvPanel == TvPlaybackPanelType.subtitles
-                      ? subtitleMessage
-                      : null,
-                  onClose: _closeTvPanelAndRestoreFocus,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _closeTvPanelAndRestoreFocus() {
-    final panel = _lastOpenedTvPanel;
-    setState(() {
-      _tvPanel = TvPlaybackPanelType.none;
-      _lastOpenedTvPanel = null;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final panelButton = panel == null
-          ? null
-          : _tvPanelButtonFocusNodes[panel];
-      if (_tvControlBarVisible &&
-          panelButton?.canRequestFocus == true &&
-          panelButton?.context != null) {
-        panelButton!.requestFocus();
-        return;
-      }
-      _tvPlaybackFocusNode.requestFocus();
-    });
-  }
-
-  Widget _buildTvControlBar(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-    bool isPlaying,
-  ) {
-    final positionMs = snapshot.timeline.positionMs;
-    final durationMs = snapshot.timeline.durationMs ?? 0;
-    final ratio = snapshot.timeline.displayedRatio ?? 0.0;
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x44000000), Color(0xEE000000)],
-            ),
-            border: const Border(
-              top: BorderSide(color: Color(0x18FFFFFF), width: 0.5),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(40, 20, 40, 36),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 28,
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(
-                        _formatMilliseconds(positionMs),
-                        style: const TextStyle(
-                          color: Color(0xCCFFFFFF),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: SliderTheme(
-                        data: const SliderThemeData(
-                          trackHeight: 4,
-                          thumbShape: RoundSliderThumbShape(
-                            enabledThumbRadius: 7,
-                          ),
-                          overlayShape: RoundSliderOverlayShape(
-                            overlayRadius: 14,
-                          ),
-                          activeTrackColor: Color(0xCCFFFFFF),
-                          inactiveTrackColor: Color(0x33FFFFFF),
-                          thumbColor: Color(0xFFFFFFFF),
-                          overlayColor: Color(0x22FFFFFF),
-                        ),
-                        child: Slider(
-                          value: ratio.clamp(0.0, 1.0),
-                          onChanged: (value) {
-                            controller.seekToRatio(value);
-                          },
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 60,
-                      child: Text(
-                        _formatMilliseconds(durationMs),
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          color: Color(0x99FFFFFF),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const SizedBox(width: 20),
-                  _TvBarButton(
-                    label: isPlaying ? '暂停' : '播放',
-                    icon: isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    autofocus: !_tvPanelOpen,
-                    onTap: () {
-                      if (isPlaying) {
-                        controller.pause();
-                      } else {
-                        controller.play();
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: '快退 10s',
-                    icon: Icons.replay_10_rounded,
-                    onTap: () {
-                      final newPosMs = (positionMs - 10000).clamp(
-                        0,
-                        durationMs,
-                      );
-                      controller.seekToRatio(
-                        durationMs > 0 ? newPosMs / durationMs : 0,
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: '快进 10s',
-                    icon: Icons.forward_10_rounded,
-                    onTap: () {
-                      final newPosMs = (positionMs + 10000).clamp(
-                        0,
-                        durationMs,
-                      );
-                      controller.seekToRatio(
-                        durationMs > 0 ? newPosMs / durationMs : 0,
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: '清晰度',
-                    icon: Icons.hd_rounded,
-                    focusNode: _tvPanelButtonNode(TvPlaybackPanelType.quality),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.quality),
-                  ),
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: '倍速',
-                    icon: Icons.speed_rounded,
-                    focusNode: _tvPanelButtonNode(TvPlaybackPanelType.speed),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.speed),
-                  ),
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: '字幕',
-                    icon: Icons.subtitles_outlined,
-                    focusNode: _tvPanelButtonNode(
-                      TvPlaybackPanelType.subtitles,
-                    ),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.subtitles),
-                  ),
-                  if (widget.detail.pages.length > 1) ...[
-                    const SizedBox(width: 14),
-                    _TvBarButton(
-                      label: '分P',
-                      icon: Icons.playlist_play_rounded,
-                      focusNode: _tvPanelButtonNode(TvPlaybackPanelType.pages),
-                      onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
-                    ),
-                  ],
-                  const SizedBox(width: 14),
-                  _TvBarButton(
-                    label: _isInWatchLater ? '已加入稍后再看' : '稍后再看',
-                    icon: _isInWatchLater
-                        ? Icons.watch_later_rounded
-                        : Icons.watch_later_outlined,
-                    onTap: _watchLaterLoading
-                        ? () {}
-                        : () => unawaited(_toggleWatchLater()),
-                  ),
-                ],
-              ),
-              SizedBox(
-                height: MediaQuery.paddingOf(context).bottom > 0 ? 8 : 0,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  FocusNode _tvPanelButtonNode(TvPlaybackPanelType panel) {
-    return _tvPanelButtonFocusNodes.putIfAbsent(
-      panel,
-      () => FocusNode(debugLabel: 'tv_${panel.name}_button'),
-    );
-  }
-
-  String _formatMilliseconds(int ms) {
-    final totalSeconds = (ms / 1000).round();
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  Widget _buildStage({
-    required VesperPlayerController controller,
-    required VesperPlayerSnapshot snapshot,
-    required bool isFullscreen,
-  }) {
-    final usesPortraitChrome = !isFullscreen;
-    return vesper_ui.VesperPlayerStage(
-      controller: controller,
-      snapshot: snapshot,
-      isPortrait: usesPortraitChrome,
-      sheetOpen: _settingsSurfaceOpen || _castingSurfaceOpen || _dlnaPickerOpen,
-      deviceControls: _stageDeviceControls,
-      topBarPrimaryAction: _buildStageProjectionAction(controller),
-      strings: const vesper_ui.VesperPlayerStageStrings.zhHans(),
-      onOpenSheet: (sheet) =>
-          unawaited(_openStageSheet(controller, sheet, usesPortraitChrome)),
-      onToggleFullscreen: () => unawaited(_toggleFullscreen()),
-    );
-  }
-
-  Widget _buildStageFrame(
-    Widget stage, {
-    required EdgeInsetsGeometry padding,
-    required bool safeBottom,
-  }) {
-    return ColoredBox(
-      color: Colors.black,
-      child: SafeArea(
-        bottom: safeBottom,
-        child: Padding(
-          padding: padding,
-          child: Center(
-            child: AspectRatio(aspectRatio: 16 / 9, child: stage),
-          ),
-        ),
-      ),
-    );
-  }
-
-  EdgeInsets _displayCornerPadding(BuildContext context) {
-    final corners = MediaQuery.maybeDisplayCornerRadiiOf(context);
-    if (corners == null) {
-      return EdgeInsets.zero;
-    }
-    final topPadding = corners.topLeft.x > corners.topRight.x
-        ? corners.topLeft.x
-        : corners.topRight.x;
-    return EdgeInsets.only(
-      left: corners.topLeft.x,
-      top: topPadding,
-      right: corners.topRight.x,
-    );
-  }
-
-  Widget _buildBottomSurface(
-    BuildContext context,
-    VesperPlayerSnapshot snapshot, {
-    String? errorMessage,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final visualTheme = AppVisualTheme.of(context);
-        final horizontalPadding = constraints.maxWidth >= 540 ? 34.0 : 16.0;
-        return DecoratedBox(
-          key: const ValueKey<String>('playback-bottom-surface'),
-          decoration: BoxDecoration(
-            color: visualTheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: visualTheme.shadow,
-                blurRadius: 18,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              0,
-              horizontalPadding,
-              0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (errorMessage != null) ...[
-                  _PlaybackInlineError(
-                    title: '播放器错误',
-                    message: errorMessage,
-                    actionLabel: '重新解析',
-                    onPressed: _reloadCurrentPage,
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                _PlaybackContextTabs(
-                  controller: _infoTabController,
-                  replyCountLabel: widget.detail.replyCountLabel,
-                  danmakuCountLabel: widget.detail.danmakuCountLabel,
-                ),
-                Expanded(
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: SignalBuilder(
-                      builder: (context) => _buildIntroPanel(context, snapshot),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _openStageSheet(
-    VesperPlayerController controller,
-    vesper_ui.VesperPlayerStageSheet _,
-    bool isPortrait,
-  ) async {
+  void _pushRelatedPlayback(MediaDetail detail, MediaPlaybackEntry entry) {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _settingsSurfaceOpen = true;
-    });
-    try {
-      await _showSettingsSurface(controller, isPortrait: isPortrait);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _settingsSurfaceOpen = false;
-        });
-      }
+    final biliDetail = BiliMediaMapper.toBiliDetail(detail);
+    final biliPage = BiliMediaMapper.toBiliEntry(entry);
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliPlaybackPage(
+          detail: biliDetail,
+          initialPage: biliPage,
+          client: widget.client,
+          historyStore: widget.historyStore,
+          offlineController: widget.offlineController,
+          presentationMode: widget.presentationMode,
+        ),
+      ),
+    );
+  }
+
+  // ---- 离线缓存表面（下载保持 app 级，B 站专属） ----
+
+  Future<void> _openCacheSurfaceFromSettings(
+    BuildContext surfaceContext,
+  ) async {
+    final size = MediaQuery.sizeOf(context);
+    final isPortrait = size.height >= size.width;
+    Navigator.of(surfaceContext).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) {
+      return;
     }
+    await _showCacheSurface(isPortrait: isPortrait);
+  }
+
+  Future<void> _showCacheSurface({required bool isPortrait}) {
+    if (isPortrait) {
+      return _showCacheSheet();
+    }
+    return _showCacheDrawer();
+  }
+
+  Future<void> _showCacheDrawer() {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.40),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, _, _) {
+        final visualTheme = AppVisualTheme.of(dialogContext);
+        final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
+            .clamp(
+              MediaQuery.sizeOf(dialogContext).width * 0.28,
+              MediaQuery.sizeOf(dialogContext).width * 0.42,
+            )
+            .toDouble();
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Material(
+            color: visualTheme.background,
+            borderRadius: const BorderRadius.horizontal(
+              right: Radius.circular(22),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SafeArea(
+              right: false,
+              child: SizedBox(
+                width: drawerWidth,
+                height: double.infinity,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+                  child: BiliCacheDownloadPanel(
+                    detail: widget.detail,
+                    currentPage: _viewModel.selectedPage,
+                    selectedQualityId: _viewModel.selectedBiliQualityId,
+                    codecPreference: _currentDownloadCodecPreference(),
+                    controller: _viewModel.offlineController,
+                    onMessage: _showMessage,
+                    client: widget.client,
+                    historyStore: widget.historyStore,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(-1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Future<void> _showCacheSheet() {
+    return showMediaGlassSheet<void>(
+      context: context,
+      contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      builder: (_) => BiliCacheDownloadPanel(
+        detail: widget.detail,
+        currentPage: _viewModel.selectedPage,
+        selectedQualityId: _viewModel.selectedBiliQualityId,
+        codecPreference: _currentDownloadCodecPreference(),
+        controller: _viewModel.offlineController,
+        onMessage: _showMessage,
+        client: widget.client,
+        historyStore: widget.historyStore,
+      ),
+    );
+  }
+
+  BiliVideoCodecPreference _currentDownloadCodecPreference() {
+    return _viewModel.currentDownloadCodecPreference();
   }
 }
