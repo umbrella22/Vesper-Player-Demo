@@ -5096,7 +5096,7 @@ void main() {
   );
 
   testWidgets(
-    'tv playback quality panel marks effective playing quality',
+    'tv playback quality panel keeps auto selected during adaptive playback',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
         tester,
@@ -5112,7 +5112,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_1080P');
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_自动');
+      expect(find.text('自动'), findsOneWidget);
       expect(find.text('1080P'), findsOneWidget);
       expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
     },

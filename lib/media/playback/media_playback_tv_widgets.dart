@@ -60,12 +60,14 @@ final class TvPanelOption {
     this.subtitle,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String label;
   final String? subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final bool enabled;
 }
 
 /// TV 侧栏面板容器：标题 + 说明 + 选项列表 + 关闭。
@@ -130,7 +132,7 @@ class TvPanelDrawer extends StatelessWidget {
               : TvPanelOptionList(panelKey: panelKey, options: options),
         ),
         TvFocusable(
-          autofocus: options.isEmpty,
+          autofocus: !options.any((option) => option.enabled),
           showGlow: false,
           scale: 1.04,
           focusCornerRadius: 12,
@@ -179,12 +181,14 @@ class TvPanelOptionList extends StatefulWidget {
 
 class _TvPanelOptionListState extends State<TvPanelOptionList> {
   late final ScrollController _controller;
+  late List<FocusNode> _focusNodes;
   bool _autofocusSelected = true;
 
   @override
   void initState() {
     super.initState();
     _controller = ScrollController();
+    _focusNodes = _createFocusNodes(widget.options);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusSelectedOption();
       if (mounted) {
@@ -198,9 +202,24 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
   @override
   void didUpdateWidget(TvPanelOptionList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.panelKey != widget.panelKey ||
+    final optionsChanged =
         oldWidget.options.length != widget.options.length ||
-        _selectedIndex(oldWidget.options) != _selectedIndex(widget.options)) {
+        _selectedIndex(oldWidget.options) != _selectedIndex(widget.options) ||
+        !_sameEnabledState(oldWidget.options, widget.options);
+    if (oldWidget.options.length != widget.options.length) {
+      final staleNodes = _focusNodes;
+      _focusNodes = _createFocusNodes(widget.options);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final node in staleNodes) {
+          node.dispose();
+        }
+      });
+    } else {
+      for (var index = 0; index < widget.options.length; index += 1) {
+        _focusNodes[index].canRequestFocus = widget.options[index].enabled;
+      }
+    }
+    if (oldWidget.panelKey != widget.panelKey || optionsChanged) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _focusSelectedOption(),
       );
@@ -210,19 +229,63 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
   @override
   void dispose() {
     _controller.dispose();
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
     super.dispose();
   }
 
+  List<FocusNode> _createFocusNodes(List<TvPanelOption> options) {
+    return options
+        .map(
+          (option) => FocusNode(
+            debugLabel: 'tv_panel_${option.label}',
+            canRequestFocus: option.enabled,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  bool _sameEnabledState(
+    List<TvPanelOption> previous,
+    List<TvPanelOption> current,
+  ) {
+    if (previous.length != current.length) {
+      return false;
+    }
+    for (var index = 0; index < previous.length; index += 1) {
+      if (previous[index].enabled != current[index].enabled) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   int _selectedIndex(List<TvPanelOption> options) {
-    final index = options.indexWhere((option) => option.selected);
-    return index < 0 ? 0 : index;
+    final selectedIndex = options.indexWhere(
+      (option) => option.selected && option.enabled,
+    );
+    if (selectedIndex >= 0) {
+      return selectedIndex;
+    }
+    return options.indexWhere((option) => option.enabled);
   }
 
   void _focusSelectedOption() {
-    if (!mounted || !_controller.hasClients || widget.options.isEmpty) {
+    if (!mounted || widget.options.isEmpty) {
       return;
     }
     final selectedIndex = _selectedIndex(widget.options);
+    if (selectedIndex < 0 || selectedIndex >= _focusNodes.length) {
+      return;
+    }
+    final focusNode = _focusNodes[selectedIndex];
+    if (focusNode.canRequestFocus) {
+      focusNode.requestFocus();
+    }
+    if (!_controller.hasClients) {
+      return;
+    }
     _controller.animateTo(
       (selectedIndex * 86.0).clamp(0.0, _controller.position.maxScrollExtent),
       duration: const Duration(milliseconds: 180),
@@ -242,7 +305,9 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
       itemBuilder: (context, index) {
         final option = widget.options[index];
         return _TvPanelOptionTile(
+          key: ObjectKey(_focusNodes[index]),
           option: option,
+          focusNode: _focusNodes[index],
           autofocus: _autofocusSelected && index == selectedIndex,
         );
       },
@@ -251,9 +316,15 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
 }
 
 class _TvPanelOptionTile extends StatefulWidget {
-  const _TvPanelOptionTile({required this.option, required this.autofocus});
+  const _TvPanelOptionTile({
+    super.key,
+    required this.option,
+    required this.focusNode,
+    required this.autofocus,
+  });
 
   final TvPanelOption option;
+  final FocusNode focusNode;
   final bool autofocus;
 
   @override
@@ -266,134 +337,159 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
   @override
   Widget build(BuildContext context) {
     final option = widget.option;
-    final selected = option.selected;
-    final focused = _focused;
-    return TvFocusable(
-      autofocus: widget.autofocus,
-      debugLabel: 'tv_panel_${option.label}',
-      showGlow: false,
-      scale: 1,
-      focusCornerRadius: 14,
-      baseCornerRadius: 14,
-      focusArea: TvFocusArea.playbackPanel,
-      onFocusChange: (value) {
-        setState(() {
-          _focused = value;
-        });
-      },
-      onTap: option.onTap,
-      child: AnimatedScale(
-        scale: focused ? 1.035 : 1,
+    final enabled = option.enabled;
+    final selected = option.selected && enabled;
+    final focused = _focused && enabled;
+    final surface = AnimatedScale(
+      scale: focused ? 1.035 : 1,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      child: AnimatedSlide(
+        offset: focused ? const Offset(-0.018, 0) : Offset.zero,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        child: AnimatedSlide(
-          offset: focused ? const Offset(-0.018, 0) : Offset.zero,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.all(4),
-            padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-            decoration: BoxDecoration(
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+          decoration: BoxDecoration(
+            color: focused
+                ? Colors.white.withValues(alpha: 0.24)
+                : selected
+                ? AppVisualTokens.primaryBlue
+                : !enabled
+                ? const Color(0x0AFFFFFF)
+                : const Color(0x14FFFFFF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
               color: focused
-                  ? Colors.white.withValues(alpha: 0.24)
+                  ? const Color(0xF2F8FBFF)
                   : selected
-                  ? AppVisualTokens.primaryBlue
-                  : const Color(0x14FFFFFF),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: focused
-                    ? const Color(0xF2F8FBFF)
-                    : selected
-                    ? AppVisualTokens.primaryBlue80
-                    : const Color(0x16FFFFFF),
-                width: focused ? 1.6 : 1,
-              ),
-              boxShadow: focused
-                  ? [
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.16),
-                        blurRadius: 26,
-                        spreadRadius: 1,
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.36),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : const [],
+                  ? AppVisualTokens.primaryBlue80
+                  : !enabled
+                  ? const Color(0x10FFFFFF)
+                  : const Color(0x16FFFFFF),
+              width: focused ? 1.6 : 1,
             ),
-            child: Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 4,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: focused || selected
-                        ? Colors.white
-                        : const Color(0x00FFFFFF),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
+            boxShadow: focused
+                ? [
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      blurRadius: 26,
+                      spreadRadius: 1,
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.36),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ]
+                : const [],
+          ),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 4,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: focused || selected
+                      ? Colors.white
+                      : const Color(0x00FFFFFF),
+                  borderRadius: BorderRadius.circular(99),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: focused || selected
+                            ? Colors.white
+                            : !enabled
+                            ? const Color(0x66FFFFFF)
+                            : const Color(0xDFFFFFFF),
+                        fontSize: 16,
+                        fontWeight: focused || selected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    if (option.subtitle != null) ...[
+                      const SizedBox(height: 3),
                       Text(
-                        option.label,
-                        maxLines: 1,
+                        option.subtitle!,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: focused || selected
-                              ? Colors.white
-                              : const Color(0xDFFFFFFF),
-                          fontSize: 16,
-                          fontWeight: focused || selected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
+                              ? Colors.white.withValues(alpha: 0.82)
+                              : !enabled
+                              ? const Color(0x55FFFFFF)
+                              : const Color(0x88FFFFFF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.25,
                         ),
                       ),
-                      if (option.subtitle != null) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          option.subtitle!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: focused || selected
-                                ? Colors.white.withValues(alpha: 0.82)
-                                : const Color(0x88FFFFFF),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                if (selected)
-                  const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  )
-                else if (focused)
-                  const Icon(
-                    Icons.radio_button_unchecked_rounded,
-                    color: Color(0xCCFFFFFF),
-                    size: 18,
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              if (selected)
+                const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 24,
+                )
+              else if (focused)
+                const Icon(
+                  Icons.radio_button_unchecked_rounded,
+                  color: Color(0xCCFFFFFF),
+                  size: 18,
+                ),
+            ],
           ),
         ),
       ),
+    );
+    final semanticsLabel = option.subtitle == null
+        ? option.label
+        : '${option.label}，${option.subtitle}';
+    final child = enabled
+        ? TvFocusable(
+            focusNode: widget.focusNode,
+            autofocus: widget.autofocus,
+            debugLabel: 'tv_panel_${option.label}',
+            showGlow: false,
+            scale: 1,
+            focusCornerRadius: 14,
+            baseCornerRadius: 14,
+            focusArea: TvFocusArea.playbackPanel,
+            onFocusChange: (value) {
+              if (mounted && _focused != value) {
+                setState(() {
+                  _focused = value;
+                });
+              }
+            },
+            onTap: option.onTap,
+            child: surface,
+          )
+        : surface;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      selected: option.selected,
+      label: semanticsLabel,
+      child: ExcludeSemantics(child: child),
     );
   }
 }

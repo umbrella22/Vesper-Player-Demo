@@ -112,6 +112,32 @@ final class MediaQualityOption {
   final bool isDefault;
 }
 
+/// 当前播放器目录下，一个清晰度选项的动态可选状态。
+///
+/// `unknown` 表示 SDK 尚无可靠能力证据，仍允许用户尝试；它不能被当作
+/// `unavailable`。解析结果中的 [MediaQualityOption] 保持静态分组，本类型由
+/// 播放 ViewModel 按最新 track catalog 计算。
+enum MediaQualityAvailability { available, unavailable, unknown }
+
+final class MediaQualitySelectionOption {
+  const MediaQualitySelectionOption({
+    required this.option,
+    required this.availability,
+    required this.candidateTracks,
+    this.unavailableReason,
+  });
+
+  final MediaQualityOption option;
+  final MediaQualityAvailability availability;
+  final List<VesperMediaTrack> candidateTracks;
+  final VesperTrackSupportReason? unavailableReason;
+
+  String get id => option.id;
+  String get label => option.label;
+  bool get isDefault => option.isDefault;
+  bool get canSelect => availability != MediaQualityAvailability.unavailable;
+}
+
 /// 平台级清晰度能力声明。
 final class MediaQualityPolicy {
   const MediaQualityPolicy({

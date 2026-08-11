@@ -13,11 +13,13 @@ final class TuningCodecOption {
     required this.id,
     required this.label,
     required this.enabled,
+    this.supportingText,
   });
 
   final String id;
   final String label;
   final bool enabled;
+  final String? supportingText;
 }
 
 /// 通用音画调校面板：分辨率（质量选项）/ 播放策略（codec）/ 倍速 / 字幕。
@@ -31,6 +33,7 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     super.key,
     required this.snapshot,
     required this.qualityOptions,
+    required this.qualitySupportingTextFor,
     required this.selectedQualityOptionId,
     required this.codecOptions,
     required this.selectedCodecIdentity,
@@ -52,7 +55,9 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
   });
 
   final VesperPlayerSnapshot snapshot;
-  final List<MediaQualityOption> qualityOptions;
+  final List<MediaQualitySelectionOption> qualityOptions;
+  final String? Function(MediaQualitySelectionOption option)
+  qualitySupportingTextFor;
   final String? selectedQualityOptionId;
   final List<TuningCodecOption> codecOptions;
   final String? selectedCodecIdentity;
@@ -141,10 +146,7 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
           children: [
             _SnapshotRow(label: '播放状态', value: playbackStateLabel),
             _SnapshotRow(label: '时间线', value: timelineLabel),
-            _SnapshotRow(
-              label: '当前链路',
-              value: transportLabel ?? '未知',
-            ),
+            _SnapshotRow(label: '当前链路', value: transportLabel ?? '未知'),
             _SnapshotRow(label: '资源地址', value: resolvedUri ?? '未知'),
             if ((debugPath ?? '').isNotEmpty)
               _SnapshotRow(label: 'Manifest', value: debugPath!),
@@ -163,28 +165,47 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
     if (qualityOptions.isEmpty) {
-      return Text(
-        '当前播放链路无可选清晰度。',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: visualTheme.textTertiary,
-          fontWeight: FontWeight.w600,
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TuningOptionButton(
+            key: const ValueKey<String>('tuning-quality-auto'),
+            label: '自动',
+            selected: selectedQualityOptionId == null,
+            onTap: () => onSelectQuality(null),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '当前播放链路无可选清晰度。',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: visualTheme.textTertiary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       );
     }
 
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: qualityOptions
-          .map((option) {
-            final isSelected = selectedQualityOptionId == option.id;
-            return TuningOptionButton(
-              label: option.label,
-              selected: isSelected,
-              onTap: () => onSelectQuality(option.id),
-            );
-          })
-          .toList(growable: false),
+      children: [
+        TuningOptionButton(
+          key: const ValueKey<String>('tuning-quality-auto'),
+          label: '自动',
+          selected: selectedQualityOptionId == null,
+          onTap: () => onSelectQuality(null),
+        ),
+        for (final option in qualityOptions)
+          TuningOptionButton(
+            key: ValueKey<String>('tuning-quality-${option.id}'),
+            label: option.label,
+            selected: selectedQualityOptionId == option.id,
+            enabled: option.canSelect,
+            supportingText: qualitySupportingTextFor(option),
+            onTap: () => onSelectQuality(option.id),
+          ),
+      ],
     );
   }
 
@@ -200,6 +221,7 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
               label: option.label,
               selected: selected,
               enabled: option.enabled,
+              supportingText: option.supportingText,
               onTap: () => onSelectCodec(selected ? null : option.id),
             );
           })
@@ -251,8 +273,7 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
           label: '关闭',
           selected: selection.mode == VesperTrackSelectionMode.disabled,
           enabled: subtitleSelectionEnabled,
-          onTap: () =>
-              onSelectSubtitle(const VesperTrackSelection.disabled()),
+          onTap: () => onSelectSubtitle(const VesperTrackSelection.disabled()),
         ),
         TuningOptionButton(
           label: '自动',
@@ -265,8 +286,7 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
             label: _subtitleTrackLabel(track),
             selected: track.id == selectedTrackId,
             enabled: subtitleSelectionEnabled,
-            onTap: () =>
-                onSelectSubtitle(VesperTrackSelection.track(track.id)),
+            onTap: () => onSelectSubtitle(VesperTrackSelection.track(track.id)),
           ),
       ],
     );

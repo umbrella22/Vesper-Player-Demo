@@ -778,11 +778,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
 
         final isWide =
             constraints.maxWidth >= 840 && constraints.maxHeight >= 480;
-        final bottomSurface = _buildBottomSurface(
-          context,
-          snapshot,
-          errorMessage: snapshot.lastError?.message,
-        );
+        final bottomSurface = _buildBottomSurface(context, snapshot);
 
         if (isWide) {
           final panelWidth = (constraints.maxWidth * 0.36)
@@ -1342,8 +1338,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     VesperPlayerController controller,
     VesperPlayerSnapshot snapshot,
   ) {
-    final options = _viewModel.availableQualityOptions();
-    final currentOptionId = _currentQualityOptionId(snapshot, options);
+    final qualityOptions = _viewModel.qualitySelectionOptions(snapshot);
+    final currentOptionId = _viewModel.selectedQualityOptionId;
     final rates = _playbackRates(snapshot);
     final subtitleOptions = _tvSubtitlePanelOptions(snapshot);
     final subtitleMessage = _tvSubtitlePanelMessage(snapshot);
@@ -1365,18 +1361,25 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       TvPlaybackPanelType.none => '',
     };
     final optionsList = switch (_tvPanel) {
-      TvPlaybackPanelType.quality =>
-        options
-            .map(
-              (option) => TvPanelOption(
-                label: option.label,
-                selected: currentOptionId == option.id,
-                onTap: () {
-                  unawaited(_selectQualityOption(option.id));
-                },
-              ),
-            )
-            .toList(),
+      TvPlaybackPanelType.quality => <TvPanelOption>[
+        TvPanelOption(
+          label: '自动',
+          selected: currentOptionId == null,
+          onTap: () {
+            unawaited(_selectQualityOption(null));
+          },
+        ),
+        for (final option in qualityOptions)
+          TvPanelOption(
+            label: option.label,
+            subtitle: _viewModel.qualitySelectionSupportingText(option),
+            selected: currentOptionId == option.id,
+            enabled: option.canSelect,
+            onTap: () {
+              unawaited(_selectQualityOption(option.id));
+            },
+          ),
+      ],
       TvPlaybackPanelType.speed =>
         rates
             .map(
@@ -1436,7 +1439,9 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                 left: false,
                 child: TvPanelDrawer(
                   key: ValueKey<TvPlaybackPanelType>(_tvPanel),
-                  panelKey: _tvPanel.name,
+                  panelKey: _tvPanel == TvPlaybackPanelType.quality
+                      ? '${_tvPanel.name}:${snapshot.trackCatalog.catalogRevision}'
+                      : _tvPanel.name,
                   label: label,
                   subtitle: subtitle,
                   options: optionsList,
@@ -1451,26 +1456,6 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
         ),
       ),
     );
-  }
-
-  String? _currentQualityOptionId(
-    VesperPlayerSnapshot snapshot,
-    List<MediaQualityOption> options,
-  ) {
-    final selected = _viewModel.selectedQualityOptionId;
-    if (selected != null) {
-      return selected;
-    }
-    final effectiveTrackId = snapshot.effectiveVideoTrackId;
-    if (effectiveTrackId == null) {
-      return null;
-    }
-    for (final option in options) {
-      if (option.tracks.any((track) => track.id == effectiveTrackId)) {
-        return option.id;
-      }
-    }
-    return null;
   }
 
   void _closeTvPanelAndRestoreFocus() {
@@ -1765,9 +1750,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
 
   Widget _buildBottomSurface(
     BuildContext context,
-    VesperPlayerSnapshot snapshot, {
-    String? errorMessage,
-  }) {
+    VesperPlayerSnapshot snapshot,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final visualTheme = AppVisualTheme.of(context);
@@ -1779,6 +1763,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
         return SignalBuilder(
           builder: (context) {
             _syncInfoTabController(context);
+            final errorMessage = _viewModel.playbackErrorMessage(snapshot);
             final engagement = _viewModel.adapter.engagement;
             return DecoratedBox(
               key: const ValueKey<String>('playback-bottom-surface'),
@@ -2052,7 +2037,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     VesperPlayerSnapshot snapshot,
   ) {
     final timeline = snapshot.timeline;
-    final options = _viewModel.availableQualityOptions();
+    final declaredQualityOptions = _viewModel.availableQualityOptions();
+    final qualityOptions = _viewModel.qualitySelectionOptions(snapshot);
     final selectedId = _viewModel.selectedQualityOptionId;
     final selectedCodec = _viewModel.selectedCodecIdentity;
     final qualityPolicy = _viewModel.adapter.qualityPolicy;
@@ -2064,8 +2050,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
             // 按策略身份归组（同组轨道合并为一个选项）；选项 label 用
             // 身份的规范标签（稳定，不随轨道顺序变化——如 Dolby Vision
             // 归入 HEVC 后整组显示 "HEVC"）。
-            final optionsById = <String, TuningCodecOption>{};
-            for (final option in options) {
+            final labelsById = <String, String>{};
+            for (final option in declaredQualityOptions) {
               if (selectedId != null && option.id != selectedId) {
                 continue;
               }
@@ -2075,16 +2061,29 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                   continue;
                 }
                 final id = codecIdentityFor?.call(track) ?? label;
-                optionsById[id] ??= TuningCodecOption(
-                  id: id,
-                  // 规范展示标签由 policy 显式提供；缺省回退组内首项
-                  // 轨道的展示 label（身份是内部键，绝不直接展示）。
-                  label: codecIdentityLabel?.call(id) ?? label,
-                  enabled: true,
-                );
+                labelsById[id] ??= codecIdentityLabel?.call(id) ?? label;
               }
             }
-            return optionsById.values.toList(growable: false);
+            return labelsById.entries
+                .map((entry) {
+                  final availability = _viewModel.codecSelectionAvailability(
+                    snapshot,
+                    entry.key,
+                    optionId: selectedId,
+                  );
+                  return TuningCodecOption(
+                    id: entry.key,
+                    label: entry.value,
+                    enabled:
+                        availability != MediaQualityAvailability.unavailable,
+                    supportingText: _viewModel.codecSelectionSupportingText(
+                      snapshot,
+                      entry.key,
+                      optionId: selectedId,
+                    ),
+                  );
+                })
+                .toList(growable: false);
           }()
         : const <TuningCodecOption>[];
     final advertisedEmpty =
@@ -2098,7 +2097,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
         VesperSubtitleCatalogState.loading;
     return MediaPlaybackTuningPanel(
       snapshot: snapshot,
-      qualityOptions: options,
+      qualityOptions: qualityOptions,
+      qualitySupportingTextFor: _viewModel.qualitySelectionSupportingText,
       selectedQualityOptionId: selectedId,
       codecOptions: codecOptions,
       selectedCodecIdentity: selectedCodec,

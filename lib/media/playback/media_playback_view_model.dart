@@ -19,6 +19,20 @@ final class _PlaybackSourceObsoleted implements Exception {
   const _PlaybackSourceObsoleted();
 }
 
+final class _TrackSelectionAvailability {
+  const _TrackSelectionAvailability({
+    required this.availability,
+    required this.declaredTracks,
+    required this.candidateTracks,
+    this.unavailableReason,
+  });
+
+  final MediaQualityAvailability availability;
+  final List<VesperMediaTrack> declaredTracks;
+  final List<VesperMediaTrack> candidateTracks;
+  final VesperTrackSupportReason? unavailableReason;
+}
+
 /// 通用播放编排：控制器生命周期、解析/恢复、清晰度/倍速/字幕、DLNA、
 /// 系统播放与历史。
 ///
@@ -103,6 +117,8 @@ final class MediaPlaybackViewModel {
       Signal<ResolvedMediaPlayback?>(null);
   final Signal<String?> _selectedQualityOptionId = Signal<String?>(null);
   final Signal<String?> _selectedCodecIdentity = Signal<String?>(null);
+  final Signal<VesperPlayerError?> _suppressedPlaybackCommandError =
+      Signal<VesperPlayerError?>(null);
   final Signal<VesperSystemPlaybackPermissionStatus>
   _systemPlaybackPermissionStatus =
       Signal<VesperSystemPlaybackPermissionStatus>(
@@ -129,6 +145,10 @@ final class MediaPlaybackViewModel {
   int _playbackRecoveryAttempts = 0;
   int _playbackRecoveryGeneration = 0;
   int _controllerGeneration = 0;
+  int _playbackSelectionGeneration = 0;
+  final Set<String> _runtimeRejectedVideoTrackIds = <String>{};
+  final Set<String> _handledRuntimeTrackRejections = <String>{};
+  String? _pendingRuntimeFallbackTrackId;
   VesperPlayerError? _deferredPlaybackRecoveryError;
   StreamSubscription<VesperPlayerEvent>? _controllerEventsSubscription;
   Timer? _playbackRecoverySuccessTimer;
@@ -148,6 +168,19 @@ final class MediaPlaybackViewModel {
   String? get selectedQualityOptionId => _selectedQualityOptionId.value;
 
   String? get selectedCodecIdentity => _selectedCodecIdentity.value;
+
+  /// Command rejections do not make otherwise healthy playback terminal.
+  /// Subtitle failures are presented by their selection surface, while a
+  /// fixed-track rejection is presented by the typed command result.
+  String? playbackErrorMessage(VesperPlayerSnapshot snapshot) {
+    final error = snapshot.lastError;
+    if (error == null ||
+        error.details['domain'] == 'subtitle' ||
+        identical(error, _suppressedPlaybackCommandError.value)) {
+      return null;
+    }
+    return error.message;
+  }
 
   VesperSystemPlaybackPermissionStatus get systemPlaybackPermissionStatus =>
       _systemPlaybackPermissionStatus.value;
@@ -204,6 +237,9 @@ final class MediaPlaybackViewModel {
 
   Future<VesperPlayerController> _createController() async {
     final generation = ++_controllerGeneration;
+    _invalidatePlaybackSelectionRequests();
+    _resetRuntimeTrackCapabilityState();
+    _suppressedPlaybackCommandError.value = null;
     VesperPlayerController? nextController;
     try {
       // 初始解析结果按约定与初始条目对应（调用方在构造时传入），
@@ -411,6 +447,7 @@ final class MediaPlaybackViewModel {
     }
 
     _playbackSourceTransitionInFlight = true;
+    _invalidatePlaybackSelectionRequests();
     _resetPlaybackRecoveryState(clearPendingNotice: true);
     // 切源前递增：在途的历史续播查询（绑定旧 source）立即失效，
     // 避免 selectSource 之后、_selectedEntry 更新之前返回的旧进度
@@ -431,6 +468,7 @@ final class MediaPlaybackViewModel {
       }
       _selectedEntry.value = entry;
       _resolvedPlayback.value = resolved;
+      _resetRuntimeTrackCapabilityState();
       _selectedQualityOptionId.value = null;
       _selectedCodecIdentity.value = null;
       return null;
@@ -488,6 +526,8 @@ final class MediaPlaybackViewModel {
           _handleControllerSnapshot(event.snapshot, generation);
         case VesperPlayerErrorEvent():
           _handleControllerError(event.error, generation);
+        case VesperPlayerWarningEvent():
+          _handleControllerWarning(event.warning, generation);
         default:
       }
     });
@@ -500,6 +540,11 @@ final class MediaPlaybackViewModel {
     if (_isDisposed || generation != _controllerGeneration) {
       return;
     }
+    if (snapshot.lastError == null &&
+        _suppressedPlaybackCommandError.value != null) {
+      _suppressedPlaybackCommandError.value = null;
+    }
+    _reconcileRuntimeTrackFallback(snapshot);
     if (snapshot.lastError != null) {
       _playbackRecoverySuccessTimer?.cancel();
       return;
@@ -509,6 +554,83 @@ final class MediaPlaybackViewModel {
         snapshot.playbackState == VesperPlaybackState.playing) {
       _schedulePlaybackRecoverySuccessReset(generation);
     }
+  }
+
+  void _handleControllerWarning(VesperRuntimeWarning warning, int generation) {
+    if (_isDisposed || generation != _controllerGeneration) {
+      return;
+    }
+    final capability = warning.capability;
+    if (warning.domain != VesperRuntimeWarningDomain.capability ||
+        capability == null) {
+      return;
+    }
+    final diagnostics = capability.diagnostics;
+    final code = '${diagnostics['code'] ?? capability.reasonRawValue ?? ''}';
+    final trackId = diagnostics['trackId'];
+    if (code != 'runtimeTrackRejected' ||
+        trackId is! String ||
+        trackId.isEmpty) {
+      return;
+    }
+    final rejectionKey =
+        '$generation:${diagnostics['sourceEpoch'] ?? ''}:$trackId';
+    if (!_handledRuntimeTrackRejections.add(rejectionKey)) {
+      return;
+    }
+    _runtimeRejectedVideoTrackIds.add(trackId);
+    _pendingRuntimeFallbackTrackId = trackId;
+    _invalidatePlaybackSelectionRequests();
+    _selectedQualityOptionId.value = null;
+    _selectedCodecIdentity.value = null;
+  }
+
+  void _reconcileRuntimeTrackFallback(VesperPlayerSnapshot snapshot) {
+    final rejectedTrackId = _pendingRuntimeFallbackTrackId;
+    final effectiveTrackId = snapshot.effectiveVideoTrackId;
+    if (rejectedTrackId == null ||
+        effectiveTrackId == null ||
+        effectiveTrackId == rejectedTrackId ||
+        snapshot.lastError != null ||
+        snapshot.isBuffering ||
+        snapshot.playbackState != VesperPlaybackState.playing) {
+      return;
+    }
+    _pendingRuntimeFallbackTrackId = null;
+    final fallbackLabel = _qualityLabelForTrackId(snapshot, effectiveTrackId);
+    _emitMessage(
+      fallbackLabel == null
+          ? '当前设备无法继续播放所选清晰度，已切换为自动清晰度。'
+          : '当前设备无法继续播放所选清晰度，已切换至 $fallbackLabel。',
+    );
+  }
+
+  String? _qualityLabelForTrackId(
+    VesperPlayerSnapshot snapshot,
+    String trackId,
+  ) {
+    for (final option in availableQualityOptions()) {
+      if (option.tracks.any((track) => track.id == trackId)) {
+        return option.label;
+      }
+    }
+    final track = _nativeVideoTrack(snapshot, trackId);
+    final label = track?.label?.trim();
+    if (label != null && label.isNotEmpty) {
+      return label;
+    }
+    final height = track?.height;
+    return height == null || height <= 0 ? null : '${height}P';
+  }
+
+  void _resetRuntimeTrackCapabilityState() {
+    _runtimeRejectedVideoTrackIds.clear();
+    _handledRuntimeTrackRejections.clear();
+    _pendingRuntimeFallbackTrackId = null;
+  }
+
+  void _invalidatePlaybackSelectionRequests() {
+    _playbackSelectionGeneration += 1;
   }
 
   void _handleControllerError(VesperPlayerError error, int generation) {
@@ -942,17 +1064,38 @@ final class MediaPlaybackViewModel {
     if (controller == null) {
       return null;
     }
-    final selectedCodecIdentity = _selectedCodecIdentity.value;
-    String? message;
-    if (optionId != null &&
-        selectedCodecIdentity != null &&
-        !_hasTrackForSelection(optionId, selectedCodecIdentity)) {
-      final label = _codecDisplayLabel(selectedCodecIdentity);
-      message = '当前清晰度没有 $label，已使用默认策略。';
-      _selectedCodecIdentity.value = null;
+    final nextCodecIdentity = optionId == null
+        ? null
+        : _selectedCodecIdentity.value;
+    if (optionId != null) {
+      final option = _qualitySelectionOption(
+        controller.snapshot,
+        optionId,
+        codecIdentity: nextCodecIdentity,
+      );
+      if (option == null) {
+        return '当前视频没有可用的清晰度轨道。';
+      }
+      if (!option.canSelect) {
+        return _unavailableSelectionMessage(
+          option.unavailableReason,
+          noMatchingTracks: option.candidateTracks.isEmpty,
+        );
+      }
     }
-    _selectedQualityOptionId.value = optionId;
-    return await applyPlaybackSelection() ?? message;
+    final selectionGeneration = ++_playbackSelectionGeneration;
+    final result = await _applyPlaybackSelection(
+      optionId: optionId,
+      codecIdentity: nextCodecIdentity,
+    );
+    if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
+      return null;
+    }
+    if (result == null) {
+      _selectedQualityOptionId.value = optionId;
+      _selectedCodecIdentity.value = nextCodecIdentity;
+    }
+    return result;
   }
 
   /// 选择 codec 子策略（AV1/HEVC/AVC 等身份）；null 表示默认。
@@ -961,29 +1104,62 @@ final class MediaPlaybackViewModel {
     if (controller == null) {
       return null;
     }
-    if (identity != null &&
-        !_hasTrackForSelection(_selectedQualityOptionId.value, identity)) {
+    final optionId = _selectedQualityOptionId.value;
+    if (identity != null) {
+      final availability = _codecSelectionAvailability(
+        controller.snapshot,
+        identity,
+        optionId: optionId,
+      );
       final label = _codecDisplayLabel(identity);
-      return '当前分辨率没有 $label 策略。';
+      if (availability.declaredTracks.isEmpty) {
+        return '当前分辨率没有 $label 策略。';
+      }
+      if (availability.availability == MediaQualityAvailability.unavailable) {
+        return '当前设备不支持 $label 策略。';
+      }
     }
-    _selectedCodecIdentity.value = identity;
-    return applyPlaybackSelection();
+    final selectionGeneration = ++_playbackSelectionGeneration;
+    final result = await _applyPlaybackSelection(
+      optionId: optionId,
+      codecIdentity: identity,
+    );
+    if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
+      return null;
+    }
+    if (result == null) {
+      _selectedCodecIdentity.value = identity;
+    }
+    return result;
   }
 
-  Future<String?> applyPlaybackSelection() async {
+  Future<String?> applyPlaybackSelection() {
+    return _applyPlaybackSelection(
+      optionId: _selectedQualityOptionId.value,
+      codecIdentity: _selectedCodecIdentity.value,
+    );
+  }
+
+  Future<String?> _applyPlaybackSelection({
+    required String? optionId,
+    required String? codecIdentity,
+  }) async {
     final controller = _controller;
     if (controller == null) {
       return null;
     }
     try {
-      if (_selectedQualityOptionId.value == null &&
-          _selectedCodecIdentity.value == null) {
+      if (optionId == null && codecIdentity == null) {
         await controller.setAbrPolicy(const VesperAbrPolicy.auto());
         return null;
       }
 
       final snapshot = controller.snapshot;
-      final track = _selectBestTrackForPlaybackSelection(snapshot);
+      final track = _selectBestTrackForPlaybackSelection(
+        snapshot,
+        optionId: optionId,
+        codecIdentity: codecIdentity,
+      );
       if (track == null) {
         return '当前视频没有可用的清晰度轨道。';
       }
@@ -1008,6 +1184,15 @@ final class MediaPlaybackViewModel {
 
       return '当前播放内核不支持切换到该清晰度。';
     } on VesperFixedTrackSelectionException catch (error) {
+      _suppressCurrentPlaybackCommandError(controller);
+      if (error.code == VesperFixedTrackSelectionErrorCode.staleCatalog) {
+        try {
+          await controller.refresh();
+        } catch (_) {
+          // The original typed rejection remains the actionable result.
+          _suppressCurrentPlaybackCommandError(controller);
+        }
+      }
       return '清晰度切换失败：${_fixedTrackSelectionErrorMessage(error)}';
     } catch (error) {
       return '清晰度切换失败：${mediaErrorMessage(error)}';
@@ -1048,6 +1233,77 @@ final class MediaPlaybackViewModel {
         const <MediaQualityOption>[];
   }
 
+  /// 将解析阶段的清晰度分组与最新 SDK track catalog 能力合并。
+  List<MediaQualitySelectionOption> qualitySelectionOptions(
+    VesperPlayerSnapshot snapshot, {
+    String? codecIdentity,
+  }) {
+    final effectiveCodecIdentity =
+        codecIdentity ?? _selectedCodecIdentity.value;
+    return availableQualityOptions()
+        .map((option) {
+          final availability = _optionSelectionAvailability(
+            snapshot,
+            option,
+            codecIdentity: effectiveCodecIdentity,
+          );
+          return MediaQualitySelectionOption(
+            option: option,
+            availability: availability.availability,
+            candidateTracks: availability.candidateTracks,
+            unavailableReason: availability.unavailableReason,
+          );
+        })
+        .toList(growable: false);
+  }
+
+  MediaQualityAvailability codecSelectionAvailability(
+    VesperPlayerSnapshot snapshot,
+    String identity, {
+    String? optionId,
+  }) {
+    return _codecSelectionAvailability(
+      snapshot,
+      identity,
+      optionId: optionId,
+    ).availability;
+  }
+
+  String? qualitySelectionSupportingText(MediaQualitySelectionOption option) {
+    return switch (option.availability) {
+      MediaQualityAvailability.available => null,
+      MediaQualityAvailability.unknown => '兼容性未知',
+      MediaQualityAvailability.unavailable =>
+        option.candidateTracks.isEmpty
+            ? option.unavailableReason == null
+                  ? '当前清晰度无此编码'
+                  : '清晰度暂不可用'
+            : _unavailableSelectionSupportingText(option.unavailableReason),
+    };
+  }
+
+  String? codecSelectionSupportingText(
+    VesperPlayerSnapshot snapshot,
+    String identity, {
+    String? optionId,
+  }) {
+    final availability = _codecSelectionAvailability(
+      snapshot,
+      identity,
+      optionId: optionId,
+    );
+    return switch (availability.availability) {
+      MediaQualityAvailability.available => null,
+      MediaQualityAvailability.unknown => '兼容性未知',
+      MediaQualityAvailability.unavailable =>
+        availability.declaredTracks.isEmpty
+            ? '当前清晰度无此编码'
+            : _unavailableSelectionSupportingText(
+                availability.unavailableReason,
+              ),
+    };
+  }
+
   /// 是否支持 codec 细分选择（平台声明）。
   bool get supportsCodecSelection =>
       _resolvedPlayback.value?.supportsCodecSelection ?? false;
@@ -1073,7 +1329,7 @@ final class MediaPlaybackViewModel {
       await controller.setSubtitleTrackSelection(selection);
       return null;
     } on VesperSubtitleException catch (error) {
-      return '字幕切换失败：${error.message}';
+      return '字幕切换失败：${_subtitleSelectionErrorMessage(error)}';
     } catch (error) {
       return '字幕切换失败：${mediaErrorMessage(error)}';
     }
@@ -1104,8 +1360,158 @@ final class MediaPlaybackViewModel {
     VesperPlayerSnapshot snapshot,
     VesperMediaTrack track,
   ) {
+    if (_runtimeRejectedVideoTrackIds.contains(track.id)) {
+      return false;
+    }
     final nativeTrack = _nativeVideoTrack(snapshot, track.id);
     return (nativeTrack?.support ?? track.support).canAttemptExplicitSelection;
+  }
+
+  MediaQualitySelectionOption? _qualitySelectionOption(
+    VesperPlayerSnapshot snapshot,
+    String optionId, {
+    String? codecIdentity,
+  }) {
+    for (final option in availableQualityOptions()) {
+      if (option.id == optionId) {
+        final availability = _optionSelectionAvailability(
+          snapshot,
+          option,
+          codecIdentity: codecIdentity,
+        );
+        return MediaQualitySelectionOption(
+          option: option,
+          availability: availability.availability,
+          candidateTracks: availability.candidateTracks,
+          unavailableReason: availability.unavailableReason,
+        );
+      }
+    }
+    return null;
+  }
+
+  _TrackSelectionAvailability _optionSelectionAvailability(
+    VesperPlayerSnapshot snapshot,
+    MediaQualityOption option, {
+    String? codecIdentity,
+  }) {
+    final identityForTrack = adapter.qualityPolicy.codecStrategyIdentityFor;
+    final declaredTracks = option.tracks
+        .where(
+          (track) =>
+              codecIdentity == null ||
+              identityForTrack?.call(track) == codecIdentity,
+        )
+        .toList(growable: false);
+    return _trackSelectionAvailability(snapshot, declaredTracks);
+  }
+
+  _TrackSelectionAvailability _codecSelectionAvailability(
+    VesperPlayerSnapshot snapshot,
+    String identity, {
+    String? optionId,
+  }) {
+    final identityForTrack = adapter.qualityPolicy.codecStrategyIdentityFor;
+    final declaredTracks = <VesperMediaTrack>[];
+    for (final option in availableQualityOptions()) {
+      if (optionId != null && option.id != optionId) {
+        continue;
+      }
+      declaredTracks.addAll(
+        option.tracks.where(
+          (track) => identityForTrack?.call(track) == identity,
+        ),
+      );
+    }
+    return _trackSelectionAvailability(snapshot, declaredTracks);
+  }
+
+  _TrackSelectionAvailability _trackSelectionAvailability(
+    VesperPlayerSnapshot snapshot,
+    List<VesperMediaTrack> declaredTracks,
+  ) {
+    if (declaredTracks.isEmpty) {
+      return const _TrackSelectionAvailability(
+        availability: MediaQualityAvailability.unavailable,
+        declaredTracks: <VesperMediaTrack>[],
+        candidateTracks: <VesperMediaTrack>[],
+      );
+    }
+    final nativeTracks = snapshot.trackCatalog.videoTracks;
+    final candidateTracks = nativeTracks.isEmpty
+        ? List<VesperMediaTrack>.of(declaredTracks)
+        : () {
+            final tracksById = <String, VesperMediaTrack>{
+              for (final track in nativeTracks) track.id: track,
+            };
+            return declaredTracks
+                .map((track) => tracksById[track.id])
+                .whereType<VesperMediaTrack>()
+                .toList(growable: false);
+          }();
+    if (candidateTracks.isEmpty) {
+      return _TrackSelectionAvailability(
+        availability: MediaQualityAvailability.unavailable,
+        declaredTracks: declaredTracks,
+        candidateTracks: candidateTracks,
+        unavailableReason: VesperTrackSupportReason.platformUnknown,
+      );
+    }
+
+    var hasUnknown = false;
+    VesperTrackSupportReason? unavailableReason;
+    for (final track in candidateTracks) {
+      if (_runtimeRejectedVideoTrackIds.contains(track.id)) {
+        unavailableReason ??= VesperTrackSupportReason.runtimeFailure;
+        continue;
+      }
+      switch (track.support.status) {
+        case VesperTrackSupportStatus.supported:
+          return _TrackSelectionAvailability(
+            availability: MediaQualityAvailability.available,
+            declaredTracks: declaredTracks,
+            candidateTracks: candidateTracks,
+          );
+        case VesperTrackSupportStatus.unknown:
+          hasUnknown = true;
+        case VesperTrackSupportStatus.exceedsCapabilities:
+        case VesperTrackSupportStatus.unsupported:
+          unavailableReason ??= track.support.reason;
+      }
+    }
+    return _TrackSelectionAvailability(
+      availability: hasUnknown
+          ? MediaQualityAvailability.unknown
+          : MediaQualityAvailability.unavailable,
+      declaredTracks: declaredTracks,
+      candidateTracks: candidateTracks,
+      unavailableReason: hasUnknown ? null : unavailableReason,
+    );
+  }
+
+  String _unavailableSelectionMessage(
+    VesperTrackSupportReason? reason, {
+    required bool noMatchingTracks,
+  }) {
+    if (noMatchingTracks) {
+      return '当前清晰度没有匹配的播放轨道。';
+    }
+    return switch (reason) {
+      VesperTrackSupportReason.routeUnavailable ||
+      VesperTrackSupportReason.presentationUnavailable => '当前播放链路不支持该清晰度。',
+      VesperTrackSupportReason.unsupportedDrm => '当前内容保护方式不支持该清晰度。',
+      _ => '当前设备无法播放该清晰度。',
+    };
+  }
+
+  String _unavailableSelectionSupportingText(VesperTrackSupportReason? reason) {
+    return switch (reason) {
+      VesperTrackSupportReason.routeUnavailable ||
+      VesperTrackSupportReason.presentationUnavailable => '当前播放链路不支持',
+      VesperTrackSupportReason.unsupportedDrm => '内容保护方式不支持',
+      VesperTrackSupportReason.runtimeFailure => '本次播放已自动降级',
+      _ => '当前设备不支持',
+    };
   }
 
   /// 策略身份的展示文案：显式规范标签优先；缺省取组内首个匹配
@@ -1132,37 +1538,29 @@ final class MediaPlaybackViewModel {
     return identity;
   }
 
-  bool _hasTrackForSelection(String? optionId, String codecIdentity) {
-    final identityForTrack = adapter.qualityPolicy.codecStrategyIdentityFor;
-    for (final option in availableQualityOptions()) {
-      if (optionId != null && option.id != optionId) {
-        continue;
-      }
-      for (final track in option.tracks) {
-        if (identityForTrack?.call(track) == codecIdentity) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   VesperMediaTrack? _selectBestTrackForPlaybackSelection(
-    VesperPlayerSnapshot snapshot,
-  ) {
+    VesperPlayerSnapshot snapshot, {
+    required String? optionId,
+    required String? codecIdentity,
+  }) {
     final tracks = _sortedVideoTracks(playbackSelectionTracks(snapshot));
     Iterable<VesperMediaTrack> candidates = tracks.where(
       (track) => _canAttemptExplicitTrack(snapshot, track),
     );
-    final selectedOptionId = _selectedQualityOptionId.value;
-    if (selectedOptionId != null) {
-      final optionTracks = _optionTracks(selectedOptionId);
+    if (optionId != null) {
+      final option = _qualitySelectionOption(
+        snapshot,
+        optionId,
+        codecIdentity: codecIdentity,
+      );
+      final optionTracks = _sortedVideoTracks(
+        option?.candidateTracks ?? const <VesperMediaTrack>[],
+      );
       candidates = optionTracks.where(
         (track) => _canAttemptExplicitTrack(snapshot, track),
       );
     }
 
-    final codecIdentity = _selectedCodecIdentity.value;
     if (codecIdentity != null) {
       final identityForTrack = adapter.qualityPolicy.codecStrategyIdentityFor;
       final codecMatches = candidates
@@ -1180,6 +1578,9 @@ final class MediaPlaybackViewModel {
   String _fixedTrackSelectionErrorMessage(
     VesperFixedTrackSelectionException error,
   ) {
+    if (error.codeRawValue == 'runtimeTrackRejected') {
+      return '当前设备无法继续播放该清晰度，已恢复自动选择。';
+    }
     return switch (error.code) {
       VesperFixedTrackSelectionErrorCode.trackUnavailable => '该清晰度已不可用，请重新选择。',
       VesperFixedTrackSelectionErrorCode.trackExceedsCapabilities =>
@@ -1190,13 +1591,38 @@ final class MediaPlaybackViewModel {
     };
   }
 
-  List<VesperMediaTrack> _optionTracks(String optionId) {
-    for (final option in availableQualityOptions()) {
-      if (option.id == optionId) {
-        return option.tracks;
-      }
+  void _suppressCurrentPlaybackCommandError(VesperPlayerController controller) {
+    if (_isDisposed) {
+      return;
     }
-    return const <VesperMediaTrack>[];
+    final commandError = controller.snapshot.lastError;
+    if (commandError != null) {
+      _suppressedPlaybackCommandError.value = commandError;
+    }
+  }
+
+  String _subtitleSelectionErrorMessage(VesperSubtitleException error) {
+    return switch (error.code) {
+      'subtitle_selection_timeout' => '字幕轨道仍在准备，请稍后重试。',
+      'subtitle_track_not_found' ||
+      'subtitle_platform_track_unavailable' ||
+      'subtitle_auto_candidate_unavailable' => '该字幕轨道暂不可用，请重新选择。',
+      'subtitle_selection_superseded' ||
+      'subtitle_selection_cancelled' ||
+      'subtitle_source_changed' => '字幕选择已失效，请重试。',
+      'subtitle_selection_invalid' ||
+      'subtitle_selection_mismatch' => '当前无法应用该字幕选择。',
+      'subtitle_resource_failed' ||
+      'subtitle_manifest_parse_failed' ||
+      'subtitle_transport_failure' => '字幕加载失败，请稍后重试。',
+      'subtitle_uri_invalid' => '字幕地址无效，请重新选择。',
+      'subtitle_encoding_unsupported' => '当前字幕编码不受支持。',
+      'subtitle_default_track_ambiguous' ||
+      'subtitle_request_identity_ambiguous' ||
+      'subtitle_track_identity_ambiguous' => '字幕轨道无法唯一确定，请重新选择。',
+      'subtitle_selection_failed' => '字幕切换失败，请稍后重试。',
+      _ => error.retriable ? '字幕切换暂未完成，请稍后重试。' : '当前无法切换字幕。',
+    };
   }
 
   List<VesperMediaTrack> _sortedVideoTracks(List<VesperMediaTrack> tracks) {
@@ -1259,6 +1685,7 @@ final class MediaPlaybackViewModel {
     _resolvedPlayback.dispose();
     _selectedQualityOptionId.dispose();
     _selectedCodecIdentity.dispose();
+    _suppressedPlaybackCommandError.dispose();
     _systemPlaybackPermissionStatus.dispose();
     _castMessage.dispose();
     _dlnaState.dispose();
