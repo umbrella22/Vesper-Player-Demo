@@ -987,8 +987,12 @@ final class MediaPlaybackViewModel {
       if (track == null) {
         return '当前视频没有可用的清晰度轨道。';
       }
-      if (_hasNativeVideoTrack(snapshot, track.id)) {
-        await controller.setAbrPolicy(VesperAbrPolicy.fixedTrack(track.id));
+      final nativeTrack = _nativeVideoTrack(snapshot, track.id);
+      if (nativeTrack != null && snapshot.capabilities.supportsAbrFixedTrack) {
+        await controller.setAbrPolicy(
+          VesperAbrPolicy.fixedTrack(track.id),
+          expectedCatalogRevision: snapshot.trackCatalog.catalogRevision,
+        );
         return null;
       }
 
@@ -1002,8 +1006,9 @@ final class MediaPlaybackViewModel {
         return null;
       }
 
-      await controller.setAbrPolicy(VesperAbrPolicy.fixedTrack(track.id));
-      return null;
+      return '当前播放内核不支持切换到该清晰度。';
+    } on VesperFixedTrackSelectionException catch (error) {
+      return '清晰度切换失败：${_fixedTrackSelectionErrorMessage(error)}';
     } catch (error) {
       return '清晰度切换失败：${mediaErrorMessage(error)}';
     }
@@ -1083,10 +1088,24 @@ final class MediaPlaybackViewModel {
     };
   }
 
-  bool _hasNativeVideoTrack(VesperPlayerSnapshot snapshot, String trackId) {
-    return snapshot.trackCatalog.videoTracks.any(
-      (track) => track.id == trackId,
-    );
+  VesperMediaTrack? _nativeVideoTrack(
+    VesperPlayerSnapshot snapshot,
+    String trackId,
+  ) {
+    for (final track in snapshot.trackCatalog.videoTracks) {
+      if (track.id == trackId) {
+        return track;
+      }
+    }
+    return null;
+  }
+
+  bool _canAttemptExplicitTrack(
+    VesperPlayerSnapshot snapshot,
+    VesperMediaTrack track,
+  ) {
+    final nativeTrack = _nativeVideoTrack(snapshot, track.id);
+    return (nativeTrack?.support ?? track.support).canAttemptExplicitSelection;
   }
 
   /// 策略身份的展示文案：显式规范标签优先；缺省取组内首个匹配
@@ -1132,13 +1151,15 @@ final class MediaPlaybackViewModel {
     VesperPlayerSnapshot snapshot,
   ) {
     final tracks = _sortedVideoTracks(playbackSelectionTracks(snapshot));
-    Iterable<VesperMediaTrack> candidates = tracks;
+    Iterable<VesperMediaTrack> candidates = tracks.where(
+      (track) => _canAttemptExplicitTrack(snapshot, track),
+    );
     final selectedOptionId = _selectedQualityOptionId.value;
     if (selectedOptionId != null) {
       final optionTracks = _optionTracks(selectedOptionId);
-      if (optionTracks.isNotEmpty) {
-        candidates = optionTracks;
-      }
+      candidates = optionTracks.where(
+        (track) => _canAttemptExplicitTrack(snapshot, track),
+      );
     }
 
     final codecIdentity = _selectedCodecIdentity.value;
@@ -1147,15 +1168,26 @@ final class MediaPlaybackViewModel {
       final codecMatches = candidates
           .where((track) => identityForTrack?.call(track) == codecIdentity)
           .toList(growable: false);
-      if (codecMatches.isNotEmpty) {
-        return codecMatches.first;
-      }
+      return codecMatches.isEmpty ? null : codecMatches.first;
     }
 
     for (final candidate in candidates) {
       return candidate;
     }
     return null;
+  }
+
+  String _fixedTrackSelectionErrorMessage(
+    VesperFixedTrackSelectionException error,
+  ) {
+    return switch (error.code) {
+      VesperFixedTrackSelectionErrorCode.trackUnavailable => '该清晰度已不可用，请重新选择。',
+      VesperFixedTrackSelectionErrorCode.trackExceedsCapabilities =>
+        '当前设备无法播放该清晰度。',
+      VesperFixedTrackSelectionErrorCode.trackUnsupported => '当前播放内核不支持该清晰度。',
+      VesperFixedTrackSelectionErrorCode.staleCatalog => '清晰度列表已更新，请重试。',
+      VesperFixedTrackSelectionErrorCode.unknown => '当前无法切换到该清晰度。',
+    };
   }
 
   List<VesperMediaTrack> _optionTracks(String optionId) {
@@ -1261,6 +1293,9 @@ final class _SeekAwareController implements VesperPlayerController {
   VesperPlayerSnapshot get snapshot => _inner.snapshot;
 
   @override
+  VesperPlayerPlatform get platformForSequence => _inner.platformForSequence;
+
+  @override
   List<VesperPluginDiagnostic> get pluginDiagnostics =>
       _inner.pluginDiagnostics;
 
@@ -1346,8 +1381,13 @@ final class _SeekAwareController implements VesperPlayerController {
       _inner.setSubtitleStyle(style);
 
   @override
-  Future<void> setAbrPolicy(VesperAbrPolicy policy) =>
-      _inner.setAbrPolicy(policy);
+  Future<void> setAbrPolicy(
+    VesperAbrPolicy policy, {
+    int? expectedCatalogRevision,
+  }) => _inner.setAbrPolicy(
+    policy,
+    expectedCatalogRevision: expectedCatalogRevision,
+  );
 
   @override
   Future<void> setPlaybackResiliencePolicy(

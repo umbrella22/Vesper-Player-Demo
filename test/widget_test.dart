@@ -1119,7 +1119,11 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   }
 
   @override
-  Future<void> setAbrPolicy(String playerId, VesperAbrPolicy policy) async {}
+  Future<void> setAbrPolicy(
+    String playerId,
+    VesperAbrPolicy policy, {
+    int? expectedCatalogRevision,
+  }) async {}
 
   @override
   Future<void> setResiliencePolicy(

@@ -39,9 +39,12 @@ void main() {
 
   /// 安装壳测试环境（fake 平台 + 通道 mock），返回 fake platform。
   /// 必须在 view model 构造前调用（构造会订阅平台事件流）。
-  _ShellFakePlatform installEnvironment(WidgetTester tester) {
+  _ShellFakePlatform installEnvironment(
+    WidgetTester tester, {
+    VesperPlayerSnapshot? initialSnapshot,
+  }) {
     final previousPlatform = VesperPlayerPlatform.instance;
-    final fakePlatform = _ShellFakePlatform(_shellSnapshot);
+    final fakePlatform = _ShellFakePlatform(initialSnapshot ?? _shellSnapshot);
     VesperPlayerPlatform.instance = fakePlatform;
     addTearDown(() {
       VesperPlayerPlatform.instance = previousPlatform;
@@ -99,8 +102,12 @@ void main() {
     MediaPlayerDeviceControls? deviceControls,
     MediaHistoryStore? historyStore,
     int initialPositionMs = 0,
+    VesperPlayerSnapshot? initialSnapshot,
   }) async {
-    final fakePlatform = installEnvironment(tester);
+    final fakePlatform = installEnvironment(
+      tester,
+      initialSnapshot: initialSnapshot,
+    );
     final resolvedAdapter = adapter ?? _ShellAdapter();
     final viewModel = MediaPlaybackViewModel(
       detail: target.detail,
@@ -265,6 +272,156 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('HEVC'), findsOneWidget);
       expect(find.text('hevc-main'), findsNothing);
+    });
+  });
+
+  group('fixed-track SDK 契约', () {
+    const selectableTrack = VesperMediaTrack(
+      id: 'video-80-7-1000-0',
+      kind: VesperMediaTrackKind.video,
+      label: '1080P',
+      codec: 'avc1.640028',
+      bitRate: 1000000,
+      width: 1920,
+      height: 1080,
+      support: VesperTrackSupport(
+        status: VesperTrackSupportStatus.supported,
+        reason: VesperTrackSupportReason.none,
+        source: VesperTrackSupportSource.runtimeTrackCatalog,
+      ),
+    );
+    const qualityOptions = <MediaQualityOption>[
+      MediaQualityOption(
+        id: '80',
+        label: '1080P',
+        tracks: <VesperMediaTrack>[selectableTrack],
+      ),
+    ];
+
+    testWidgets('fixed-track 携带选择时看到的 catalog revision', (tester) async {
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrConstrained: true,
+          supportsAbrFixedTrack: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[selectableTrack],
+          adaptiveVideo: true,
+          catalogRevision: 7,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(qualityOptions: qualityOptions),
+        initialSnapshot: snapshot,
+      );
+
+      expect(await harness.viewModel.selectQualityOption('80'), isNull);
+      final call = harness.platform.abrPolicyCalls.single;
+      expect(call.policy.mode, VesperAbrMode.fixedTrack);
+      expect(call.policy.trackId, selectableTrack.id);
+      expect(call.expectedCatalogRevision, 7);
+    });
+
+    testWidgets('显式不可选轨道不会下发 fixed-track', (tester) async {
+      const unsupportedTrack = VesperMediaTrack(
+        id: 'video-80-7-1000-0',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'avc1.640028',
+        bitRate: 1000000,
+        width: 1920,
+        height: 1080,
+        support: VesperTrackSupport(
+          status: VesperTrackSupportStatus.exceedsCapabilities,
+          reason: VesperTrackSupportReason.formatExceedsCapabilities,
+          source: VesperTrackSupportSource.runtimeTrackCatalog,
+        ),
+      );
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrConstrained: true,
+          supportsAbrFixedTrack: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[unsupportedTrack],
+          adaptiveVideo: true,
+          catalogRevision: 8,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(qualityOptions: qualityOptions),
+        initialSnapshot: snapshot,
+      );
+
+      expect(
+        await harness.viewModel.selectQualityOption('80'),
+        '当前视频没有可用的清晰度轨道。',
+      );
+      expect(harness.platform.abrPolicyCalls, isEmpty);
+    });
+
+    testWidgets('不支持 fixed-track 时使用 bitrate constraint', (tester) async {
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrConstrained: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[selectableTrack],
+          adaptiveVideo: true,
+          catalogRevision: 9,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(qualityOptions: qualityOptions),
+        initialSnapshot: snapshot,
+      );
+
+      expect(await harness.viewModel.selectQualityOption('80'), isNull);
+      final call = harness.platform.abrPolicyCalls.single;
+      expect(call.policy.mode, VesperAbrMode.constrained);
+      expect(call.policy.maxBitRate, selectableTrack.bitRate);
+      expect(call.expectedCatalogRevision, isNull);
+    });
+
+    testWidgets('stale catalog 转为稳定中文提示', (tester) async {
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrFixedTrack: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[selectableTrack],
+          adaptiveVideo: true,
+          catalogRevision: 10,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(qualityOptions: qualityOptions),
+        initialSnapshot: snapshot,
+      );
+      harness.platform.setAbrPolicyError = VesperFixedTrackSelectionException(
+        codeRawValue: 'staleCatalog',
+        trackId: selectableTrack.id,
+        expectedCatalogRevision: 10,
+        actualCatalogRevision: 11,
+        message: 'catalog changed',
+      );
+
+      final message = await harness.viewModel.selectQualityOption('80');
+
+      expect(tester.takeException(), isA<VesperFixedTrackSelectionException>());
+      expect(message, '清晰度切换失败：清晰度列表已更新，请重试。');
+      expect(
+        harness.platform.abrPolicyCalls.single.expectedCatalogRevision,
+        10,
+      );
     });
   });
 
@@ -916,8 +1073,11 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   final StreamController<VesperPlayerEvent> _eventsController =
       StreamController<VesperPlayerEvent>.broadcast();
   final seekDeltas = <int>[];
+  final abrPolicyCalls =
+      <({VesperAbrPolicy policy, int? expectedCatalogRevision})>[];
   int playCalls = 0;
   int disposeCalls = 0;
+  Object? setAbrPolicyError;
 
   /// 非空时 selectSource 挂起，由测试手动完成（模拟切源窗口）。
   Completer<void>? selectSourceGate;
@@ -1050,7 +1210,20 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   ) async {}
 
   @override
-  Future<void> setAbrPolicy(String playerId, VesperAbrPolicy policy) async {}
+  Future<void> setAbrPolicy(
+    String playerId,
+    VesperAbrPolicy policy, {
+    int? expectedCatalogRevision,
+  }) async {
+    abrPolicyCalls.add((
+      policy: policy,
+      expectedCatalogRevision: expectedCatalogRevision,
+    ));
+    final error = setAbrPolicyError;
+    if (error != null) {
+      throw error;
+    }
+  }
 
   @override
   Future<void> setResiliencePolicy(
