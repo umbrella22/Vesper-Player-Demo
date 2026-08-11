@@ -1,34 +1,50 @@
 import 'dart:async';
 
-import 'package:vesper_media/app/home_page.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
-import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
-import 'package:vesper_media/app/system_presentation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-
-import 'package:vesper_media/bili/common/services/bili_client.dart';
-import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';
-import 'package:vesper_media/download/services/offline_download_controller.dart';
 
 import 'design/app_theme_controller.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
+typedef AppSystemUiStyleBuilder =
+    SystemUiOverlayStyle Function(Brightness brightness);
+
+/// 单供应商应用与通用 Material 壳之间的静态装配。
+///
+/// 供应商在 `lib/platform_app.dart` 创建该对象。未提供 [tvModeListenable]
+/// 时应用固定使用手机布局；其余系统呈现策略也都有通用缺省值。
+@immutable
+final class VesperAppHost {
+  const VesperAppHost({
+    required this.homeBuilder,
+    this.appTitle = 'Vesper',
+    this.tvModeListenable,
+    this.refreshPreferredOrientations,
+    this.tvSystemUiStyle,
+    this.systemUiStyleForBrightness,
+  });
+
+  final String appTitle;
+  final WidgetBuilder homeBuilder;
+  final ValueListenable<bool>? tvModeListenable;
+  final Future<void> Function()? refreshPreferredOrientations;
+  final SystemUiOverlayStyle? tvSystemUiStyle;
+  final AppSystemUiStyleBuilder? systemUiStyleForBrightness;
+}
+
 class VesperApp extends StatefulWidget {
   const VesperApp({
     super.key,
+    required this.host,
     this.appSettings = const AppSettingsStore(),
     this.initialThemePreference = AppThemePreference.system,
-    this.uiModeController,
-    this.client,
-    this.offlineController,
   });
 
+  final VesperAppHost host;
   final AppSettingsStore appSettings;
   final AppThemePreference initialThemePreference;
-  final BiliUiModeController? uiModeController;
-  final BiliClient? client;
-  final BiliOfflineDownloadController? offlineController;
 
   @override
   State<VesperApp> createState() => _VesperAppState();
@@ -36,7 +52,6 @@ class VesperApp extends StatefulWidget {
 
 class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
   late final AppThemeController _themeController;
-  late final BiliUiModeController _uiModeController;
 
   @override
   void initState() {
@@ -45,19 +60,21 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
       settings: widget.appSettings,
       initialPreference: widget.initialThemePreference,
     );
-    _uiModeController =
-        widget.uiModeController ??
-        BiliUiModeController(
-          resolver: BiliUiModeResolver(appSettings: widget.appSettings),
-        );
     WidgetsBinding.instance.addObserver(this);
-    unawaited(refreshBiliAppPreferredOrientationsIfActive());
+    _refreshPreferredOrientations();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(refreshBiliAppPreferredOrientationsIfActive());
+      _refreshPreferredOrientations();
+    }
+  }
+
+  void _refreshPreferredOrientations() {
+    final refresh = widget.host.refreshPreferredOrientations;
+    if (refresh != null) {
+      unawaited(refresh());
     }
   }
 
@@ -65,9 +82,6 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _themeController.dispose();
-    if (widget.uiModeController == null) {
-      _uiModeController.dispose();
-    }
     super.dispose();
   }
 
@@ -83,11 +97,14 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
       child: ListenableBuilder(
         listenable: _themeController,
         builder: (context, _) {
+          final tvModeListenable = widget.host.tvModeListenable;
+          if (tvModeListenable == null) {
+            return _buildMaterialApp(false, disableAnimations);
+          }
           return ValueListenableBuilder<bool>(
-            valueListenable: _uiModeController.tvModeListenable,
-            builder: (context, isTvMode, _) {
-              return _buildMaterialApp(isTvMode, disableAnimations);
-            },
+            valueListenable: tvModeListenable,
+            builder: (context, isTvMode, _) =>
+                _buildMaterialApp(isTvMode, disableAnimations),
           );
         },
       ),
@@ -97,7 +114,7 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
   Widget _buildMaterialApp(bool isTvMode, bool disableAnimations) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Vesper',
+      title: widget.host.appTitle,
       theme: isTvMode
           ? AppVisualTokens.tvTheme()
           : AppVisualTokens.mobileLightTheme(),
@@ -117,20 +134,19 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
         final theme = Theme.of(context);
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: isTvMode
-              ? biliTvSystemUiStyle
-              : appSystemUiStyleForBrightness(theme.brightness),
+              ? widget.host.tvSystemUiStyle ??
+                    mediaSystemUiStyleForBrightness(Brightness.dark)
+              : widget.host.systemUiStyleForBrightness?.call(
+                      theme.brightness,
+                    ) ??
+                    mediaSystemUiStyleForBrightness(theme.brightness),
           child: ColoredBox(
             color: theme.scaffoldBackgroundColor,
             child: child ?? const SizedBox.shrink(),
           ),
         );
       },
-      home: HomePage(
-        uiModeController: _uiModeController,
-        client: widget.client,
-        offlineController: widget.offlineController,
-        appSettings: widget.appSettings,
-      ),
+      home: Builder(builder: widget.host.homeBuilder),
     );
   }
 }

@@ -107,23 +107,28 @@ void main() {
   });
 
   group('能力缺省语义', () {
-    test('空适配器所有能力 getter 为 null，壳不抛错', () {
+    test('最小适配器只实现 resolvePlayback 并继承静态能力缺省值', () {
       final adapter = _EmptyAdapter();
-      expect(adapter.engagement, isNull);
       expect(adapter.danmaku, isNull);
-      expect(adapter.contentSurfaces, isNull);
       expect(adapter.history, isNull);
       expect(adapter.dlnaConfig, isNull);
       expect(adapter.qualityPolicy.supportsCodecSelection, isFalse);
       expect(adapter.qualityPolicy.codecLabelFor, isNull);
     });
 
+    test('空播放绑定不声明会话级互动与内容面板', () {
+      const binding = MediaPlaybackBinding();
+      expect(binding.buildEngagement(), isNull);
+      expect(
+        binding.contentSurfacesBuilder,
+        isNull,
+        reason: '内容面板需要 MediaPlaybackContentHost，由播放页创建后再调用',
+      );
+    });
+
     test('BiliMediaPlatformAdapter 声明 B 站能力', () {
       final adapter = BiliMediaPlatformAdapter(client: BiliClient());
-      // engagement 需 attachEngagement 回填 view model 后才有动作（Phase 5 接线）。
-      expect(adapter.engagement, isNull, reason: 'Phase 1 接线（构造后回填）');
       expect(adapter.danmaku, isNotNull, reason: 'Phase 3 已接线');
-      expect(adapter.contentSurfaces, isNull, reason: 'Phase 2 接线（内容面板走薄包装注入）');
       expect(adapter.history, isNotNull, reason: 'Phase 4 已接线');
       expect(adapter.qualityPolicy.supportsCodecSelection, isTrue);
       expect(adapter.dlnaConfig, isNotNull);
@@ -134,7 +139,8 @@ void main() {
       expect(
         identical(adapter.danmaku, adapter.danmaku),
         isTrue,
-        reason: '播放快照持续重建舞台并读取 adapter.danmaku，'
+        reason:
+            '播放快照持续重建舞台并读取 adapter.danmaku，'
             '每次返回新实例会导致弹幕层反复重订阅与重复请求',
       );
     });
@@ -155,13 +161,19 @@ void main() {
   });
 }
 
-void _expectSourceEqual(VesperPlayerSource actual, VesperPlayerSource expected) {
+void _expectSourceEqual(
+  VesperPlayerSource actual,
+  VesperPlayerSource expected,
+) {
   expect(actual.uri, expected.uri);
   expect(actual.label, expected.label);
   expect(actual.kind, expected.kind);
   expect(actual.protocol, expected.protocol);
   expect(actual.headers, expected.headers);
-  expect(actual.externalSubtitles, hasLength(expected.externalSubtitles.length));
+  expect(
+    actual.externalSubtitles,
+    hasLength(expected.externalSubtitles.length),
+  );
   for (var i = 0; i < expected.externalSubtitles.length; i++) {
     final a = actual.externalSubtitles[i];
     final e = expected.externalSubtitles[i];
@@ -251,7 +263,7 @@ BiliResolvedPlayback _buildResolvedPlayback({required bool isLocalFile}) {
   );
 }
 
-final class _EmptyAdapter implements MediaPlatformAdapter {
+final class _EmptyAdapter extends MediaPlatformAdapter {
   @override
   Future<ResolvedMediaPlayback> resolvePlayback({
     required MediaDetail detail,
@@ -259,22 +271,4 @@ final class _EmptyAdapter implements MediaPlatformAdapter {
   }) async {
     throw UnimplementedError();
   }
-
-  @override
-  MediaEngagementCapability? get engagement => null;
-
-  @override
-  MediaDanmakuProvider? get danmaku => null;
-
-  @override
-  MediaContentSurfaces? get contentSurfaces => null;
-
-  @override
-  MediaHistoryStore? get history => null;
-
-  @override
-  MediaQualityPolicy get qualityPolicy => const MediaQualityPolicy();
-
-  @override
-  MediaDlnaConfig? get dlnaConfig => null;
 }

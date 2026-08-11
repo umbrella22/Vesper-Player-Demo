@@ -3,10 +3,10 @@ import 'package:flutter/widgets.dart';
 import '../models/media_detail.dart';
 import '../models/media_playback_target.dart';
 
-/// 内容面板能力：简介/评论/相关视频等平台定义性 UX 由适配器提供 widget，
-/// 壳只负责 tab 槽位与面板宿主。
+/// 内容面板能力：简介/评论/相关视频等平台定义性 UX 由单次播放 binding
+/// 提供 widget，壳只负责 tab 槽位与面板宿主。
 ///
-/// 未声明该能力的平台只显示播放器与互动栏，不渲染内容 tab。
+/// 未声明该能力的平台不渲染内容 tab；互动栏由 binding 的独立能力决定。
 abstract interface class MediaContentSurfaces {
   /// 简介 tab 文案（如 "简介"）。
   String get introTabLabel;

@@ -51,6 +51,7 @@ class BiliPlaybackPage extends StatefulWidget {
 
 class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   late final BiliPlaybackViewModel _viewModel;
+  late final MediaPlaybackBinding _playbackBinding;
 
   bool get _isTvMode =>
       widget.presentationMode == BiliPlaybackPresentationMode.tv;
@@ -67,6 +68,14 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       initialResolvedPlayback: widget.initialResolvedPlayback,
       initialPositionMs: widget.initialPositionMs,
     );
+    _playbackBinding = MediaPlaybackBinding(
+      engagementBuilder: _viewModel.buildEngagementCapability,
+      contentSurfacesBuilder: (host) => BiliPlaybackContentSurfaces(
+        viewModel: _viewModel,
+        detail: widget.detail,
+        host: host,
+      ),
+    );
   }
 
   @override
@@ -80,11 +89,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     return MediaPlaybackPage(
       viewModel: _viewModel.playbackViewModel,
       presentationMode: widget.presentationMode,
-      contentSurfacesBuilder: (host) => BiliPlaybackContentSurfaces(
-        viewModel: _viewModel,
-        detail: widget.detail,
-        host: host,
-      ),
+      binding: _playbackBinding,
       deviceControls: const BiliStageDeviceControls(),
       contentTabsTrailing: DanmakuEntryPill(
         danmakuCountLabel: widget.detail.danmakuCountLabel,
@@ -93,9 +98,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
         onTap: () => unawaited(_openCacheSurfaceFromSettings(context)),
       ),
       tvControlBarExtras: <Widget>[
-        SignalBuilder(
-          builder: (context) => _buildTvWatchLaterButton(),
-        ),
+        SignalBuilder(builder: (context) => _buildTvWatchLaterButton()),
       ],
       tvFallbackHome: BiliTvHomePage(
         client: widget.client,
@@ -116,9 +119,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       icon: inWatchLater
           ? Icons.watch_later_rounded
           : Icons.watch_later_outlined,
-      onTap: loading
-          ? () {}
-          : () => unawaited(_toggleWatchLater()),
+      onTap: loading ? () {} : () => unawaited(_toggleWatchLater()),
     );
   }
 
@@ -223,11 +224,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       message: notice.message,
       actions: const [
         MediaGlassDialogAction(label: '知道了', value: false),
-        MediaGlassDialogAction(
-          label: '重新解析',
-          value: true,
-          isPrimary: true,
-        ),
+        MediaGlassDialogAction(label: '重新解析', value: true, isPrimary: true),
       ],
     );
   }

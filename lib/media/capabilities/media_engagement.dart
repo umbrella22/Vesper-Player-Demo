@@ -5,11 +5,11 @@ enum MediaEngagementActionId { like, coin, favorite, share, follow, watchLater }
 /// 互动动作栏由谁决定在播放页中的位置。
 enum MediaEngagementPlacement { shell, intro }
 
-/// 适配器声明的互动动作（当前状态快照 + 执行回调）。
+/// 单次播放绑定声明的互动动作（当前状态快照 + 执行回调）。
 ///
-/// 每次读取 [MediaPlatformAdapter.engagement] 都会拿到最新快照；
-/// 壳在信号追踪的 build 栈内读取，状态变化（计数/选中/执行中）由
-/// 平台自己的信号驱动重建。
+/// `MediaPlaybackBinding.engagementBuilder` 每次调用都会拿到最新快照；
+/// 壳在信号追踪的 build 栈内调用，状态变化（计数/选中/执行中）由平台
+/// 自己的信号驱动重建。
 final class MediaEngagementActionSpec {
   const MediaEngagementActionSpec({
     required this.id,

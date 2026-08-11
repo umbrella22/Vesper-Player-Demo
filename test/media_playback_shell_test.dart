@@ -98,6 +98,7 @@ void main() {
   Future<_ShellHarness> pumpShell(
     WidgetTester tester, {
     _ShellAdapter? adapter,
+    MediaPlaybackBinding binding = const MediaPlaybackBinding(),
     Size surfaceSize = const Size(1200, 900),
     MediaPlaybackPresentationMode presentationMode =
         MediaPlaybackPresentationMode.phone,
@@ -131,6 +132,7 @@ void main() {
         home: MediaPlaybackPage(
           viewModel: viewModel,
           presentationMode: presentationMode,
+          binding: binding,
           deviceControls: deviceControls ?? const MediaNoopDeviceControls(),
           presentation: _shellPresentation,
         ),
@@ -149,8 +151,8 @@ void main() {
 
   group('互动动作槽（§6.3）', () {
     testWidgets('声明动作按顺序渲染，busy 动作禁用', (tester) async {
-      final adapter = _ShellAdapter(
-        engagementCapability: MediaEngagementCapability(
+      final binding = MediaPlaybackBinding(
+        engagementBuilder: () => MediaEngagementCapability(
           actions: <MediaEngagementActionSpec>[
             MediaEngagementActionSpec(
               id: MediaEngagementActionId.like,
@@ -169,7 +171,7 @@ void main() {
           ],
         ),
       );
-      await pumpShell(tester, adapter: adapter);
+      await pumpShell(tester, binding: binding);
 
       expect(find.text('点赞'), findsOneWidget);
       expect(find.text('1234'), findsOneWidget);
@@ -185,8 +187,8 @@ void main() {
     });
 
     testWidgets('动作执行提示语来自 perform 返回值', (tester) async {
-      final adapter = _ShellAdapter(
-        engagementCapability: MediaEngagementCapability(
+      final binding = MediaPlaybackBinding(
+        engagementBuilder: () => MediaEngagementCapability(
           actions: <MediaEngagementActionSpec>[
             MediaEngagementActionSpec(
               id: MediaEngagementActionId.favorite,
@@ -196,7 +198,7 @@ void main() {
           ],
         ),
       );
-      await pumpShell(tester, adapter: adapter);
+      await pumpShell(tester, binding: binding);
 
       await tester.tap(find.text('收藏'));
       await tester.pump();
@@ -1016,8 +1018,10 @@ void main() {
     });
 
     testWidgets('仅简介无评论时只渲染一个 tab', (tester) async {
-      final adapter = _ShellAdapter(surfaces: _IntroOnlySurfaces());
-      await pumpShell(tester, adapter: adapter);
+      final binding = MediaPlaybackBinding(
+        contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+      );
+      await pumpShell(tester, binding: binding);
 
       expect(find.byType(PlaybackContextTabs), findsOneWidget);
       expect(
@@ -1309,8 +1313,10 @@ void main() {
 
   group('评论面板可用性（§6.4）', () {
     testWidgets('切换分 P 后评论 tab 随能力出现', (tester) async {
-      final adapter = _ShellAdapter(surfaces: _EntryAwareSurfaces());
-      final harness = await pumpShell(tester, adapter: adapter);
+      final binding = MediaPlaybackBinding(
+        contentSurfacesBuilder: (_) => _EntryAwareSurfaces(),
+      );
+      final harness = await pumpShell(tester, binding: binding);
       await tester.pump();
 
       // entry '11'：无评论 → 单 tab。
@@ -1349,8 +1355,10 @@ void main() {
     });
 
     testWidgets('正在查看评论时切到无评论 entry 不留残留状态', (tester) async {
-      final adapter = _ShellAdapter(surfaces: _EntryAwareSurfaces());
-      final harness = await pumpShell(tester, adapter: adapter);
+      final binding = MediaPlaybackBinding(
+        contentSurfacesBuilder: (_) => _EntryAwareSurfaces(),
+      );
+      final harness = await pumpShell(tester, binding: binding);
       await tester.pump();
 
       // 切到有评论分 P 并激活评论 tab。
@@ -1416,8 +1424,10 @@ void main() {
     });
 
     testWidgets('评论 builder 返回 null 时不渲染评论 tab', (tester) async {
-      final adapter = _ShellAdapter(surfaces: _NullCommentsSurfaces());
-      await pumpShell(tester, adapter: adapter);
+      final binding = MediaPlaybackBinding(
+        contentSurfacesBuilder: (_) => _NullCommentsSurfaces(),
+      );
+      await pumpShell(tester, binding: binding);
 
       expect(find.byType(PlaybackContextTabs), findsOneWidget);
       expect(
@@ -1467,20 +1477,16 @@ final _shellSnapshot = VesperPlayerSnapshot(
   trackCatalog: const VesperTrackCatalog(tracks: <VesperMediaTrack>[]),
 );
 
-final class _ShellAdapter implements MediaPlatformAdapter {
+final class _ShellAdapter extends MediaPlatformAdapter {
   _ShellAdapter({
-    this.engagementCapability,
     this.danmakuProvider,
-    this.surfaces,
     this.historyStore,
     this.dlnaConfig,
     this.qualityOptions = const <MediaQualityOption>[],
     this.qualityPolicy = const MediaQualityPolicy(),
   });
 
-  final MediaEngagementCapability? engagementCapability;
   final MediaDanmakuProvider? danmakuProvider;
-  final MediaContentSurfaces? surfaces;
   final MediaHistoryStore? historyStore;
   @override
   final MediaDlnaConfig? dlnaConfig;
@@ -1515,13 +1521,7 @@ final class _ShellAdapter implements MediaPlatformAdapter {
   }
 
   @override
-  MediaEngagementCapability? get engagement => engagementCapability;
-
-  @override
   MediaDanmakuProvider? get danmaku => danmakuProvider;
-
-  @override
-  MediaContentSurfaces? get contentSurfaces => surfaces;
 
   @override
   MediaHistoryStore? get history => historyStore;

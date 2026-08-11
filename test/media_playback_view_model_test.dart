@@ -55,8 +55,16 @@ void main() {
     test('availableQualityOptions 来自解析结果的 qualityOptions', () async {
       final adapter = _FakeMediaAdapter(
         qualityOptions: const <MediaQualityOption>[
-          MediaQualityOption(id: '120', label: '4K 超清', tracks: <VesperMediaTrack>[]),
-          MediaQualityOption(id: '64', label: '720P', tracks: <VesperMediaTrack>[]),
+          MediaQualityOption(
+            id: '120',
+            label: '4K 超清',
+            tracks: <VesperMediaTrack>[],
+          ),
+          MediaQualityOption(
+            id: '64',
+            label: '720P',
+            tracks: <VesperMediaTrack>[],
+          ),
         ],
       );
       final vm = _createVm(adapter);
@@ -74,8 +82,10 @@ void main() {
       expect(await vm.selectQualityOption(null), isNull);
       expect(await vm.selectCodecIdentity('AV1'), isNull);
       expect(await vm.setPlaybackRate(2.0), isNull);
-      expect(await vm.selectSubtitle(const VesperTrackSelection.auto()),
-          '播放器尚未准备好。');
+      expect(
+        await vm.selectSubtitle(const VesperTrackSelection.auto()),
+        '播放器尚未准备好。',
+      );
       expect(vm.selectedQualityOptionId, isNull);
       expect(vm.selectedCodecIdentity, isNull);
     });
@@ -84,7 +94,12 @@ void main() {
       final vm = _createVm(_FakeMediaAdapter());
       expect(
         await vm.switchEntry(
-          const MediaPlaybackEntry(entryId: '22', pageNumber: 2, title: 'P2', durationSeconds: 60),
+          const MediaPlaybackEntry(
+            entryId: '22',
+            pageNumber: 2,
+            title: 'P2',
+            durationSeconds: 60,
+          ),
         ),
         isNull,
       );
@@ -119,8 +134,18 @@ MediaPlaybackViewModel _createVm(_FakeMediaAdapter adapter) {
       coverUrl: '',
       ownerName: '测试UP',
       pages: <MediaPlaybackEntry>[
-        MediaPlaybackEntry(entryId: '11', pageNumber: 1, title: 'P1', durationSeconds: 120),
-        MediaPlaybackEntry(entryId: '22', pageNumber: 2, title: 'P2', durationSeconds: 60),
+        MediaPlaybackEntry(
+          entryId: '11',
+          pageNumber: 1,
+          title: 'P1',
+          durationSeconds: 120,
+        ),
+        MediaPlaybackEntry(
+          entryId: '22',
+          pageNumber: 2,
+          title: 'P2',
+          durationSeconds: 60,
+        ),
       ],
     ),
     initialEntry: const MediaPlaybackEntry(
@@ -137,7 +162,7 @@ MediaPlaybackViewModel _createVm(_FakeMediaAdapter adapter) {
   return vm;
 }
 
-final class _FakeMediaAdapter implements MediaPlatformAdapter {
+final class _FakeMediaAdapter extends MediaPlatformAdapter {
   _FakeMediaAdapter({
     this.failResolve = false,
     this.qualityOptions = const <MediaQualityOption>[],
@@ -166,22 +191,4 @@ final class _FakeMediaAdapter implements MediaPlatformAdapter {
       qualityOptions: qualityOptions,
     );
   }
-
-  @override
-  MediaEngagementCapability? get engagement => null;
-
-  @override
-  MediaDanmakuProvider? get danmaku => null;
-
-  @override
-  MediaContentSurfaces? get contentSurfaces => null;
-
-  @override
-  MediaHistoryStore? get history => null;
-
-  @override
-  MediaQualityPolicy get qualityPolicy => const MediaQualityPolicy();
-
-  @override
-  MediaDlnaConfig? get dlnaConfig => null;
 }

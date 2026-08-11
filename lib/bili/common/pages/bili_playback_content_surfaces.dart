@@ -195,9 +195,8 @@ class _IntroSurfaceState extends State<_IntroSurface> {
       ),
       SignalBuilder(
         builder: (context) {
-          final capability = vm.playbackViewModel.adapter.engagement;
-          if (capability == null ||
-              capability.actions.isEmpty ||
+          final capability = vm.buildEngagementCapability();
+          if (capability.actions.isEmpty ||
               capability.placement != MediaEngagementPlacement.intro) {
             return const SizedBox.shrink();
           }

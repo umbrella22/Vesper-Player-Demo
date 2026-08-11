@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:vesper_media/app/app.dart';
+import 'package:vesper_media/platform_app.dart';
 import 'package:vesper_media/app/home_page.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
@@ -1911,7 +1911,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('renders bilibili product shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const VesperApp());
+    await tester.pumpWidget(const PlatformApp());
     await tester.pump();
 
     expect(find.text('搜索视频、BV 号或链接'), findsOneWidget);
@@ -1920,7 +1920,7 @@ void main() {
     expect(find.text('我的'), findsWidgets);
   });
 
-  testWidgets('VesperApp fallback mode uses the injected app settings', (
+  testWidgets('PlatformApp fallback mode uses the injected app settings', (
     WidgetTester tester,
   ) async {
     const secureStorageChannel = MethodChannel(
@@ -1955,7 +1955,7 @@ void main() {
     });
 
     await tester.pumpWidget(
-      VesperApp(
+      PlatformApp(
         appSettings: settings,
         client: client,
         offlineController: offlineController,
@@ -2031,7 +2031,7 @@ void main() {
         ..resetPadding();
     });
 
-    await tester.pumpWidget(const VesperApp());
+    await tester.pumpWidget(const PlatformApp());
     await tester.pump();
 
     final contentRect = tester.getRect(find.byType(CustomScrollView).first);
@@ -2077,7 +2077,7 @@ void main() {
   testWidgets('mobile mine uses neutral glass shortcuts and solid settings', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const VesperApp());
+    await tester.pumpWidget(const PlatformApp());
     await tester.pump();
 
     await tester.tapAt(tester.getCenter(find.text('我的').last));

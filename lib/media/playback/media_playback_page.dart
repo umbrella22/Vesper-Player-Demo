@@ -20,7 +20,7 @@ enum _PlaybackInfoTab { intro, comments }
 ///
 /// 平台差异全部经构造槽位注入：
 /// - [viewModel]：播放编排（调用方构造并管理生命周期）
-/// - [contentSurfacesBuilder]：内容面板（简介/评论/相关视频）
+/// - [binding]：单次播放的互动能力与内容面板
 /// - [deviceControls]：亮度/音量设备控制
 /// - [presentation]：系统呈现策略
 /// - [contentTabsTrailing]/[tuningCacheEntry]/[tvControlBarExtras]/[tvFallbackHome]：
@@ -31,7 +31,7 @@ class MediaPlaybackPage extends StatefulWidget {
     super.key,
     required this.viewModel,
     this.presentationMode = MediaPlaybackPresentationMode.phone,
-    this.contentSurfacesBuilder,
+    this.binding = const MediaPlaybackBinding(),
     this.deviceControls = const MediaNoopDeviceControls(),
     this.contentTabsTrailing,
     this.tuningCacheEntry,
@@ -47,9 +47,8 @@ class MediaPlaybackPage extends StatefulWidget {
 
   final MediaPlaybackPresentationMode presentationMode;
 
-  /// 内容面板工厂；未提供时使用适配器的能力声明。
-  final MediaContentSurfaces? Function(MediaPlaybackContentHost host)?
-  contentSurfacesBuilder;
+  /// 页面级动态能力；缺省不渲染互动栏与内容 tab。
+  final MediaPlaybackBinding binding;
 
   final MediaPlayerDeviceControls deviceControls;
 
@@ -158,10 +157,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       onCommentRepliesVisibilityChanged: _handleCommentRepliesVisibilityChanged,
       onSeekToTime: _seekToCommentTime,
     );
-    // 显式 builder 优先；未提供时回退到适配器的能力声明。
-    _contentSurfaces =
-        widget.contentSurfacesBuilder?.call(_contentHost) ??
-        _viewModel.adapter.contentSurfaces;
+    _contentSurfaces = widget.binding.buildContentSurfaces(_contentHost);
     _commentsScrollController.addListener(_handleCommentsScrollPosition);
     _commentRepliesScrollController.addListener(
       _handleCommentRepliesScrollPosition,
@@ -1764,7 +1760,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
           builder: (context) {
             _syncInfoTabController(context);
             final errorMessage = _viewModel.playbackErrorMessage(snapshot);
-            final engagement = _viewModel.adapter.engagement;
+            final engagement = widget.binding.buildEngagement();
             return DecoratedBox(
               key: const ValueKey<String>('playback-bottom-surface'),
               decoration: BoxDecoration(

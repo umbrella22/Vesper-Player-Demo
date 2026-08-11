@@ -1,5 +1,5 @@
-import 'package:vesper_media/app/app.dart';
 import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/platform_app.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -71,7 +71,7 @@ void main() {
         }
       }
 
-      await tester.pumpWidget(const VesperApp());
+      await tester.pumpWidget(const PlatformApp());
       await flushOrientationRequest();
 
       expect(platformMethods, contains('isAutoRotateEnabled'));

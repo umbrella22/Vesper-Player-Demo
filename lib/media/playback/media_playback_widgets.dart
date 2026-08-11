@@ -435,7 +435,7 @@ enum MediaEngagementBarLayout { wrap, compactIconRow }
 /// 通用互动动作栏：按 [MediaEngagementActionSpec] 声明渲染动作按钮。
 ///
 /// 壳对动作零分支——图标按动作语义映射，文案/计数/选中/busy/执行全部
-/// 来自适配器快照；[onMessage] 展示 perform() 返回的提示语。
+/// 来自播放 binding 快照；[onMessage] 展示 perform() 返回的提示语。
 class MediaEngagementBar extends StatelessWidget {
   const MediaEngagementBar({
     super.key,

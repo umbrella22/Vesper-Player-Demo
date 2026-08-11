@@ -51,8 +51,9 @@ final class BiliPlaybackViewModel {
        _shareCountLabel = signal(detail.shareCountLabel),
        _engagement = signal<BiliVideoEngagement?>(null),
        _comments = signal<List<BiliVideoComment>>(const <BiliVideoComment>[]),
-       _commentReplies =
-           signal<List<BiliVideoComment>>(const <BiliVideoComment>[]),
+       _commentReplies = signal<List<BiliVideoComment>>(
+         const <BiliVideoComment>[],
+       ),
        _relatedVideos = signal<List<BiliFeedVideo>>(const <BiliFeedVideo>[]) {
     final adapter = BiliMediaPlatformAdapter(
       client: client,
@@ -72,9 +73,6 @@ final class BiliPlaybackViewModel {
       initialPositionMs: initialPositionMs,
       preferTextureViewForPlayback: _usesLegacyAndroidPlaybackCompatibility,
     );
-    // 互动能力经 adapter 槽位消费（壳渲染动作栏）；构造完成后回填，
-    // 规避 adapter 与 view model 之间的构造循环。
-    adapter.attachEngagement(this);
     unawaited(loadEngagementState());
     unawaited(loadWatchLaterState());
     unawaited(loadComments());
@@ -137,11 +135,12 @@ final class BiliPlaybackViewModel {
       BiliMediaMapper.toBiliEntry(_playback.selectedEntry);
 
   BiliResolvedPlayback? get resolvedPlayback => BiliMediaMapper.toBiliResolved(
-        _playback.resolvedPlayback,
-        bvid: BiliMediaMapper.toBiliEntry(_playback.selectedEntry).bvid ??
-            detail.bvid,
-        cid: int.tryParse(_playback.selectedEntry.entryId) ?? 0,
-      );
+    _playback.resolvedPlayback,
+    bvid:
+        BiliMediaMapper.toBiliEntry(_playback.selectedEntry).bvid ??
+        detail.bvid,
+    cid: int.tryParse(_playback.selectedEntry.entryId) ?? 0,
+  );
 
   int? get selectedBiliQualityId =>
       int.tryParse(_playback.selectedQualityOptionId ?? '');
@@ -268,8 +267,7 @@ final class BiliPlaybackViewModel {
     }
     final sorted = qualityIds.toList();
     sorted.sort(
-      (left, right) =>
-          biliQualityRank(right).compareTo(biliQualityRank(left)),
+      (left, right) => biliQualityRank(right).compareTo(biliQualityRank(left)),
     );
     return sorted;
   }
@@ -333,6 +331,63 @@ final class BiliPlaybackViewModel {
 
   BiliVideoEngagement? get engagement => _engagement.value;
 
+  /// 构建当前播放会话的互动能力快照。
+  ///
+  /// 调用发生在播放页的 SignalBuilder 栈内，因此下面读取的信号会驱动
+  /// 动作计数、选中态和 busy 状态更新。Adapter 不持有本 view model。
+  MediaEngagementCapability buildEngagementCapability() {
+    final isPgc = detail.ownerMid <= 0 && detail.ownerName == '番剧';
+    // PGC 隐藏点赞/投币/收藏/分享，但保留稍后再看。
+    final actions = <MediaEngagementActionSpec>[
+      if (!isPgc) ...[
+        MediaEngagementActionSpec(
+          id: MediaEngagementActionId.like,
+          label: '点赞',
+          countLabel: detail.likeCountLabel,
+          selected: engagement?.isLiked ?? false,
+          busy: pendingEngagementAction == BiliEngagementAction.like,
+          perform: toggleLike,
+        ),
+        MediaEngagementActionSpec(
+          id: MediaEngagementActionId.coin,
+          label: '硬币',
+          countLabel: coinCountLabel,
+          selected: sentCoinCount > 0,
+          busy: pendingEngagementAction == BiliEngagementAction.coin,
+          perform: addCoin,
+        ),
+        MediaEngagementActionSpec(
+          id: MediaEngagementActionId.favorite,
+          label: '收藏',
+          countLabel: detail.favoriteCountLabel,
+          selected: engagement?.isFavorited ?? false,
+          busy: pendingEngagementAction == BiliEngagementAction.favorite,
+          perform: toggleFavorite,
+        ),
+        MediaEngagementActionSpec(
+          id: MediaEngagementActionId.share,
+          label: '分享',
+          countLabel: shareCountLabel,
+          busy: pendingEngagementAction == BiliEngagementAction.share,
+          perform: shareVideo,
+        ),
+      ],
+      MediaEngagementActionSpec(
+        id: MediaEngagementActionId.watchLater,
+        label: isInWatchLater ? '移出稍后再看' : '加入稍后再看',
+        selected: isInWatchLater,
+        busy:
+            watchLaterLoading ||
+            pendingEngagementAction == BiliEngagementAction.watchLater,
+        perform: toggleWatchLater,
+      ),
+    ];
+    return MediaEngagementCapability(
+      actions: actions,
+      placement: MediaEngagementPlacement.intro,
+    );
+  }
+
   List<BiliVideoComment> get comments => _comments.value;
 
   List<BiliVideoComment> get commentReplies => _commentReplies.value;
@@ -393,9 +448,7 @@ final class BiliPlaybackViewModel {
       if (detail.publishedAtLabel != null) detail.publishedAtLabel!,
       'P${selectedPage.pageNumber}',
     ];
-    return parts.isEmpty
-        ? 'P${selectedPage.pageNumber}'
-        : parts.join(' · ');
+    return parts.isEmpty ? 'P${selectedPage.pageNumber}' : parts.join(' · ');
   }
 
   Future<void> loadEngagementState() async {
@@ -815,7 +868,8 @@ final class BiliPlaybackViewModel {
     }
     _watchLaterLoading.value = true;
     try {
-      final bvid = _playback.selectedEntry.platformExtras['bvid'] as String? ??
+      final bvid =
+          _playback.selectedEntry.platformExtras['bvid'] as String? ??
           detail.bvid;
       final aid =
           _playback.selectedEntry.platformExtras['aid'] as int? ?? detail.aid;
@@ -845,7 +899,8 @@ final class BiliPlaybackViewModel {
       if (!client.hasAuthenticatedSession) {
         return '请先登录 Bilibili 后使用稍后再看。';
       }
-      final bvid = _playback.selectedEntry.platformExtras['bvid'] as String? ??
+      final bvid =
+          _playback.selectedEntry.platformExtras['bvid'] as String? ??
           detail.bvid;
       final aid =
           _playback.selectedEntry.platformExtras['aid'] as int? ?? detail.aid;

@@ -9,6 +9,7 @@ export 'models/media_playback_notice.dart';
 export 'models/media_playback_target.dart';
 export 'models/resolved_media.dart';
 export 'playback/media_external_playback_manager.dart';
+export 'playback/media_playback_binding.dart';
 export 'playback/media_playback_page.dart';
 export 'playback/media_playback_presentation.dart';
 export 'playback/media_playback_dlna_widgets.dart';

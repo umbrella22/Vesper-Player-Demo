@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/app/app.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -225,11 +226,13 @@ void main() {
       () async {
         final readme = await File('README.md').readAsString();
         final app = await File('lib/app/app.dart').readAsString();
+        final host = VesperAppHost(homeBuilder: (_) => const SizedBox.shrink());
 
         expect(readme, startsWith('# Vesper\n'));
         expect(readme, isNot(contains('视频平台国际版风格')));
         expect(readme, isNot(contains('Bilibili Player')));
-        expect(app, contains("title: 'Vesper'"));
+        expect(host.appTitle, 'Vesper');
+        expect(app, contains('title: widget.host.appTitle'));
         expect(app, isNot(contains("title: 'Bilibili Player'")));
       },
     );
