@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.8.0...vesper_media-v1.9.0) (2026-08-11)
+
+
+### Features
+
+* Enhance TuningOptionButton with supporting text and accessibility features ([ef1641a](https://github.com/umbrella22/Vesper-Player-Demo/commit/ef1641a55a0f610aadadb81990e3db92424fce51))
+* media playback architecture and enhance engagement capabilities ([dd0cb9a](https://github.com/umbrella22/Vesper-Player-Demo/commit/dd0cb9a8ac7f6f9a16cd929e47dbdad97e794b73))
+
+
+### Bug Fixes
+
+* 更新依赖 ([f9b5eb8](https://github.com/umbrella22/Vesper-Player-Demo/commit/f9b5eb871496070e90da1d60706ccd371a89279a))
+
 ## [1.8.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.7.0...vesper_media-v1.8.0) (2026-08-11)
 
 
