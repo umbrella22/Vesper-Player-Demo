@@ -12,6 +12,7 @@ import 'package:vesper_media/app/app_version.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_logout_service.dart';
@@ -228,7 +229,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('退出登录失败：$error')));
+        ..showSnackBar(
+          SnackBar(content: Text('退出登录失败：${biliErrorMessage(error)}')),
+        );
     } finally {
       if (mounted) {
         _loggingOut.value = false;
@@ -315,7 +318,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       await AppThemeScope.of(context).setPreference(preference);
     } catch (error) {
       if (mounted) {
-        _showMessage('保存主题失败：$error');
+        _showMessage('保存主题失败：${biliErrorMessage(error)}');
       }
     }
   }

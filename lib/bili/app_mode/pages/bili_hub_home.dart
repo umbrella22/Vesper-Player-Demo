@@ -432,7 +432,7 @@ class _HomeCacheSurfaceState extends State<_HomeCacheSurface> {
         final error = snapshot.error;
         if (error != null) {
           return _InlineErrorBanner(
-            message: error.toString(),
+            message: biliErrorMessage(error),
             actionLabel: '重试',
             onPressed: _reload,
           );

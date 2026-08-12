@@ -3,7 +3,7 @@ part of 'bili_client.dart';
 /// APIs backing the account library surfaces (following, history and watch
 /// later).  These endpoints are deliberately kept separate from playback and
 /// engagement so a failed library request cannot prevent a video from opening.
-extension BiliClientLibrary on BiliClient {
+extension _BiliClientLibraryImplementation on BiliClient {
   Future<List<BiliFollowingUser>> fetchFollowingUsers({
     int? mid,
     int page = 1,
@@ -39,15 +39,6 @@ extension BiliClientLibrary on BiliClient {
         .map(_parseFollowingUser)
         .whereType<BiliFollowingUser>()
         .toList(growable: false);
-  }
-
-  /// Alias retained for call sites that use the endpoint's terminology.
-  Future<List<BiliFollowingUser>> fetchFollowing({
-    int? mid,
-    int page = 1,
-    int pageSize = 20,
-  }) {
-    return fetchFollowingUsers(mid: mid, page: page, pageSize: pageSize);
   }
 
   /// Loads the small profile card rendered above a followed UP's submissions.
@@ -267,13 +258,6 @@ extension BiliClientLibrary on BiliClient {
     );
   }
 
-  Future<List<BiliRemoteHistoryEntry>> fetchPlaybackHistory({
-    int page = 1,
-    int pageSize = 20,
-  }) {
-    return fetchRemoteHistory(page: page, pageSize: pageSize);
-  }
-
   Future<List<BiliWatchLaterEntry>> fetchWatchLater({
     int page = 1,
     int pageSize = 20,
@@ -456,11 +440,6 @@ extension BiliClientLibrary on BiliClient {
           (normalizedBvid.isNotEmpty && entry.bvid == normalizedBvid) ||
           (normalizedAid != null && entry.aid == normalizedAid),
     );
-  }
-
-  /// Alias used by UI callers that prefer the shorter name.
-  Future<bool> isInWatchLater({required String bvid, int? aid}) {
-    return isVideoInWatchLater(bvid: bvid, aid: aid);
   }
 
   /// Returns subtitle renditions advertised by Bilibili's player-v2 endpoint

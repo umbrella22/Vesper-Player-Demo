@@ -59,7 +59,7 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 
 - Android release output is intentionally `arm64-v8a` only. Do not broaden ABI settings unless the user explicitly asks.
 - The app uses the bundled SDK submodule by default. Do not switch to an external SDK checkout unless the user asks for that test setup.
-- Bilibili playback, search, login, and history behavior live in `lib/bili/`; app shell and navigation live in `lib/app/`; player integration helpers live in `lib/player/`.
+- Bilibili playback, search, login, and history behavior live in `lib/bili/`; app shell and navigation live in `lib/app/`; player integration helpers live in `lib/media/player/`.
 - Preserve existing shell scripts in `scripts/` as the preferred build entrypoints when they already encode repository-specific setup.
 
 ## Practical Heuristics

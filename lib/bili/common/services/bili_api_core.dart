@@ -1,5 +1,6 @@
-import 'dart:async';
 import 'dart:io';
+
+import 'package:vesper_media/media/player/media_text.dart';
 
 import '../models/bili_models.dart';
 import 'bili_endpoints.dart';
@@ -54,23 +55,7 @@ String biliErrorMessage(Object error) {
   if (error is BiliApiException) {
     return error.toString();
   }
-  if (error is SocketException) {
-    return error.message;
-  }
-  if (error is FormatException) {
-    return error.message.isEmpty ? '数据格式异常' : error.message;
-  }
-  if (error is TimeoutException) {
-    return '请求超时，请检查网络连接';
-  }
-  if (error is FileSystemException) {
-    return error.message;
-  }
-  final message = error.toString();
-  const exceptionPrefix = 'Exception: ';
-  return message.startsWith(exceptionPrefix)
-      ? message.substring(exceptionPrefix.length)
-      : message;
+  return mediaErrorMessage(error);
 }
 
 final class BiliDashRequestVariant {

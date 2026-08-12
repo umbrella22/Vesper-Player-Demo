@@ -1,6 +1,6 @@
 part of 'bili_client.dart';
 
-extension BiliClientRegion on BiliClient {
+extension _BiliClientRegionImplementation on BiliClient {
   Future<List<BiliRegionVideo>> fetchRegionVideos(
     BiliRegionSection section, {
     int page = 1,

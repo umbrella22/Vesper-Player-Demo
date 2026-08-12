@@ -1,6 +1,6 @@
 part of 'bili_client.dart';
 
-extension BiliClientPlayback on BiliClient {
+extension _BiliClientPlaybackImplementation on BiliClient {
   Future<BiliResolvedPlayback> resolvePlayback({
     required BiliVideoDetail detail,
     required BiliVideoPageEntry page,
@@ -109,7 +109,10 @@ extension BiliClientPlayback on BiliClient {
     } catch (error) {
       // Subtitle discovery/materialization is optional and must not make an
       // otherwise playable video source fail to resolve.
-      return (tracks: const <BiliSubtitleTrack>[], error: '字幕加载失败：$error');
+      return (
+        tracks: const <BiliSubtitleTrack>[],
+        error: '字幕加载失败：${biliErrorMessage(error)}',
+      );
     }
   }
 

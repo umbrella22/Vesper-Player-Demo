@@ -113,7 +113,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
         _loginRequired.value = true;
         _errorMessage.value = null;
       } else {
-        _errorMessage.value = error.toString();
+        _errorMessage.value = biliErrorMessage(error);
       }
       _loading.value = false;
     }
@@ -352,7 +352,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       initialPage = detail.pages.first;
     } catch (error) {
       if (mounted) {
-        _showMessage('打开视频失败：$error');
+        _showMessage('打开视频失败：${biliErrorMessage(error)}');
       }
       return;
     }
@@ -513,7 +513,7 @@ class _RegionCacheSurface extends StatelessWidget {
         }
         final error = snapshot.error;
         if (error != null) {
-          return _RegionCacheError(message: error.toString());
+          return _RegionCacheError(message: biliErrorMessage(error));
         }
         final detail = snapshot.data;
         if (detail == null || detail.pages.isEmpty) {

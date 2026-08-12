@@ -250,6 +250,20 @@ void main() {
     });
   });
 
+  group('biliErrorMessage', () {
+    test('preserves Bilibili API codes and display copy', () {
+      expect(
+        biliErrorMessage(const BiliApiException('账号未登录', code: -101)),
+        '[-101] 账号未登录',
+      );
+    });
+
+    test('delegates non-Bilibili failures to the media formatter', () {
+      expect(biliErrorMessage(Exception('连接失败')), '连接失败');
+      expect(biliErrorMessage(TimeoutException('ignored')), '请求超时，请检查网络连接');
+    });
+  });
+
   group('BiliClient region videos', () {
     test('parses PGC season index payload after transport decoding', () async {
       final client = BiliClient(httpClient: _FakeRegionHttpClient());

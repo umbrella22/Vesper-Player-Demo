@@ -349,7 +349,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       if (state.authenticationRequired) {
         _clearAuthenticatedData(section, state);
       } else {
-        _showMessage('加载更多失败：$error');
+        _showMessage('加载更多失败：${biliErrorMessage(error)}');
       }
     } finally {
       state.loadingMore = false;
@@ -417,7 +417,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         (error.code == biliRiskControlCode || error.code == -412)) {
       return 'Bilibili 暂时限制了账户库请求，请稍后重试。';
     }
-    return '加载失败：$error';
+    return '加载失败：${biliErrorMessage(error)}';
   }
 
   Future<void> _handleLogin() async {
@@ -489,7 +489,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         await _load(_sectionForIndex(_tabController.index), force: true);
       }
     } catch (error) {
-      _showMessage('打开视频失败：$error');
+      _showMessage('打开视频失败：${biliErrorMessage(error)}');
     }
   }
 
@@ -545,7 +545,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       _showMessage('已移出稍后再看');
       await _load(BiliLibrarySection.watchLater, force: true);
     } catch (error) {
-      _showMessage('移除失败：$error');
+      _showMessage('移除失败：${biliErrorMessage(error)}');
     }
   }
 

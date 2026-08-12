@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:signals/signals_flutter.dart';
 import 'package:vesper_player/vesper_player.dart';
+import 'package:vesper_media/media/player/media_text.dart';
 
 import '../../bili/common/models/bili_models.dart';
 import '../../bili/common/services/bili_client.dart';
@@ -164,7 +165,7 @@ final class OfflineCacheViewModel {
       _syncEntries();
       await loadStorageUsage();
     } catch (error) {
-      _errorMessage.value = error.toString();
+      _errorMessage.value = mediaErrorMessage(error);
     } finally {
       _loading.value = false;
     }
@@ -176,7 +177,7 @@ final class OfflineCacheViewModel {
     try {
       _storageUsage.value = await controller.resolveStorageUsage();
     } catch (error) {
-      _storageErrorMessage.value = error.toString();
+      _storageErrorMessage.value = mediaErrorMessage(error);
     } finally {
       _storageLoading.value = false;
     }
@@ -256,7 +257,10 @@ final class OfflineCacheViewModel {
       _syncEntries();
       return const OfflineCacheDeleteResult(deleted: true, message: '已删除缓存');
     } catch (error) {
-      return OfflineCacheDeleteResult(deleted: false, message: '删除失败：$error');
+      return OfflineCacheDeleteResult(
+        deleted: false,
+        message: '删除失败：${mediaErrorMessage(error)}',
+      );
     } finally {
       _deletingAssetIds.value = <String>{..._deletingAssetIds.value}
         ..remove(assetId);
@@ -321,7 +325,10 @@ final class OfflineCacheViewModel {
         uri: uri,
       );
     } catch (error) {
-      return OfflineCacheExportResult(exported: false, message: '导出失败：$error');
+      return OfflineCacheExportResult(
+        exported: false,
+        message: '导出失败：${mediaErrorMessage(error)}',
+      );
     } finally {
       _exportingAssetIds.value = <String>{..._exportingAssetIds.value}
         ..remove(assetId);

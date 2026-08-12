@@ -7,6 +7,7 @@ import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
+import 'package:vesper_media/media/player/media_text.dart';
 import '../../bili/common/pages/bili_playback_page.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_history_store.dart';
@@ -197,7 +198,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       }
     } catch (error) {
       if (mounted) {
-        _showMessage('打开视频失败：$error');
+        _showMessage('打开视频失败：${mediaErrorMessage(error)}');
       }
     }
   }
@@ -215,7 +216,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       await _viewModel.toggleTaskCaching(entry);
     } catch (error) {
       if (mounted) {
-        _showMessage('缓存操作失败：$error');
+        _showMessage('缓存操作失败：${mediaErrorMessage(error)}');
       }
     }
   }

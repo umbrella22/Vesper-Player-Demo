@@ -96,7 +96,7 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 lib/
   app/        App shell 和导航
   bili/       目标视频平台 API、WBI、搜索、详情、播放和历史
-  player/     Player SDK 参数辅助逻辑
+  media/      平台无关媒体能力、播放编排和 Player SDK 参数辅助逻辑
   danmaku/    为 SDK 实验和测试保留的弹幕解析工具
   download/   离线缓存任务规划、存储、导出与本地播放
 scripts/

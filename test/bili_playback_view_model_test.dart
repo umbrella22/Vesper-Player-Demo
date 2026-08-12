@@ -382,21 +382,57 @@ void main() {
       expect(vm.isInWatchLater, isFalse);
     });
 
+    test('watch later loads membership and adds the current video', () async {
+      final client = _FakePlaybackVmClient();
+      final vm = await authenticatedVm(client);
+
+      expect(vm.watchLaterKnown, isTrue);
+      expect(vm.isInWatchLater, isFalse);
+
+      final message = await vm.toggleWatchLater();
+
+      expect(message, '已加入稍后再看');
+      expect(vm.isInWatchLater, isTrue);
+      expect(vm.watchLaterKnown, isTrue);
+      expect(client.addedWatchLaterBvids, <String>['BV1TESTVIDEO']);
+      expect(client.removedWatchLaterBvids, isEmpty);
+    });
+
+    test('watch later removes a video reported as present', () async {
+      final client = _FakePlaybackVmClient()..watchLaterMembership = true;
+      final vm = await authenticatedVm(client);
+
+      expect(vm.isInWatchLater, isTrue);
+
+      final message = await vm.toggleWatchLater();
+
+      expect(message, '已移出稍后再看');
+      expect(vm.isInWatchLater, isFalse);
+      expect(client.removedWatchLaterBvids, <String>['BV1TESTVIDEO']);
+      expect(client.addedWatchLaterBvids, isEmpty);
+    });
+
+    test('watch later keeps state when a mutation fails', () async {
+      final client = _FakePlaybackVmClient()
+        ..watchLaterMutationError = const BiliApiException('操作被拒绝', code: -403);
+      final vm = await authenticatedVm(client);
+
+      final message = await vm.toggleWatchLater();
+
+      expect(message, '操作失败：[-403] 操作被拒绝');
+      expect(vm.isInWatchLater, isFalse);
+      expect(vm.watchLaterKnown, isTrue);
+      expect(vm.pendingEngagementAction, isNull);
+    });
+
     test(
       'watch later degrades gracefully when membership is unavailable',
       () async {
-        final client = _FakePlaybackVmClient();
+        final client = _FakePlaybackVmClient()
+          ..watchLaterMembershipError = const BiliApiException('暂不可用');
         final vm = await authenticatedVm(client);
 
-        // Watch-later endpoints are extension methods on BiliClient and cannot
-        // be faked by subclassing; in the test environment they fail over the
-        // network. The VM must degrade gracefully (membership is optional).
-        await vm.loadWatchLaterState();
         expect(vm.watchLaterKnown, isFalse);
-        expect(vm.isInWatchLater, isFalse);
-
-        final message = await vm.toggleWatchLater();
-        expect(message, contains('操作失败'));
         expect(vm.isInWatchLater, isFalse);
       },
     );
@@ -637,10 +673,44 @@ final class _FakePlaybackVmClient extends BiliClient {
   List<BiliFeedVideo> recommended = const <BiliFeedVideo>[];
   Object? relatedError;
   Object? recommendedError;
+  bool watchLaterMembership = false;
+  Object? watchLaterMembershipError;
+  Object? watchLaterMutationError;
+  final List<String> addedWatchLaterBvids = <String>[];
+  final List<String> removedWatchLaterBvids = <String>[];
   int coinCount = 0;
   Completer<BiliVideoEngagement>? engagementCompleter;
   Completer<BiliVideoEngagement>? likeCompleter;
   final List<String> sentComments = <String>[];
+
+  @override
+  Future<bool> isVideoInWatchLater({required String bvid, int? aid}) async {
+    final error = watchLaterMembershipError;
+    if (error != null) {
+      throw error;
+    }
+    return watchLaterMembership;
+  }
+
+  @override
+  Future<void> addToWatchLater({required String bvid, int? aid}) async {
+    final error = watchLaterMutationError;
+    if (error != null) {
+      throw error;
+    }
+    addedWatchLaterBvids.add(bvid);
+    watchLaterMembership = true;
+  }
+
+  @override
+  Future<void> removeFromWatchLater({String? bvid, int? aid}) async {
+    final error = watchLaterMutationError;
+    if (error != null) {
+      throw error;
+    }
+    removedWatchLaterBvids.add(bvid ?? '');
+    watchLaterMembership = false;
+  }
 
   @override
   Future<BiliVideoCommentPage> fetchVideoCommentPage(

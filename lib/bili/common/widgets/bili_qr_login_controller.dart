@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
 import '../models/bili_models.dart';
+import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
 
@@ -111,7 +112,7 @@ final class BiliQrLoginController {
         return;
       }
       _isLoading.value = false;
-      _errorMessage.value = error.toString();
+      _errorMessage.value = biliErrorMessage(error);
       _notify();
     }
   }
@@ -158,7 +159,7 @@ final class BiliQrLoginController {
       if (!_isCurrent(generation)) {
         return;
       }
-      _errorMessage.value = error.toString();
+      _errorMessage.value = biliErrorMessage(error);
       _stopPollingTimer();
     } finally {
       if (_isCurrent(generation)) {

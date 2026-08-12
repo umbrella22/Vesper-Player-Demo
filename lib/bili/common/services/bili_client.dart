@@ -67,7 +67,9 @@ class BiliClient {
 
   @visibleForTesting
   BiliDashManifestData? parseDashManifestForTesting(Map<String, Object?> data) {
-    return BiliClientPlayback(this)._parseDashManifest(data).manifest;
+    return _BiliClientPlaybackImplementation(
+      this,
+    )._parseDashManifest(data).manifest;
   }
 
   Future<BiliResolvedPlayback> resolvePlayback({
@@ -75,9 +77,179 @@ class BiliClient {
     required BiliVideoPageEntry page,
     required TargetPlatform platform,
   }) {
-    return BiliClientPlayback(
+    return _BiliClientPlaybackImplementation(
       this,
     ).resolvePlayback(detail: detail, page: page, platform: platform);
+  }
+
+  Future<BiliDownloadOptions> resolveDownloadOptions({
+    required BiliVideoDetail detail,
+    required BiliVideoPageEntry page,
+  }) {
+    return _BiliClientDownloadImplementation(
+      this,
+    ).resolveDownloadOptions(detail: detail, page: page);
+  }
+
+  BiliPreparedDownloadAsset prepareDownloadAsset({
+    required BiliDownloadOptions options,
+    required int qualityId,
+    BiliVideoCodecPreference codecPreference =
+        BiliVideoCodecPreference.automatic,
+    String? targetDirectory,
+  }) {
+    return _BiliClientDownloadImplementation(this).prepareDownloadAsset(
+      options: options,
+      qualityId: qualityId,
+      codecPreference: codecPreference,
+      targetDirectory: targetDirectory,
+    );
+  }
+
+  Future<BiliPreparedDownloadAsset> prepareVerifiedDownloadAsset({
+    required BiliDownloadOptions options,
+    required int qualityId,
+    BiliVideoCodecPreference codecPreference =
+        BiliVideoCodecPreference.automatic,
+    String? targetDirectory,
+  }) {
+    return _BiliClientDownloadImplementation(this).prepareVerifiedDownloadAsset(
+      options: options,
+      qualityId: qualityId,
+      codecPreference: codecPreference,
+      targetDirectory: targetDirectory,
+    );
+  }
+
+  Future<List<BiliFollowingUser>> fetchFollowingUsers({
+    int? mid,
+    int page = 1,
+    int pageSize = 20,
+  }) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).fetchFollowingUsers(mid: mid, page: page, pageSize: pageSize);
+  }
+
+  Future<List<BiliFollowingUser>> fetchFollowing({
+    int? mid,
+    int page = 1,
+    int pageSize = 20,
+  }) {
+    return fetchFollowingUsers(mid: mid, page: page, pageSize: pageSize);
+  }
+
+  Future<BiliUserSpaceProfile> fetchUserSpaceProfile(int mid) {
+    return _BiliClientLibraryImplementation(this).fetchUserSpaceProfile(mid);
+  }
+
+  Future<BiliUserSpaceVideoPage> fetchUserSpaceVideos({
+    required int mid,
+    int page = 1,
+    int pageSize = 30,
+    String keyword = '',
+  }) {
+    return _BiliClientLibraryImplementation(this).fetchUserSpaceVideos(
+      mid: mid,
+      page: page,
+      pageSize: pageSize,
+      keyword: keyword,
+    );
+  }
+
+  Future<BiliUserSpaceVideo?> fetchUserSpaceVideoByBvid({
+    required int mid,
+    required String bvid,
+  }) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).fetchUserSpaceVideoByBvid(mid: mid, bvid: bvid);
+  }
+
+  Future<List<BiliRemoteHistoryEntry>> fetchRemoteHistory({
+    int page = 1,
+    int pageSize = 20,
+    int max = 0,
+    int viewAtMs = 0,
+  }) {
+    return _BiliClientLibraryImplementation(this).fetchRemoteHistory(
+      page: page,
+      pageSize: pageSize,
+      max: max,
+      viewAtMs: viewAtMs,
+    );
+  }
+
+  Future<BiliRemoteHistoryPage> fetchRemoteHistoryPage({
+    int page = 1,
+    int pageSize = 20,
+    int max = 0,
+    int viewAtMs = 0,
+  }) {
+    return _BiliClientLibraryImplementation(this).fetchRemoteHistoryPage(
+      page: page,
+      pageSize: pageSize,
+      max: max,
+      viewAtMs: viewAtMs,
+    );
+  }
+
+  Future<List<BiliRemoteHistoryEntry>> fetchPlaybackHistory({
+    int page = 1,
+    int pageSize = 20,
+  }) {
+    return fetchRemoteHistory(page: page, pageSize: pageSize);
+  }
+
+  Future<List<BiliWatchLaterEntry>> fetchWatchLater({
+    int page = 1,
+    int pageSize = 20,
+  }) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).fetchWatchLater(page: page, pageSize: pageSize);
+  }
+
+  Future<void> addToWatchLater({required String bvid, int? aid}) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).addToWatchLater(bvid: bvid, aid: aid);
+  }
+
+  Future<void> removeFromWatchLater({String? bvid, int? aid}) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).removeFromWatchLater(bvid: bvid, aid: aid);
+  }
+
+  Future<bool> isVideoInWatchLater({required String bvid, int? aid}) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).isVideoInWatchLater(bvid: bvid, aid: aid);
+  }
+
+  Future<bool> isInWatchLater({required String bvid, int? aid}) {
+    return isVideoInWatchLater(bvid: bvid, aid: aid);
+  }
+
+  Future<List<BiliSubtitleTrack>> fetchVideoSubtitleTracks({
+    required String bvid,
+    required int cid,
+    int? aid,
+  }) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).fetchVideoSubtitleTracks(bvid: bvid, cid: cid, aid: aid);
+  }
+
+  Future<List<BiliSubtitleTrack>> fetchVideoSubtitles({
+    required String bvid,
+    required int cid,
+    int? aid,
+  }) {
+    return _BiliClientLibraryImplementation(
+      this,
+    ).fetchVideoSubtitles(bvid: bvid, cid: cid, aid: aid);
   }
 
   Future<List<BiliSearchResult>> searchVideos(
@@ -110,15 +282,21 @@ class BiliClient {
     BiliRegionSection section, {
     int page = 1,
   }) {
-    return BiliClientRegion(this).fetchRegionVideos(section, page: page);
+    return _BiliClientRegionImplementation(
+      this,
+    ).fetchRegionVideos(section, page: page);
   }
 
   Future<BiliVideoDetail> fetchPgcSeasonFirstEpisodeDetail(int seasonId) {
-    return BiliClientRegion(this).fetchPgcSeasonFirstEpisodeDetail(seasonId);
+    return _BiliClientRegionImplementation(
+      this,
+    ).fetchPgcSeasonFirstEpisodeDetail(seasonId);
   }
 
   Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) {
-    return BiliClientRegion(this).fetchPgcEpisodeDetail(episodeId);
+    return _BiliClientRegionImplementation(
+      this,
+    ).fetchPgcEpisodeDetail(episodeId);
   }
 
   Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {

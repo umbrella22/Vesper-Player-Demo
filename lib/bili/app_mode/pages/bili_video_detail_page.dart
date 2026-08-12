@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
@@ -98,7 +99,7 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(snapshot.error.toString()),
+                child: Text(biliErrorMessage(snapshot.error!)),
               ),
             );
           }

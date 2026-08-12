@@ -6,6 +6,7 @@ import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/download/download.dart';
 import '../models/bili_models.dart';
+import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
 import '../services/bili_history_store.dart';
 import '../services/bili_text.dart';
@@ -83,7 +84,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
       if (!mounted) {
         return;
       }
-      _errorMessage.value = error.toString();
+      _errorMessage.value = biliErrorMessage(error);
       _loading.value = false;
     }
   }
@@ -105,7 +106,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
       );
       widget.onMessage('已加入缓存：P${page.pageNumber}');
     } catch (error) {
-      widget.onMessage('缓存失败：$error');
+      widget.onMessage('缓存失败：${biliErrorMessage(error)}');
     } finally {
       if (mounted) {
         _pendingCids.value = _pendingCids.value

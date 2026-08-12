@@ -1,6 +1,6 @@
 part of 'bili_client.dart';
 
-extension BiliClientDownload on BiliClient {
+extension _BiliClientDownloadImplementation on BiliClient {
   Future<BiliDownloadOptions> resolveDownloadOptions({
     required BiliVideoDetail detail,
     required BiliVideoPageEntry page,
