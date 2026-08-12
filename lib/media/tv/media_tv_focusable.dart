@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -9,6 +10,8 @@ import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 const _tvWhiteRamp = Color(0xFFFFFFFF);
 const _tvBlackRamp = Color(0xFF000000);
+const tvFocusSafeInset = 32.0;
+const tvInlineFocusSafeInset = 16.0;
 
 enum TvFocusArea {
   /// The persistent first-level navigation rail owned by the TV home page.
@@ -89,6 +92,26 @@ class TvFocusGroupScope extends InheritedWidget {
   }
 }
 
+/// Keeps lifted focus visuals inside the content region that owns them.
+///
+/// Without a local overlay, [OverlayPortal] content is painted in the route
+/// overlay and can cover fixed search bars or headers outside a scroll view.
+class TvFocusOverlayScope extends StatelessWidget {
+  const TvFocusOverlayScope({
+    super.key,
+    required this.child,
+    this.clipBehavior = Clip.hardEdge,
+  });
+
+  final Widget child;
+  final Clip clipBehavior;
+
+  @override
+  Widget build(BuildContext context) {
+    return Overlay.wrap(clipBehavior: clipBehavior, child: child);
+  }
+}
+
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
@@ -106,6 +129,7 @@ class TvFocusable extends StatefulWidget {
     this.onDirectionalMove,
     this.debugLabel,
     this.focusArea,
+    this.revealPadding = EdgeInsets.zero,
   });
 
   final Widget child;
@@ -122,6 +146,7 @@ class TvFocusable extends StatefulWidget {
   final bool Function(TraversalDirection direction)? onDirectionalMove;
   final String? debugLabel;
   final TvFocusArea? focusArea;
+  final EdgeInsets revealPadding;
 
   @override
   State<TvFocusable> createState() => _TvFocusableState();
@@ -258,47 +283,50 @@ class _TvFocusableState extends State<TvFocusable> {
         focusNode: _node,
         autofocus: widget.autofocus,
         onKeyEvent: _handleKeyEvent,
-        child: AnimatedScale(
-          scale: _pressed
-              ? AppVisualTokens.pressedScale
-              : _hasFocus
-              ? widget.scale
-              : 1.0,
-          duration: _pressed
-              ? AppVisualTokens.motionDuration(
-                  context,
-                  AppVisualTokens.buttonPressDuration,
-                )
-              : duration,
-          curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
-            duration: duration,
-            curve: Curves.easeOutCubic,
-            decoration: _hasFocus && widget.showGlow
-                ? BoxDecoration(
-                    borderRadius: BorderRadius.circular(
-                      widget.focusCornerRadius,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _tvWhiteRamp.withValues(alpha: 0.18),
-                        blurRadius: widget.focusElevation * 2,
-                        spreadRadius: 1,
-                      ),
-                      BoxShadow(
-                        color: _tvBlackRamp.withValues(alpha: 0.35),
-                        blurRadius: widget.focusElevation,
-                        spreadRadius: 0,
-                      ),
-                    ],
+        child: _TvFocusRevealBounds(
+          padding: widget.revealPadding,
+          child: AnimatedScale(
+            scale: _pressed
+                ? AppVisualTokens.pressedScale
+                : _hasFocus
+                ? widget.scale
+                : 1.0,
+            duration: _pressed
+                ? AppVisualTokens.motionDuration(
+                    context,
+                    AppVisualTokens.buttonPressDuration,
                   )
-                : BoxDecoration(
-                    borderRadius: BorderRadius.circular(
-                      widget.baseCornerRadius,
+                : duration,
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: duration,
+              curve: Curves.easeOutCubic,
+              decoration: _hasFocus && widget.showGlow
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(
+                        widget.focusCornerRadius,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _tvWhiteRamp.withValues(alpha: 0.18),
+                          blurRadius: widget.focusElevation * 2,
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color: _tvBlackRamp.withValues(alpha: 0.35),
+                          blurRadius: widget.focusElevation,
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    )
+                  : BoxDecoration(
+                      borderRadius: BorderRadius.circular(
+                        widget.baseCornerRadius,
+                      ),
+                      boxShadow: const [],
                     ),
-                    boxShadow: const [],
-                  ),
-            child: widget.child,
+              child: widget.child,
+            ),
           ),
         ),
       ),
@@ -421,6 +449,7 @@ class _TvGlassSelectableState extends State<TvGlassSelectable> {
       baseCornerRadius: widget.borderRadius,
       duration: duration,
       focusArea: widget.focusArea,
+      revealPadding: const EdgeInsets.all(tvInlineFocusSafeInset),
       debugLabel: widget.debugLabel,
       onFocusChange: _handleFocusChange,
       onDirectionalMove: widget.onDirectionalMove,
@@ -581,6 +610,9 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
           showGlow: false,
           debugLabel: widget.debugLabel,
           focusArea: widget.focusArea,
+          revealPadding: EdgeInsets.all(
+            widget.useOverlayLift ? tvFocusSafeInset : tvInlineFocusSafeInset,
+          ),
           onFocusChange: _handleFocusChange,
           onTap: widget.onTap,
           child: widget.useOverlayLift
@@ -662,6 +694,50 @@ class _TvFocusableSurfaceState extends State<TvFocusableSurface> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TvFocusRevealBounds extends SingleChildRenderObjectWidget {
+  const _TvFocusRevealBounds({required this.padding, required super.child});
+
+  final EdgeInsets padding;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderTvFocusRevealBounds(padding);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderTvFocusRevealBounds renderObject,
+  ) {
+    renderObject.padding = padding;
+  }
+}
+
+class _RenderTvFocusRevealBounds extends RenderProxyBox {
+  _RenderTvFocusRevealBounds(this._padding);
+
+  EdgeInsets _padding;
+
+  set padding(EdgeInsets value) {
+    if (_padding == value) {
+      return;
+    }
+    _padding = value;
+    markNeedsPaint();
+  }
+
+  @override
+  Rect get paintBounds {
+    final bounds = super.paintBounds;
+    return Rect.fromLTRB(
+      bounds.left - _padding.left,
+      bounds.top - _padding.top,
+      bounds.right + _padding.right,
+      bounds.bottom + _padding.bottom,
     );
   }
 }

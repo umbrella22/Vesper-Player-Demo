@@ -361,6 +361,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
     required this.onTap,
     this.durationLabel,
     this.onFocusChange,
+    this.useOverlayLift = true,
     this.removeKey,
     this.onRemove,
   });
@@ -375,6 +376,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
   final VoidCallback onTap;
   final String? durationLabel;
   final ValueChanged<bool>? onFocusChange;
+  final bool useOverlayLift;
   final Key? removeKey;
   final VoidCallback? onRemove;
 
@@ -397,6 +399,8 @@ class _TvLibraryVideoCard extends StatelessWidget {
               child: TvFocusableSurface(
                 autofocus: autofocus,
                 scale: 1.07,
+                useOverlayLift: useOverlayLift,
+                focusPadding: useOverlayLift ? 8 : 0,
                 borderRadius: AppVisualTokens.contentRadius,
                 focusArea: TvFocusArea.content,
                 debugLabel: debugLabel,
@@ -590,16 +594,20 @@ class _TvLibraryLoadMoreTile extends StatelessWidget {
     super.key,
     required this.loading,
     required this.onTap,
+    this.useOverlayLift = true,
   });
 
   final bool loading;
   final VoidCallback onTap;
+  final bool useOverlayLift;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     return TvFocusableSurface(
       scale: 1.07,
+      useOverlayLift: useOverlayLift,
+      focusPadding: useOverlayLift ? 8 : 0,
       borderRadius: AppVisualTokens.contentRadius,
       focusArea: TvFocusArea.content,
       debugLabel: 'tv_library_load_more',

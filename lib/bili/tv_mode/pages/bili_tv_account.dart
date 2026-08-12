@@ -52,20 +52,17 @@ class _TvMineCommand extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.autofocus = false,
     this.primary = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final bool autofocus;
   final bool primary;
 
   @override
   Widget build(BuildContext context) {
     return TvGlassSelectable(
-      autofocus: autofocus,
       scale: 1.045,
       borderRadius: 12,
       selected: primary,

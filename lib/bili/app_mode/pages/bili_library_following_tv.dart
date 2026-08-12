@@ -732,7 +732,14 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
             ),
           ],
           Expanded(
-            child: _buildFollowingList(context, filtered, collapsed: collapsed),
+            child: TvFocusOverlayScope(
+              key: const ValueKey<String>('bili-tv-following-list-focus-scope'),
+              child: _buildFollowingList(
+                context,
+                filtered,
+                collapsed: collapsed,
+              ),
+            ),
           ),
         ],
       ),
@@ -754,9 +761,9 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
       key: const ValueKey<String>('bili-tv-following-list'),
       padding: EdgeInsets.fromLTRB(
         collapsed ? 8 : 10,
-        4,
+        tvInlineFocusSafeInset,
         collapsed ? 8 : 10,
-        14,
+        tvInlineFocusSafeInset,
       ),
       itemCount: users.length + (includeLoadMore ? 1 : 0),
       separatorBuilder: (_, _) => SizedBox(height: collapsed ? 8 : 6),
@@ -894,7 +901,12 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
           ],
         ),
         const SizedBox(height: 8),
-        Expanded(child: _buildVideoBody()),
+        Expanded(
+          child: TvFocusOverlayScope(
+            key: const ValueKey<String>('bili-tv-space-video-focus-scope'),
+            child: _buildVideoBody(),
+          ),
+        ),
       ],
     );
   }
@@ -981,8 +993,13 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
     }
     return GridView.builder(
       key: const ValueKey<String>('bili-tv-space-video-grid'),
-      clipBehavior: Clip.hardEdge,
-      padding: const EdgeInsets.fromLTRB(2, 8, 2, 16),
+      clipBehavior: Clip.none,
+      padding: const EdgeInsets.fromLTRB(
+        tvInlineFocusSafeInset,
+        tvInlineFocusSafeInset,
+        tvInlineFocusSafeInset,
+        tvInlineFocusSafeInset,
+      ),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: _tvLibraryVideoMaxCrossAxisExtent,
         mainAxisSpacing: 22,
@@ -995,6 +1012,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
           return _TvLibraryLoadMoreTile(
             key: const ValueKey<String>('bili-tv-space-video-load-more'),
             loading: _spaceLoadingMore,
+            useOverlayLift: false,
             onTap: () => unawaited(_loadMoreVideos()),
           );
         }
@@ -1011,6 +1029,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
           progressMs: 0,
           durationMs: 0,
           durationLabel: video.durationLabel,
+          useOverlayLift: false,
           // The rail owns initial focus. Entering the submission area through
           // directional focus is what collapses it to avatars.
           autofocus: false,

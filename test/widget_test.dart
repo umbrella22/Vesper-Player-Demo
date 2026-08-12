@@ -2376,6 +2376,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     final rail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_search');
+    expect(tester.getSize(rail).width, 260);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 240));
+
     final initialRailWidth = tester.getSize(rail).width;
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
     expect(initialRailWidth, 80);
@@ -2406,6 +2413,8 @@ void main() {
     await tester.tap(find.text('搜索'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 240));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
 
     await tester.enterText(find.byType(TextField), '关键词');
     await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -2448,7 +2457,7 @@ void main() {
     expect(find.text('搜索结果 1'), findsOneWidget);
   });
 
-  testWidgets('tv search focuses the field and rail right restores it', (
+  testWidgets('tv search waits for right before focusing the field', (
     WidgetTester tester,
   ) async {
     await _pumpTvHomePage(
@@ -2470,33 +2479,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     expect(find.byType(TextField), findsOneWidget);
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
-    expect(tester.testTextInput.isVisible, isTrue);
-
-    final searchRailItem = find
-        .ancestor(
-          of: find.byKey(
-            const ValueKey<String>('tv-glass-selectable-state-nav_search'),
-          ),
-          matching: find.byType(TvFocusable),
-        )
-        .last;
-    tester
-        .widget<Focus>(
-          find
-              .descendant(of: searchRailItem, matching: find.byType(Focus))
-              .first,
-        )
-        .focusNode
-        ?.requestFocus();
-    await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_search');
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('bili-tv-left-rail')))
+          .width,
+      260,
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_search_field');
     expect(tester.testTextInput.isVisible, isTrue);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('bili-tv-left-rail')))
+          .width,
+      80,
+    );
   });
 
   testWidgets('tv rail collapses for content and restores the last focus', (
@@ -2599,13 +2601,8 @@ void main() {
 
     final mainRail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
     await tester.pump(AppVisualTokens.overlayDuration);
-    expect(tester.getSize(mainRail).width, 80);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump(AppVisualTokens.overlayDuration);
-    await tester.pump(const Duration(milliseconds: 300));
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
     expect(tester.getSize(mainRail).width, 260);
-
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump(AppVisualTokens.overlayDuration);
     await tester.pump(const Duration(milliseconds: 300));
@@ -2646,16 +2643,10 @@ void main() {
       findsOneWidget,
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pump(AppVisualTokens.overlayDuration);
     await tester.pump();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
-    expect(tester.getSize(mainRail).width, 80);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pump(AppVisualTokens.overlayDuration);
-    await tester.pump(const Duration(milliseconds: 300));
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
-    expect(tester.getSize(mainRail).width, 80);
+    expect(tester.getSize(mainRail).width, 260);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
@@ -2718,26 +2709,17 @@ void main() {
     final compactContentWidth = tester.getRect(contentArea).width;
     final compactMainRect = tester.getRect(mainRail);
     final compactFollowingRect = tester.getRect(followingRail);
-    expect(tester.getSize(mainRail).width, 80);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
+    expect(tester.getSize(mainRail).width, 260);
     expect(compactFollowingRect.left - compactMainRect.right, closeTo(12, 0.5));
     expect(compactFollowingRect.top, closeTo(compactMainRect.top, 0.5));
     expect(compactFollowingRect.bottom, closeTo(compactMainRect.bottom, 0.5));
     expect(tester.takeException(), isNull);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
     await tester.pump(AppVisualTokens.overlayDuration);
     await tester.pump(const Duration(milliseconds: 300));
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
-    expect(tester.getSize(mainRail).width, 260);
-    expect(
-      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump(AppVisualTokens.overlayDuration);
-    await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('bili-tv-following-rail-expanded')),
       findsOneWidget,
@@ -2795,11 +2777,6 @@ void main() {
       findsOneWidget,
     );
     expect(tester.getSize(mainRail).width, 260);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pump(AppVisualTokens.overlayDuration);
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(tester.getSize(mainRail).width, 80);
     expect(tester.takeException(), isNull);
   });
 
@@ -2925,16 +2902,6 @@ void main() {
     await tester.pump(AppVisualTokens.tvFocusDuration);
     await tester.pump();
 
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_following');
-    expect(
-      find.byKey(const ValueKey<String>('bili-tv-following-rail-collapsed')),
-      findsOneWidget,
-    );
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump(AppVisualTokens.tvFocusDuration);
-    await tester.pump();
-
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
       'tv_following_refresh',
@@ -2944,6 +2911,66 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tv primary pages keep a twelve pixel rail gap', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      initialHistoryEntries: _tvHistoryEntries(2),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+    );
+
+    final rail = find.byKey(const ValueKey<String>('bili-tv-left-rail'));
+    final content = find.byKey(const ValueKey<String>('bili-tv-content-area'));
+
+    void expectRailGap(double railWidth) {
+      final railRect = tester.getRect(rail);
+      final contentRect = tester.getRect(content);
+      expect(railRect.width, closeTo(railWidth, 0.5));
+      expect(contentRect.left - railRect.right, closeTo(12, 0.5));
+    }
+
+    Future<void> selectPrimaryNav(String item) async {
+      final state = find.byKey(
+        ValueKey<String>('tv-glass-selectable-state-nav_$item'),
+      );
+      final focusable = find
+          .ancestor(of: state, matching: find.byType(TvFocusable))
+          .last;
+      tester
+          .widget<Focus>(
+            find.descendant(of: focusable, matching: find.byType(Focus)).first,
+          )
+          .focusNode!
+          .requestFocus();
+      await tester.pump();
+      await tester.pump(AppVisualTokens.overlayDuration);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await _flushRealAsync(tester);
+      await tester.pump(AppVisualTokens.overlayDuration);
+    }
+
+    for (final item in <String>[
+      'regions',
+      'search',
+      'history',
+      'mine',
+      'settings',
+    ]) {
+      await selectPrimaryNav(item);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_$item');
+      expectRailGap(260);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      await tester.pump(AppVisualTokens.overlayDuration);
+      expectRailGap(80);
+    }
   });
 
   testWidgets('tv embedded following does not reload after playback returns', (
@@ -3233,6 +3260,7 @@ void main() {
     await _flushRealAsync(tester);
     await tester.pumpAndSettle();
 
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_regions');
     expect(harness.client.requestedSections, isNotEmpty);
     expect(find.text('番剧'), findsWidgets);
     expect(find.text('番剧内容 0'), findsOneWidget);
@@ -3268,11 +3296,23 @@ void main() {
     await _flushRealAsync(tester);
     await tester.pumpAndSettle();
 
-    if (FocusManager.instance.primaryFocus?.debugLabel == 'nav_regions') {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pump();
-    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'nav_regions');
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('bili-tv-left-rail')))
+          .width,
+      300,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(AppVisualTokens.overlayDuration);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'region_bangumi');
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('bili-tv-left-rail')))
+          .width,
+      88,
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();

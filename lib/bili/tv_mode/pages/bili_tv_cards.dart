@@ -122,7 +122,7 @@ class _TvGridOverlayScope extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Overlay.wrap(clipBehavior: Clip.hardEdge, child: child);
+    return TvFocusOverlayScope(child: child);
   }
 }
 
@@ -250,18 +250,15 @@ class _TvRegionPill extends StatelessWidget {
     required this.section,
     required this.selected,
     required this.onTap,
-    this.autofocus = false,
   });
 
   final BiliRegionSection section;
   final bool selected;
   final VoidCallback onTap;
-  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvGlassSelectable(
-      autofocus: autofocus,
       selected: selected,
       scale: 1.06,
       borderRadius: AppVisualTokens.controlRadius,
@@ -492,7 +489,6 @@ class _TvHistoryCard extends StatelessWidget {
     required this.ownerName,
     required this.progress,
     required this.onTap,
-    this.autofocus = false,
     this.onFocusChange,
   });
 
@@ -503,13 +499,11 @@ class _TvHistoryCard extends StatelessWidget {
   final String ownerName;
   final double progress;
   final VoidCallback onTap;
-  final bool autofocus;
   final ValueChanged<bool>? onFocusChange;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusableSurface(
-      autofocus: autofocus,
       scale: 1.07,
       focusPadding: _tvCardFocusPadding,
       useOverlayLift: true,

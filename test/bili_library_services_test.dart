@@ -272,16 +272,20 @@ void main() {
     final videoGrid = find.byKey(
       const ValueKey<String>('bili-tv-space-video-grid'),
     );
-    expect(tester.widget<GridView>(videoGrid).clipBehavior, Clip.hardEdge);
+    expect(tester.widget<GridView>(videoGrid).clipBehavior, Clip.none);
+    final videoSearch = find.byKey(
+      const ValueKey<String>('bili-tv-space-video-search'),
+    );
+    final videoFocusScope = find.byKey(
+      const ValueKey<String>('bili-tv-space-video-focus-scope'),
+    );
     expect(
-      tester.getTopLeft(videoGrid).dy,
-      greaterThan(
-        tester
-            .getBottomLeft(
-              find.byKey(const ValueKey<String>('bili-tv-space-video-search')),
-            )
-            .dy,
-      ),
+      tester.widget<TvFocusOverlayScope>(videoFocusScope).clipBehavior,
+      Clip.hardEdge,
+    );
+    expect(
+      tester.getTopLeft(videoFocusScope).dy,
+      greaterThan(tester.getBottomLeft(videoSearch).dy),
     );
 
     expect(
@@ -300,6 +304,17 @@ void main() {
     );
     final followingSearch = find.byKey(
       const ValueKey<String>('bili-tv-following-search'),
+    );
+    final followingFocusScope = find.byKey(
+      const ValueKey<String>('bili-tv-following-list-focus-scope'),
+    );
+    expect(
+      tester.widget<TvFocusOverlayScope>(followingFocusScope).clipBehavior,
+      Clip.hardEdge,
+    );
+    expect(
+      tester.getTopLeft(followingFocusScope).dy,
+      greaterThan(tester.getBottomLeft(followingSearch).dy),
     );
     await tester.enterText(followingSearch, '测试');
     await tester.tap(userFinder);

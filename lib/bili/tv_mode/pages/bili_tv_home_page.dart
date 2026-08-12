@@ -514,30 +514,19 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     setState(() {
       _activeFocusArea = area;
       if (area == TvFocusArea.homeRail && previousArea != null) {
-        _homeRailExpanded = previousArea != TvFocusArea.homeRail;
-      } else if (area == TvFocusArea.rail || area == TvFocusArea.content) {
+        _homeRailExpanded = true;
+      } else if (area == TvFocusArea.rail ||
+          area == TvFocusArea.content ||
+          area == TvFocusArea.recommendGrid ||
+          area == TvFocusArea.regionCategories ||
+          area == TvFocusArea.regionGrid) {
         _homeRailExpanded = false;
       }
     });
   }
 
-  bool _handleFollowingNavDirection(TraversalDirection direction) {
-    if (_selectedNav != _TvNavItem.following) {
-      return false;
-    }
-    if (direction == TraversalDirection.right && !_homeRailExpanded) {
-      setState(() => _homeRailExpanded = true);
-      return true;
-    }
-    if (direction == TraversalDirection.left && _homeRailExpanded) {
-      setState(() => _homeRailExpanded = false);
-      return true;
-    }
-    return false;
-  }
-
   void _handleRailItemFocus(_TvNavItem item, bool focused) {
-    if (!focused || item == _TvNavItem.following || _homeRailExpanded) {
+    if (!focused || _homeRailExpanded) {
       return;
     }
     setState(() => _homeRailExpanded = true);
@@ -996,7 +985,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                       _selectedNav == _TvNavItem.following;
                   final contentInset = followingSelected
                       ? collapsedRailWidth + margin + _tvNestedRailGap
-                      : (wide ? 300.0 : 260.0) + margin + (wide ? 52 : 36);
+                      : railWidth + margin + _tvNestedRailGap;
                   final followingRailOffset = railWidth - collapsedRailWidth;
                   final duration = AppVisualTokens.motionDuration(
                     context,
@@ -1416,9 +1405,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         debugLabel: 'nav_${item.name}',
         onTap: () => unawaited(_handleNavTap(item)),
         onFocusChange: (focused) => _handleRailItemFocus(item, focused),
-        onDirectionalMove: item == _TvNavItem.following
-            ? _handleFollowingNavDirection
-            : null,
         builder: (context, state) {
           final focused =
               state == TvGlassSelectableState.focused ||
@@ -1631,14 +1617,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
       _selectedNav = item;
       if (item == _TvNavItem.following) {
         _followingPaneActivated = true;
-        _homeRailExpanded = false;
       } else {
         _lastPrimaryNav = item;
       }
     });
-    if (item == _TvNavItem.search) {
-      _requestSearchFocusAfterFrame();
-    }
     if (item == _TvNavItem.history) {
       unawaited(_loadHistory());
     }
@@ -1686,7 +1668,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                   ),
                   const SizedBox(height: 16),
                   TvGlassSelectable(
-                    autofocus: true,
                     borderRadius: 12,
                     onTap: () => _viewModel.loadFeed(),
                     padding: const EdgeInsets.symmetric(
@@ -2062,7 +2043,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                 key: ValueKey<String>('bili-tv-region-${section.id}'),
                 section: section,
                 selected: selected,
-                autofocus: index == 0,
                 onTap: () => unawaited(_loadRegion(section: section)),
               );
             },
@@ -2101,7 +2081,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               ),
               const SizedBox(height: 16),
               TvGlassSelectable(
-                autofocus: true,
                 borderRadius: 12,
                 onTap: () => unawaited(_loadRegion()),
                 padding: const EdgeInsets.symmetric(
@@ -2352,15 +2331,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     });
   }
 
-  void _requestSearchFocusAfterFrame() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _selectedNav != _TvNavItem.search) {
-        return;
-      }
-      _searchFocusNode.requestFocus();
-    });
-  }
-
   Widget _buildHistoryPage() {
     if (_history.isEmpty) {
       return Center(
@@ -2381,7 +2351,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               ),
               const SizedBox(height: 16),
               TvFocusable(
-                autofocus: true,
                 onTap: () {
                   setState(() {
                     _selectedNav = _TvNavItem.recommend;
@@ -2465,7 +2434,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
                   episodeId: entry.episodeId > 0 ? entry.episodeId : null,
                   initialPositionMs: entry.lastPositionMs,
                 ),
-                autofocus: index == 0,
               );
             },
           );
@@ -2579,7 +2547,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
         if (!profile.isLoggedIn)
           _TvMineCommand(
             key: const ValueKey<String>('bili-tv-mine-login'),
-            autofocus: true,
             icon: Icons.qr_code_scanner_rounded,
             label: '扫码登录',
             primary: true,
@@ -2591,7 +2558,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
               Expanded(
                 child: _TvMineCommand(
                   key: const ValueKey<String>('bili-tv-mine-logout'),
-                  autofocus: true,
                   icon: Icons.logout_rounded,
                   label: '退出登录',
                   onTap: () => unawaited(_confirmLogout()),
@@ -2715,7 +2681,6 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
           SizedBox(height: compact ? 14 : 24),
           TvGlassSelectable(
             key: const ValueKey<String>('bili-tv-settings-force-mode-card'),
-            autofocus: true,
             scale: 1.025,
             borderRadius: AppVisualTokens.controlRadius,
             focusArea: TvFocusArea.content,

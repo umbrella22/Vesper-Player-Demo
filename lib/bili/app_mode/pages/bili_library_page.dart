@@ -1000,18 +1000,20 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }) {
     return TvFocusAreaScope(
       area: TvFocusArea.content,
-      child: GridView.builder(
-        key: ValueKey<String>('bili-tv-library-grid-${section.name}'),
-        clipBehavior: Clip.none,
-        padding: const EdgeInsets.fromLTRB(32, 20, 32, 34),
-        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 260,
-          mainAxisSpacing: 24,
-          crossAxisSpacing: 22,
-          childAspectRatio: childAspectRatio,
+      child: TvFocusOverlayScope(
+        child: GridView.builder(
+          key: ValueKey<String>('bili-tv-library-grid-${section.name}'),
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.all(tvFocusSafeInset),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 260,
+            mainAxisSpacing: 24,
+            crossAxisSpacing: 22,
+            childAspectRatio: childAspectRatio,
+          ),
+          itemCount: itemCount,
+          itemBuilder: itemBuilder,
         ),
-        itemCount: itemCount,
-        itemBuilder: itemBuilder,
       ),
     );
   }
