@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.9.0...vesper_media-v1.9.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* 修复样式错误 ([aec64a6](https://github.com/umbrella22/Vesper-Player-Demo/commit/aec64a63ce9f6db6550a1ec0c43968c0e25c7ef9))
+
 ## [1.9.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.8.0...vesper_media-v1.9.0) (2026-08-11)
 
 
