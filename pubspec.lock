@@ -77,18 +77,10 @@ packages:
     dependency: "direct main"
     description:
       name: cupertino_ui
-      sha256: "58191e8c198d274d299b4a92e5fa9bf1abf1d870067cf064b67f2217957aefe9"
+      sha256: "7ed8ce4159d342eec4c65f4ea6eec57adaf9365404378541f38efc1da20a5b3d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.3+1"
-  equatable:
-    dependency: transitive
-    description:
-      name: equatable
-      sha256: "3bce007a596ff8b3119c45d68aaef631272537c03d30e5d4534dd24bf4c5eaa2"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
+    version: "1.0.0"
   fake_async:
     dependency: transitive
     description:
@@ -187,14 +179,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.2"
-  flutter_shaders:
-    dependency: transitive
-    description:
-      name: flutter_shaders
-      sha256: "34794acadd8275d971e02df03afee3dee0f98dbfb8c4837082ad0034f612a3e2"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.3"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -209,10 +193,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: "9a62a50b50b769a737bc0a8ff381f333529df3ab746b2f6b02e83760231455ba"
+      sha256: eaac480a35ec0814146c2c48d96aaa829e0e44a7662c88ae84c9edf4bc35651f
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.2"
+    version: "2.2.0"
   http:
     dependency: transitive
     description:
@@ -297,10 +281,10 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: f052daec46ae612f1b854c0e9c78c08a532ef4b09bcec30861c813ef100d3dff
+      sha256: "9e7de8a33ac308a0e61a4311fbf12d2a7a9dbe9058cfeca59262e3cd06b39419"
       url: "https://pub.dev"
     source: hosted
-    version: "0.29.4"
+    version: "0.29.8"
   logging:
     dependency: transitive
     description:
@@ -481,10 +465,10 @@ packages:
     dependency: transitive
     description:
       name: record_use
-      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
+      sha256: "1cb8564af8d43b464294411db9217f5ec04891c6f22ee2c32d73ae05e88a6bd2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "1.1.1"
   signals:
     dependency: "direct main"
     description:
