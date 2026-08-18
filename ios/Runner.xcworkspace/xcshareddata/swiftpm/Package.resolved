@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "vesperplayerkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/umbrella22/VesperPlayerKit.git",
+      "state" : {
+        "revision" : "f266dd7a538deb90e9d2379336b996cbec2437df",
+        "version" : "0.4.3"
+      }
+    }
+  ],
+  "version" : 2
+}

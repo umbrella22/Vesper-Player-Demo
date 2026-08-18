@@ -21,6 +21,22 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     final isBackKey =
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape;
+    if (_displayMode == _MediaPlaybackDisplayMode.listen) {
+      if (isBackKey && ModalRoute.of(context)?.isCurrent == true) {
+        _returnToVideoMode();
+        return true;
+      }
+      if (key == LogicalKeyboardKey.mediaPlayPause ||
+          key == LogicalKeyboardKey.mediaPlay ||
+          key == LogicalKeyboardKey.mediaPause) {
+        final controller = _viewModel.controller;
+        if (controller != null) {
+          _toggleTvPlayback(controller, controller.snapshot);
+          return true;
+        }
+      }
+      return false;
+    }
     final route = ModalRoute.of(context);
     if (!isBackKey &&
         route?.isCurrent == true &&
@@ -68,6 +84,45 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
   MediaDlnaState get _dlnaState => _viewModel.dlnaState;
 
   MediaExternalPlaybackManager get _dlnaManager => _viewModel.dlnaManager;
+
+  Future<void> _enterListenMode() async {
+    if (_viewModel.isFullscreen ||
+        _displayMode == _MediaPlaybackDisplayMode.listen) {
+      return;
+    }
+    final message = await _viewModel.enterListenMode();
+    if (!mounted) {
+      return;
+    }
+    if (message != null) {
+      _showMessage(message);
+      return;
+    }
+    _tvControlBarVisible = false;
+    _tvPanel = TvPlaybackPanelType.none;
+    _lastOpenedTvPanel = null;
+    _mutate(() {
+      _displayMode = _MediaPlaybackDisplayMode.listen;
+    });
+  }
+
+  Future<void> _returnToVideoMode() async {
+    if (_displayMode == _MediaPlaybackDisplayMode.video) {
+      return;
+    }
+    final message = await _viewModel.exitListenMode();
+    if (!mounted) {
+      return;
+    }
+    if (message != null) {
+      _showMessage(message);
+      return;
+    }
+    _tvPlaybackInitialFocusRequested = false;
+    _mutate(() {
+      _displayMode = _MediaPlaybackDisplayMode.video;
+    });
+  }
 
   void _setCastingSurfaceOpen(bool value) {
     if (_castingSurfaceOpen == value) {

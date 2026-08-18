@@ -237,6 +237,28 @@ void _registerTvFocusAndLayoutWidgetTests() {
     expect(padding.bottom, 32);
   });
 
+  testWidgets('tv home hero fits short wide displays', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      surfaceSize: const Size(1344, 560),
+      initialFeedItems: _tvFeedItems(),
+      initialHistoryEntries: _tvHistoryEntries(1),
+      skipBootstrap: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-hero-title')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bili-tv-hero-actions')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tv hero keeps progress separated from playback actions', (
     WidgetTester tester,
   ) async {

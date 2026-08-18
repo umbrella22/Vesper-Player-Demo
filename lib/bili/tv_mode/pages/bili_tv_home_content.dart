@@ -144,6 +144,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
             final historyCardWidth = (constraints.maxWidth * 0.19)
                 .clamp(220.0, 310.0)
                 .toDouble();
+            final compactHero = constraints.maxWidth < 840 || heroHeight < 340;
             return NotificationListener<ScrollNotification>(
               onNotification: (notification) {
                 if (notification.metrics.axis == Axis.vertical &&
@@ -163,7 +164,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
                         height: heroHeight,
                         child: _buildHeroPanel(
                           _heroItem ?? _TvHeroItem.feed(items.first),
-                          compact: constraints.maxWidth < 840,
+                          compact: compactHero,
                         ),
                       ),
                     ),

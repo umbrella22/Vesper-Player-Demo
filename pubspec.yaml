@@ -31,15 +31,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vesper_player:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player
-  vesper_player_ui:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_ui
-  vesper_player_external_playback:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_external_playback
+  vesper_player: ^0.4.3
+  vesper_player_ui: ^0.4.3
+  vesper_player_external_playback: ^0.4.3
+  vesper_player_source_normalizer_ffmpeg: ^0.4.3
+  vesper_player_remux_ffmpeg: ^0.4.3
   crypto: ^3.0.6
   cupertino_ui: ^0.0.3+1
-  material_ui: ^0.0.3
+  material_ui: ^1.0.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
   signals: ^7.1.0
@@ -54,20 +53,6 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^6.0.0
-
-dependency_overrides:
-  vesper_player:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player
-  vesper_player_android:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_android
-  vesper_player_external_playback:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_external_playback
-  vesper_player_ios:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_ios
-  vesper_player_platform_interface:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_platform_interface
-  vesper_player_ui:
-    path: third_party/vesper-player-sdk/lib/flutter/vesper_player_ui
 
 flutter:
   uses-material-design: true

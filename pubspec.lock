@@ -233,10 +233,10 @@ packages:
     dependency: transitive
     description:
       name: intl
-      sha256: "3df61194eb431efc39c4ceba583b95633a403f46c9fd341e550ce0bfa50e9aa5"
+      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
       url: "https://pub.dev"
     source: hosted
-    version: "0.20.2"
+    version: "0.20.3"
   jni:
     dependency: transitive
     description:
@@ -313,10 +313,10 @@ packages:
     dependency: transitive
     description:
       name: matcher
-      sha256: dc0b7dc7651697ea4ff3e69ef44b0407ea32c487a39fff6a4004fa585e901861
+      sha256: "31bd099b47c10cd1aeb55146a2d46ce0277630ecef3f7dae54ad7873f36696cd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.19"
+    version: "0.12.20"
   material_color_utilities:
     dependency: transitive
     description:
@@ -329,18 +329,18 @@ packages:
     dependency: "direct main"
     description:
       name: material_ui
-      sha256: "849f45c20f47b0e432c603b1f3468e20feb5598e34f9cd3eb0656bbea965ce17"
+      sha256: d9b4f6c69b80bc83d0a14357c86e4c14c8076e807ae73cf2960c8560f623995f
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.3"
+    version: "1.0.0"
   meta:
     dependency: transitive
     description:
       name: meta
-      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
+      sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-    version: "1.18.0"
+    version: "1.19.0"
   objective_c:
     dependency: transitive
     description:
@@ -566,10 +566,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "949a932224383300f01be9221c39180316445ecb8e7547f70a41a35bf421fb9e"
+      sha256: "2a122cbe059f8b610d3a5415f42e255b6c17b1f21eee1d960f31080237fb4f11"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.11"
+    version: "0.7.12"
   typed_data:
     dependency: transitive
     description:
@@ -582,52 +582,74 @@ packages:
     dependency: transitive
     description:
       name: vector_math
-      sha256: d530bd74fea330e6e364cda7a85019c434070188383e1cd8d9777ee586914c5b
+      sha256: f36f9f3be64c6198714492bb455c11056e33e2f85d9a0b676a48301e44fdcf47
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.0"
+    version: "2.4.2"
   vesper_player:
     dependency: "direct main"
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player
+      sha256: "477a9e3d9de08980e7787482f0d829a488d25c0741cbbb56671ea6a8157dce7a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vesper_player_android:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_android"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player_android
+      sha256: "67cc55cceae0bae68b6e337b43603972de9043c7fbb5ebac6eb1045ad7a55bc4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vesper_player_external_playback:
     dependency: "direct main"
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_external_playback"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player_external_playback
+      sha256: "49ebbd7c3b783259e32cd8b086aee2028209f4bc64ad6d1aa49bd87284ec17e7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vesper_player_ios:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_ios"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player_ios
+      sha256: f393879875b2e9ad9fef71a7c184bfc210d0bda9782e39805556b4eaeb00f1ab
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vesper_player_platform_interface:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_platform_interface"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player_platform_interface
+      sha256: "5e33034f1c643fad3e52ba632ccaa7955f7ebaa6d960ac5674e6a291c85175ef"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
+  vesper_player_remux_ffmpeg:
+    dependency: "direct main"
+    description:
+      name: vesper_player_remux_ffmpeg
+      sha256: "86ab53bdbdaa33be64d063b295769d88773e385bf0cc185ea3723546db38e3a1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
+  vesper_player_source_normalizer_ffmpeg:
+    dependency: "direct main"
+    description:
+      name: vesper_player_source_normalizer_ffmpeg
+      sha256: "7faa8794c498ed1c323c2fc412aedb109b86e96f0c37f0fdd5a8ff58a6a457ae"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vesper_player_ui:
     dependency: "direct main"
     description:
-      path: "third_party/vesper-player-sdk/lib/flutter/vesper_player_ui"
-      relative: true
-    source: path
-    version: "0.4.0"
+      name: vesper_player_ui
+      sha256: e1edfda40d0f38ba29d0da8f4408beb39b2bdbd13c41e363fa809da3cbe8fc23
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.3"
   vm_service:
     dependency: transitive
     description:

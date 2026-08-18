@@ -156,25 +156,23 @@ void main() {
       );
       expect(iosInfo, contains('<string>Vesper</string>'));
       expect(iosInfo, contains('<string>vesper_media</string>'));
-      for (final framework in const <String>[
-        'VesperFFmpegAVCodec',
-        'VesperFFmpegAVFormat',
-        'VesperFFmpegAVUtil',
-        'VesperPlayerRemuxFfmpegPlugin',
+      for (final package in const <String>[
+        'vesper_player',
+        'vesper_player_ui',
+        'vesper_player_external_playback',
+        'vesper_player_source_normalizer_ffmpeg',
+        'vesper_player_remux_ffmpeg',
       ]) {
         expect(
-          iosProject,
-          contains('$framework.xcframework in Embed Frameworks'),
-          reason: 'iOS embeds $framework',
-        );
-        expect(
-          iosProject,
-          contains(
-            'VesperPlayerOptionalPlugins/Artifacts/$framework.xcframework',
-          ),
-          reason: 'iOS resolves $framework from the canonical SDK artifacts',
+          pubspec,
+          contains(RegExp('^  $package: \\^', multiLine: true)),
+          reason: '$package uses a hosted version constraint',
         );
       }
+      expect(pubspec, isNot(contains('dependency_overrides:')));
+      expect(iosProject, isNot(contains('third_party/vesper-player-sdk')));
+      expect(File('.gitmodules').existsSync(), isFalse);
+      expect(Directory('third_party/vesper-player-sdk').existsSync(), isFalse);
     });
 
     test('MethodChannel names match every native host implementation', () async {

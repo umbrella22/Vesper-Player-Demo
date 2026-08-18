@@ -39,6 +39,13 @@ extension _BiliClientPlaybackImplementation on BiliClient {
               cid: page.cid,
               manifestText: manifestText,
             );
+            final sourceHeaders = _transport.buildBiliMediaSourceHeaders();
+            final audioOnlySource = await _buildListenPlaybackVariant(
+              bvid: pageBvid,
+              cid: page.cid,
+              manifest: dashManifest,
+              headers: sourceHeaders,
+            );
             return BiliResolvedPlayback(
               bvid: pageBvid,
               cid: page.cid,
@@ -46,7 +53,7 @@ extension _BiliClientPlaybackImplementation on BiliClient {
               subtitle: 'P${page.pageNumber} · ${page.title}',
               uri: file.uri.toString(),
               protocol: VesperPlayerSourceProtocol.dash,
-              headers: _transport.buildBiliMediaSourceHeaders(),
+              headers: sourceHeaders,
               transportLabel:
                   'Bilibili DASH via generated MPD (${variant.label}, '
                   '${dashManifest.videoStreams.length}V/'
@@ -56,6 +63,7 @@ extension _BiliClientPlaybackImplementation on BiliClient {
               subtitleTracks: subtitles.tracks,
               subtitleError: subtitles.error,
               debugPath: file.path,
+              audioOnlySource: audioOnlySource,
             );
           }
 
@@ -335,6 +343,43 @@ extension _BiliClientPlaybackImplementation on BiliClient {
         .toList(growable: false);
   }
 
+  Future<BiliResolvedPlaybackVariant?> _buildListenPlaybackVariant({
+    required String bvid,
+    required int cid,
+    required BiliDashManifestData manifest,
+    required Map<String, String> headers,
+  }) async {
+    final audio = const BiliListenAudioSelector().select(manifest.audioStreams);
+    if (audio == null) {
+      return null;
+    }
+    try {
+      final audioManifest = manifest.copyWith(
+        videoStreams: const <BiliDashStream>[],
+        audioStreams: <BiliDashStream>[audio],
+      );
+      final file = await _writeDashManifest(
+        bvid: bvid,
+        cid: cid,
+        manifestText: _manifestBuilder.build(audioManifest),
+        fileNameSuffix: '-audio',
+      );
+      return BiliResolvedPlaybackVariant(
+        uri: file.uri.toString(),
+        protocol: VesperPlayerSourceProtocol.dash,
+        transportLabel:
+            'Bilibili audio-only DASH (AAC ${audio.id}, '
+            '${audio.bandwidth}bps)',
+        isLocalFile: true,
+        headers: headers,
+        debugPath: file.path,
+      );
+    } on IOException {
+      // 伴听源是可选能力；本地派生文件失败不能破坏正常视频播放。
+      return null;
+    }
+  }
+
   String _buildDashRepresentationId({
     required String mimeType,
     required int qualityId,
@@ -366,10 +411,13 @@ extension _BiliClientPlaybackImplementation on BiliClient {
     required String bvid,
     required int cid,
     required String manifestText,
+    String fileNameSuffix = '',
   }) async {
     final directory = Directory('${Directory.systemTemp.path}/vesper/dash');
     await directory.create(recursive: true);
-    final file = File('${directory.path}/${sanitizeAssetPart(bvid)}-$cid.mpd');
+    final file = File(
+      '${directory.path}/${sanitizeAssetPart(bvid)}-$cid$fileNameSuffix.mpd',
+    );
     final tempFile = File(
       '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-$pid',
     );

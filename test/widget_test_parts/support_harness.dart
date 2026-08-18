@@ -22,13 +22,13 @@ final class _ExternalPlaybackHarness {
   });
 
   static const channel = MethodChannel(
-    'io.github.ikaros.vesper_player_external_playback',
+    'io.github.umbrella22.vesper_player_external_playback',
   );
   static const routesChannel = EventChannel(
-    'io.github.ikaros.vesper_player_external_playback/routes',
+    'io.github.umbrella22.vesper_player_external_playback/routes',
   );
   static const eventsChannel = EventChannel(
-    'io.github.ikaros.vesper_player_external_playback/events',
+    'io.github.umbrella22.vesper_player_external_playback/events',
   );
 
   final Map<String, Object?> loadResult;
@@ -143,7 +143,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   });
   addTearDown(platform.closeEvents);
   const externalPlaybackEventsChannel = EventChannel(
-    'io.github.ikaros.vesper_player_external_playback/events',
+    'io.github.umbrella22.vesper_player_external_playback/events',
   );
   if (!externalPlaybackMockInstalled &&
       defaultTargetPlatform == TargetPlatform.android) {

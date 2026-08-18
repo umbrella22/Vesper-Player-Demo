@@ -104,6 +104,21 @@ void main() {
 
       _expectSourceEqual(generic.toSource(), resolved.toSource());
     });
+
+    test('mapper 保留可选纯音频源', () {
+      final generic = BiliMediaMapper.toResolvedPlayback(
+        _buildResolvedPlayback(isLocalFile: true, withAudioOnlySource: true),
+      );
+
+      expect(generic.audioOnlySource, isNotNull);
+      expect(generic.audioOnlySource!.uri, 'file:///tmp/manifest-audio.mpd');
+      expect(generic.audioOnlySource!.debugPath, '/tmp/manifest-audio.mpd');
+      expect(
+        generic.toAudioOnlySource()!.protocol,
+        VesperPlayerSourceProtocol.dash,
+      );
+      expect(generic.toAudioOnlySource()!.externalSubtitles, hasLength(2));
+    });
   });
 
   group('能力缺省语义', () {
@@ -229,7 +244,10 @@ BiliVideoDetail _buildDetail() {
   );
 }
 
-BiliResolvedPlayback _buildResolvedPlayback({required bool isLocalFile}) {
+BiliResolvedPlayback _buildResolvedPlayback({
+  required bool isLocalFile,
+  bool withAudioOnlySource = false,
+}) {
   return BiliResolvedPlayback(
     bvid: 'BV1xx',
     cid: 101,
@@ -260,6 +278,16 @@ BiliResolvedPlayback _buildResolvedPlayback({required bool isLocalFile}) {
     ],
     subtitleError: null,
     debugPath: isLocalFile ? '/tmp/manifest.mpd' : null,
+    audioOnlySource: withAudioOnlySource
+        ? const BiliResolvedPlaybackVariant(
+            uri: 'file:///tmp/manifest-audio.mpd',
+            protocol: VesperPlayerSourceProtocol.dash,
+            transportLabel: 'AAC only',
+            isLocalFile: true,
+            headers: <String, String>{'Referer': 'https://bilibili.com'},
+            debugPath: '/tmp/manifest-audio.mpd',
+          )
+        : null,
   );
 }
 

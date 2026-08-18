@@ -644,6 +644,12 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   ),
                   const SizedBox(width: 14),
                   TvBarButton(
+                    label: '听视频',
+                    icon: Icons.headphones_rounded,
+                    onTap: _enterListenMode,
+                  ),
+                  const SizedBox(width: 14),
+                  TvBarButton(
                     label: '快退 10s',
                     icon: Icons.replay_10_rounded,
                     onTap: () {

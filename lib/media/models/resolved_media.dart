@@ -19,6 +19,7 @@ final class ResolvedMediaPlayback {
     this.debugPath,
     this.qualityOptions = const <MediaQualityOption>[],
     this.supportsCodecSelection = false,
+    this.audioOnlySource,
   });
 
   final String title;
@@ -39,20 +40,70 @@ final class ResolvedMediaPlayback {
   /// 该平台是否为同一清晰度提供多 codec（如 B 站 AV1/HEVC/AVC 细分）。
   final bool supportsCodecSelection;
 
+  /// 可选的纯音频播放源。未提供时，播放壳不得宣称伴听模式会停止视频传输。
+  final ResolvedMediaSourceVariant? audioOnlySource;
+
   VesperPlayerSource toSource() {
     final sourceLabel = subtitle.isEmpty ? title : '$title · $subtitle';
-    final externalSubtitles = subtitleTracks
-        .map(
-          (track) => VesperExternalSubtitleSource(
-            id: track.id,
-            uri: track.url,
-            mimeType: VesperExternalSubtitleSource.mimeWebvtt,
-            language: track.language,
-            label: track.languageLabel,
-            isDefault: track.isDefault,
-          ),
-        )
-        .toList(growable: false);
+    return ResolvedMediaSourceVariant(
+      uri: uri,
+      protocol: protocol,
+      transportLabel: transportLabel,
+      isLocalFile: isLocalFile,
+      headers: headers,
+      debugPath: debugPath,
+    ).toSource(sourceLabel: sourceLabel, externalSubtitles: _externalSubtitles);
+  }
+
+  VesperPlayerSource? toAudioOnlySource() {
+    final variant = audioOnlySource;
+    if (variant == null) {
+      return null;
+    }
+    final sourceLabel = subtitle.isEmpty ? title : '$title · $subtitle';
+    return variant.toSource(
+      sourceLabel: sourceLabel,
+      externalSubtitles: _externalSubtitles,
+    );
+  }
+
+  List<VesperExternalSubtitleSource> get _externalSubtitles => subtitleTracks
+      .map(
+        (track) => VesperExternalSubtitleSource(
+          id: track.id,
+          uri: track.url,
+          mimeType: VesperExternalSubtitleSource.mimeWebvtt,
+          language: track.language,
+          label: track.languageLabel,
+          isDefault: track.isDefault,
+        ),
+      )
+      .toList(growable: false);
+}
+
+/// 同一媒体的替代播放表示。它只描述播放源边界，不携带平台私有模型。
+final class ResolvedMediaSourceVariant {
+  const ResolvedMediaSourceVariant({
+    required this.uri,
+    required this.protocol,
+    required this.transportLabel,
+    required this.isLocalFile,
+    this.headers = const <String, String>{},
+    this.debugPath,
+  });
+
+  final String uri;
+  final VesperPlayerSourceProtocol protocol;
+  final String transportLabel;
+  final bool isLocalFile;
+  final Map<String, String> headers;
+  final String? debugPath;
+
+  VesperPlayerSource toSource({
+    required String sourceLabel,
+    List<VesperExternalSubtitleSource> externalSubtitles =
+        const <VesperExternalSubtitleSource>[],
+  }) {
     if (isLocalFile) {
       return VesperPlayerSource(
         uri: uri,

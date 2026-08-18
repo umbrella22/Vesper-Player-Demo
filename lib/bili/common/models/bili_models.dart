@@ -624,6 +624,7 @@ final class BiliResolvedPlayback {
     this.subtitleTracks = const <BiliSubtitleTrack>[],
     this.subtitleError,
     this.debugPath,
+    this.audioOnlySource,
   });
 
   final String bvid;
@@ -639,6 +640,7 @@ final class BiliResolvedPlayback {
   final List<BiliSubtitleTrack> subtitleTracks;
   final String? subtitleError;
   final String? debugPath;
+  final BiliResolvedPlaybackVariant? audioOnlySource;
 
   VesperPlayerSource toSource() {
     final sourceLabel = subtitle.isEmpty ? title : '$title · $subtitle';
@@ -673,6 +675,25 @@ final class BiliResolvedPlayback {
       externalSubtitles: externalSubtitles,
     );
   }
+}
+
+/// B 站解析结果中的替代播放表示；由 mapper 转换成通用播放源变体。
+final class BiliResolvedPlaybackVariant {
+  const BiliResolvedPlaybackVariant({
+    required this.uri,
+    required this.protocol,
+    required this.transportLabel,
+    required this.isLocalFile,
+    this.headers = const <String, String>{},
+    this.debugPath,
+  });
+
+  final String uri;
+  final VesperPlayerSourceProtocol protocol;
+  final String transportLabel;
+  final bool isLocalFile;
+  final Map<String, String> headers;
+  final String? debugPath;
 }
 
 final class BiliDashSegmentInfo {

@@ -53,7 +53,7 @@ void main() {
 
     // 外部播放事件流（投屏会话）：测试环境无原生实现，静默接收。
     const externalPlaybackEventsChannel = EventChannel(
-      'io.github.ikaros.vesper_player_external_playback/events',
+      'io.github.umbrella22.vesper_player_external_playback/events',
     );
     tester.binding.defaultBinaryMessenger.setMockStreamHandler(
       externalPlaybackEventsChannel,
@@ -80,6 +80,12 @@ void main() {
               'width': arguments['width'],
               'height': arguments['height'],
             };
+          case 'dispose':
+          case 'offset':
+          case 'touch':
+          case 'setDirection':
+          case 'clearFocus':
+            return null;
           default:
             return null;
         }
@@ -95,9 +101,36 @@ void main() {
     return fakePlatform;
   }
 
+  _ShellFakePlatform installViewModelEnvironment({
+    VesperPlayerSnapshot? initialSnapshot,
+  }) {
+    final previousPlatform = VesperPlayerPlatform.instance;
+    final fakePlatform = _ShellFakePlatform(initialSnapshot ?? _shellSnapshot);
+    VesperPlayerPlatform.instance = fakePlatform;
+    addTearDown(() {
+      VesperPlayerPlatform.instance = previousPlatform;
+    });
+    addTearDown(fakePlatform.closeEvents);
+
+    const externalPlaybackEventsChannel = EventChannel(
+      'io.github.umbrella22.vesper_player_external_playback/events',
+    );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockStreamHandler(
+      externalPlaybackEventsChannel,
+      MockStreamHandler.inline(onListen: (_, _) {}),
+    );
+    addTearDown(() {
+      messenger.setMockStreamHandler(externalPlaybackEventsChannel, null);
+    });
+    return fakePlatform;
+  }
+
   Future<_ShellHarness> pumpShell(
     WidgetTester tester, {
     _ShellAdapter? adapter,
+    MediaPlaybackTarget? playbackTarget,
     MediaPlaybackBinding binding = const MediaPlaybackBinding(),
     Size surfaceSize = const Size(1200, 900),
     MediaPlaybackPresentationMode presentationMode =
@@ -112,9 +145,10 @@ void main() {
       initialSnapshot: initialSnapshot,
     );
     final resolvedAdapter = adapter ?? _ShellAdapter();
+    final resolvedTarget = playbackTarget ?? target;
     final viewModel = MediaPlaybackViewModel(
-      detail: target.detail,
-      initialEntry: target.entry,
+      detail: resolvedTarget.detail,
+      initialEntry: resolvedTarget.entry,
       adapter: resolvedAdapter,
       historyStore: historyStore,
       initialPositionMs: initialPositionMs,
@@ -148,6 +182,745 @@ void main() {
     }
     return _ShellHarness(viewModel: viewModel, platform: fakePlatform);
   }
+
+  group('听视频 MVP', () {
+    testWidgets('手机进入和返回保持同一播放会话，播放按钮复用原 controller', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        surfaceSize: const Size(390, 844),
+      );
+      final initialCreateCalls = harness.platform.createCalls;
+      final initialPlayCalls = harness.platform.playCalls;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsOneWidget,
+      );
+      expect(find.text('正在播放'), findsOneWidget);
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 1);
+      expect(
+        harness.platform.selectedSources.single.uri,
+        'https://example.test/11-audio.mpd',
+      );
+      expect(harness.platform.disposeCalls, 0);
+
+      await tester.tap(find.byKey(const ValueKey<String>('listen-play-pause')));
+      await tester.pump();
+      expect(harness.platform.playCalls, initialPlayCalls + 1);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('listen-return-video')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsNothing,
+      );
+      expect(find.byType(vesper_ui.VesperPlayerStage), findsOneWidget);
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(
+        harness.platform.selectedSources.last.uri,
+        'https://example.test/shell.mp4',
+      );
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('手机系统返回先退出伴听且不销毁播放会话', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        surfaceSize: const Size(390, 844),
+      );
+      final initialCreateCalls = harness.platform.createCalls;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsOneWidget,
+      );
+
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsNothing,
+      );
+      expect(find.byType(vesper_ui.VesperPlayerStage), findsOneWidget);
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('手机合集可在同一播放器中切换分 P', (tester) async {
+      const secondEntry = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: 'P2 第二章',
+        durationSeconds: 180,
+      );
+      final multiPageTarget = MediaPlaybackTarget(
+        detail: MediaDetail(
+          mediaId: 'BV1LISTEN',
+          title: '伴听合集',
+          coverUrl: '',
+          ownerName: '伴听测试UP',
+          pages: <MediaPlaybackEntry>[target.entry, secondEntry],
+        ),
+        entry: target.entry,
+      );
+      final adapter = _ShellAdapter();
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        playbackTarget: multiPageTarget,
+        surfaceSize: const Size(390, 844),
+      );
+      final initialCreateCalls = harness.platform.createCalls;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('合集'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('listen-phone-episodes')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text(secondEntry.title));
+      for (var round = 0; round < 3; round += 1) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+        });
+        await tester.pump();
+      }
+
+      expect(harness.viewModel.selectedEntry.entryId, secondEntry.entryId);
+      expect(adapter.resolveCallCount, 2);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>[
+          'https://example.test/11-audio.mpd',
+          'https://example.test/22-audio.mpd',
+        ],
+      );
+      final systemMetadata =
+          harness.platform.systemPlaybackConfigurations.last.metadata;
+      expect(systemMetadata?.contentUri, 'https://example.test/22-audio.mpd');
+      expect(systemMetadata?.durationMs, 180000);
+      expect(systemMetadata?.title, contains('P2 第二章'));
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('TV 可由控制条进入伴听并用返回键回到视频', (tester) async {
+      const secondEntry = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: 'P2 第二章',
+        durationSeconds: 180,
+      );
+      final multiPageTarget = MediaPlaybackTarget(
+        detail: MediaDetail(
+          mediaId: 'BV1LISTENTV',
+          title: 'TV 伴听合集',
+          coverUrl: '',
+          ownerName: '伴听测试UP',
+          pages: <MediaPlaybackEntry>[target.entry, secondEntry],
+        ),
+        entry: target.entry,
+      );
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: multiPageTarget,
+        presentationMode: MediaPlaybackPresentationMode.tv,
+        surfaceSize: const Size(1920, 1080),
+      );
+      final initialCreateCalls = harness.platform.createCalls;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsOneWidget,
+      );
+      expect(find.text('返回视频'), findsOneWidget);
+      expect(find.text('字幕'), findsOneWidget);
+      expect(find.text('合集'), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_listen_播放');
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsNothing,
+      );
+      expect(find.byType(vesper_ui.VesperPlayerStage), findsNothing);
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('TV 矮屏进入伴听时封面和播放控制保持可见', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        presentationMode: MediaPlaybackPresentationMode.tv,
+        surfaceSize: const Size(1024, 480),
+      );
+      final initialCreateCalls = harness.platform.createCalls;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-cover')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('listen-play-pause')),
+        findsOneWidget,
+      );
+      expect(harness.platform.createCalls, initialCreateCalls);
+      expect(harness.platform.selectSourceCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('进入和返回伴听恢复位置、播放态、倍速与视频 ABR 策略', (tester) async {
+      final initialSnapshot = _shellSnapshot.copyWith(
+        playbackState: VesperPlaybackState.playing,
+        playbackRate: 1.25,
+        timeline: VesperTimeline(
+          kind: VesperTimelineKind.vod,
+          isSeekable: true,
+          seekableRange: null,
+          liveEdgeMs: null,
+          positionMs: 42000,
+          durationMs: 120000,
+        ),
+        trackSelection: const VesperTrackSelectionSnapshot(
+          abrPolicy: VesperAbrPolicy.constrained(maxBitRate: 1800000),
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        initialSnapshot: initialSnapshot,
+        surfaceSize: const Size(390, 844),
+      );
+      harness.platform
+        ..updateSnapshotOnCommands = true
+        ..selectedSourceSuccessSnapshot = _shellSnapshot;
+      final initialPlayCalls = harness.platform.playCalls;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('listen-return-video')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(harness.platform.seekRatios, <double>[0.35, 0.35]);
+      expect(harness.platform.playbackRates, <double>[1.25, 1.25]);
+      expect(harness.platform.playCalls, initialPlayCalls + 2);
+      expect(harness.platform.pauseCalls, 0);
+      expect(harness.platform.abrPolicyCalls, hasLength(1));
+      expect(
+        harness.platform.abrPolicyCalls.single.policy.mode,
+        VesperAbrMode.constrained,
+      );
+      expect(harness.platform.abrPolicyCalls.single.policy.maxBitRate, 1800000);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.video);
+      expect(tester.takeException(), isNull);
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(playbackState: VesperPlaybackState.paused),
+      );
+      await tester.pump();
+    });
+
+    testWidgets('暂停状态在进入和返回伴听后保持暂停', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        initialSnapshot: _shellSnapshot.copyWith(
+          playbackState: VesperPlaybackState.paused,
+          timeline: VesperTimeline(
+            kind: VesperTimelineKind.vod,
+            isSeekable: true,
+            seekableRange: null,
+            liveEdgeMs: null,
+            positionMs: 30000,
+            durationMs: 120000,
+          ),
+        ),
+        surfaceSize: const Size(390, 844),
+      );
+      harness.platform
+        ..updateSnapshotOnCommands = true
+        ..selectedSourceSuccessSnapshot = _shellSnapshot;
+      final initialPlayCalls = harness.platform.playCalls;
+
+      final enterGate = Completer<void>();
+      harness.platform.selectSourceGate = enterGate;
+      final enterFuture = harness.viewModel.enterListenMode();
+      await tester.pump();
+
+      expect(harness.platform.selectSourceCalls, 1);
+      expect(harness.platform.pauseCalls, 1);
+
+      enterGate.complete();
+      await tester.pumpAndSettle();
+      expect(await enterFuture, isNull);
+      expect(harness.platform.pauseCalls, 2);
+
+      final exitGate = Completer<void>();
+      harness.platform.selectSourceGate = exitGate;
+      final exitFuture = harness.viewModel.exitListenMode();
+      await tester.pump();
+
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(harness.platform.pauseCalls, 3);
+
+      exitGate.complete();
+      await tester.pumpAndSettle();
+      expect(await exitFuture, isNull);
+
+      expect(harness.platform.pauseCalls, 4);
+      expect(harness.platform.playCalls, initialPlayCalls);
+      expect(harness.platform.seekRatios, <double>[0.25, 0.25]);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('返回视频按保存的清晰度和 codec 策略重新选择轨道', (tester) async {
+      const avcTrack = VesperMediaTrack(
+        id: 'video-80-7-1000-0',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'avc1.640028',
+        bitRate: 1000000,
+        support: VesperTrackSupport(
+          status: VesperTrackSupportStatus.supported,
+          reason: VesperTrackSupportReason.none,
+          source: VesperTrackSupportSource.runtimeTrackCatalog,
+        ),
+      );
+      final videoSnapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrFixedTrack: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[avcTrack],
+          catalogRevision: 21,
+        ),
+      );
+      final adapter = _ShellAdapter(
+        qualityOptions: const <MediaQualityOption>[
+          MediaQualityOption(
+            id: '80',
+            label: '1080P',
+            tracks: <VesperMediaTrack>[avcTrack],
+          ),
+        ],
+        qualityPolicy: MediaQualityPolicy(
+          supportsCodecSelection: true,
+          codecLabelFor: (track) => 'AVC',
+          codecIdentityFor: (track) => 'avc',
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        initialSnapshot: videoSnapshot,
+        surfaceSize: const Size(390, 844),
+      );
+      expect(await harness.viewModel.selectQualityOption('80'), isNull);
+      expect(await harness.viewModel.selectCodecIdentity('avc'), isNull);
+      harness.platform.selectedSourceSuccessSnapshot = videoSnapshot;
+      final initialAbrCalls = harness.platform.abrPolicyCalls.length;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('listen-return-video')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(harness.viewModel.selectedQualityOptionId, '80');
+      expect(harness.viewModel.selectedCodecIdentity, 'avc');
+      expect(harness.platform.abrPolicyCalls, hasLength(initialAbrCalls + 1));
+      final restored = harness.platform.abrPolicyCalls.last;
+      expect(restored.policy.mode, VesperAbrMode.fixedTrack);
+      expect(restored.policy.trackId, avcTrack.id);
+      expect(restored.expectedCatalogRevision, 21);
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('切源快照晚于方法回包时仍按旧进度恢复', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        initialSnapshot: _shellSnapshot.copyWith(
+          playbackState: VesperPlaybackState.playing,
+          timeline: const VesperTimeline(
+            kind: VesperTimelineKind.vod,
+            isSeekable: true,
+            seekableRange: null,
+            liveEdgeMs: null,
+            positionMs: 48000,
+            durationMs: 120000,
+          ),
+        ),
+        surfaceSize: const Size(390, 844),
+      );
+
+      // 不发送新源快照，模拟 EventChannel 晚于 MethodChannel 回包。
+      expect(await harness.viewModel.enterListenMode(), isNull);
+
+      expect(harness.platform.seekRatios, <double>[0.4]);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.audioOnly);
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(playbackState: VesperPlaybackState.paused),
+      );
+      await tester.pump();
+    });
+
+    testWidgets('无纯音频源时保留视频界面并明确提示', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(supportsAudioOnly: false),
+        surfaceSize: const Size(390, 844),
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsNothing,
+      );
+      expect(find.text('当前视频暂无可用的纯音频源。'), findsOneWidget);
+      expect(harness.platform.selectSourceCalls, 0);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.video);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('进入伴听切源失败时回滚完整视频源且不切换界面', (tester) async {
+      final reported = <FlutterErrorDetails>[];
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() {
+        FlutterError.onError = previousOnError;
+      });
+      final harness = await pumpShell(
+        tester,
+        surfaceSize: const Size(390, 844),
+      );
+      harness.platform.failSelectSourceCallsRemaining = 1;
+
+      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>[
+          'https://example.test/11-audio.mpd',
+          'https://example.test/shell.mp4',
+        ],
+      );
+      expect(
+        find.byKey(const ValueKey<String>('listen-mode-container')),
+        findsNothing,
+      );
+      expect(find.textContaining('进入听视频失败'), findsOneWidget);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.video);
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(reported, isNotEmpty);
+    });
+
+    testWidgets('伴听中切分 P 播放失败时回滚旧条目和旧纯音频源', (tester) async {
+      final reported = <FlutterErrorDetails>[];
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() {
+        FlutterError.onError = previousOnError;
+      });
+      const secondEntry = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: 'P2 第二章',
+        durationSeconds: 180,
+      );
+      final multiPageTarget = MediaPlaybackTarget(
+        detail: MediaDetail(
+          mediaId: 'BV1LISTENROLLBACK',
+          title: '伴听回滚测试',
+          coverUrl: '',
+          ownerName: '伴听测试UP',
+          pages: <MediaPlaybackEntry>[target.entry, secondEntry],
+        ),
+        entry: target.entry,
+      );
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: multiPageTarget,
+        surfaceSize: const Size(390, 844),
+      );
+
+      expect(await harness.viewModel.enterListenMode(), isNull);
+      harness.platform.failPlayCallsRemaining = 1;
+      final message = await harness.viewModel.switchEntry(secondEntry);
+
+      expect(message, contains('切换分 P 失败'));
+      expect(harness.viewModel.selectedEntry.entryId, target.entry.entryId);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.audioOnly);
+      expect(
+        harness.viewModel.resolvedPlayback?.toAudioOnlySource()?.uri,
+        'https://example.test/11-audio.mpd',
+      );
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>[
+          'https://example.test/11-audio.mpd',
+          'https://example.test/22-audio.mpd',
+          'https://example.test/11-audio.mpd',
+        ],
+      );
+      final systemMetadata =
+          harness.platform.systemPlaybackConfigurations.last.metadata;
+      expect(systemMetadata?.contentUri, 'https://example.test/11-audio.mpd');
+      expect(systemMetadata?.durationMs, 120000);
+      expect(systemMetadata?.title, contains('P1'));
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(reported, isNotEmpty);
+    });
+
+    testWidgets('伴听模式地址恢复继续选择新解析的纯音频源', (tester) async {
+      final adapter = _ShellAdapter(versionSourcesByResolveCall: true);
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        surfaceSize: const Size(390, 844),
+      );
+
+      expect(await harness.viewModel.enterListenMode(), isNull);
+      expect(
+        harness.platform.selectedSources.single.uri,
+        'https://example.test/11-audio-1.mpd',
+      );
+
+      harness.platform.emitRecoverableSourceError();
+      for (var round = 0; round < 10; round += 1) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (harness.viewModel.resolvedPlayback?.toAudioOnlySource()?.uri ==
+            'https://example.test/11-audio-2.mpd') {
+          break;
+        }
+      }
+
+      expect(adapter.resolveCallCount, 2);
+      expect(harness.platform.selectedSources, hasLength(2));
+      expect(
+        harness.platform.selectedSources.last.uri,
+        'https://example.test/11-audio-2.mpd',
+      );
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.audioOnly);
+      expect(
+        harness.viewModel.resolvedPlayback?.toAudioOnlySource()?.uri,
+        'https://example.test/11-audio-2.mpd',
+      );
+      expect(
+        harness.platform.systemPlaybackConfigurations.last.metadata?.contentUri,
+        'https://example.test/11-audio-2.mpd',
+      );
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 5));
+      expect(adapter.resolveCallCount, 2);
+    });
+
+    testWidgets('伴听地址恢复换源中切 P 时最终保留新 P 纯音频源', (tester) async {
+      const secondEntry = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: 'P2 第二章',
+        durationSeconds: 180,
+      );
+      final adapter = _ShellAdapter(versionSourcesByResolveCall: true);
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        playbackTarget: MediaPlaybackTarget(
+          detail: MediaDetail(
+            mediaId: 'BV1LISTENRECOVERYRACE',
+            title: '伴听恢复竞态测试',
+            coverUrl: '',
+            ownerName: '伴听测试UP',
+            pages: <MediaPlaybackEntry>[target.entry, secondEntry],
+          ),
+          entry: target.entry,
+        ),
+        surfaceSize: const Size(390, 844),
+      );
+
+      expect(await harness.viewModel.enterListenMode(), isNull);
+      final recoverySelectGate = Completer<void>();
+      harness.platform.selectSourceGate = recoverySelectGate;
+      harness.platform.emitRecoverableSourceError();
+      for (var round = 0; round < 10; round += 1) {
+        await tester.pump();
+        if (harness.platform.selectedSources.length == 2) {
+          break;
+        }
+      }
+      expect(
+        harness.platform.selectedSources.last.uri,
+        'https://example.test/11-audio-2.mpd',
+      );
+
+      final switchFuture = harness.viewModel.switchEntry(secondEntry);
+      await tester.pump();
+      expect(harness.viewModel.selectedEntry.entryId, target.entry.entryId);
+
+      recoverySelectGate.complete();
+      expect(await switchFuture, isNull);
+      await tester.pump();
+
+      expect(adapter.resolveCallCount, 3);
+      expect(
+        harness.platform.selectedSources.map((source) => source.uri),
+        <String>[
+          'https://example.test/11-audio-1.mpd',
+          'https://example.test/11-audio-2.mpd',
+          'https://example.test/22-audio-3.mpd',
+        ],
+      );
+      expect(harness.viewModel.selectedEntry.entryId, secondEntry.entryId);
+      expect(harness.viewModel.sourceMode, MediaPlaybackSourceMode.audioOnly);
+      expect(
+        harness.viewModel.resolvedPlayback?.toAudioOnlySource()?.uri,
+        'https://example.test/22-audio-3.mpd',
+      );
+      final systemMetadata =
+          harness.platform.systemPlaybackConfigurations.last.metadata;
+      expect(systemMetadata?.contentUri, 'https://example.test/22-audio-3.mpd');
+      expect(systemMetadata?.durationMs, 180000);
+      expect(systemMetadata?.title, contains('P2 第二章'));
+      expect(harness.platform.createCalls, 1);
+      expect(harness.platform.disposeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    test('reload 等待伴听换源退出后再销毁旧 controller', () async {
+      final platform = installViewModelEnvironment();
+      final viewModel = MediaPlaybackViewModel(
+        detail: target.detail,
+        initialEntry: target.entry,
+        adapter: _ShellAdapter(),
+        preferTextureViewForPlayback: () async => false,
+      );
+      addTearDown(() async {
+        viewModel.dispose();
+        await platform
+            .waitForDisposeCalls(platform.createCalls)
+            .timeout(const Duration(seconds: 2));
+      });
+      await viewModel.controllerFuture;
+      final selectGate = Completer<void>();
+      platform.selectSourceGate = selectGate;
+
+      final enterFuture = viewModel.enterListenMode();
+      await Future<void>.delayed(Duration.zero);
+      expect(platform.selectSourceCalls, 1);
+
+      final reloadFuture = viewModel.reloadCurrentPage();
+      expect(viewModel.controller, isNull);
+      expect(platform.disposeCalls, 0);
+
+      selectGate.complete();
+      final enterMessage = await enterFuture.timeout(
+        const Duration(seconds: 2),
+      );
+      expect(enterMessage, contains('播放源已更新'));
+      await reloadFuture.timeout(const Duration(seconds: 2));
+      final reloadedController = await viewModel.controllerFuture.timeout(
+        const Duration(seconds: 2),
+      );
+
+      expect(reloadedController, isNotNull);
+      expect(viewModel.controller, same(reloadedController));
+      expect(platform.createCalls, 2);
+      expect(platform.disposeCalls, 1);
+    });
+
+    test('dispose 等待伴听换源退出后再销毁 controller', () async {
+      final platform = installViewModelEnvironment();
+      final viewModel = MediaPlaybackViewModel(
+        detail: target.detail,
+        initialEntry: target.entry,
+        adapter: _ShellAdapter(),
+        preferTextureViewForPlayback: () async => false,
+      );
+      await viewModel.controllerFuture;
+      final selectGate = Completer<void>();
+      platform.selectSourceGate = selectGate;
+
+      final enterFuture = viewModel.enterListenMode();
+      await Future<void>.delayed(Duration.zero);
+      expect(platform.selectSourceCalls, 1);
+
+      viewModel.dispose();
+      expect(viewModel.controller, isNull);
+      expect(platform.disposeCalls, 0);
+
+      selectGate.complete();
+      final enterMessage = await enterFuture.timeout(
+        const Duration(seconds: 2),
+      );
+      await platform.waitForDisposeCalls(1).timeout(const Duration(seconds: 2));
+
+      expect(enterMessage, contains('播放源已更新'));
+      expect(platform.disposeCalls, 1);
+    });
+  });
 
   group('互动动作槽（§6.3）', () {
     testWidgets('声明动作按顺序渲染，busy 动作禁用', (tester) async {
@@ -1484,6 +2257,8 @@ final class _ShellAdapter extends MediaPlatformAdapter {
     this.dlnaConfig,
     this.qualityOptions = const <MediaQualityOption>[],
     this.qualityPolicy = const MediaQualityPolicy(),
+    this.supportsAudioOnly = true,
+    this.versionSourcesByResolveCall = false,
   });
 
   final MediaDanmakuProvider? danmakuProvider;
@@ -1493,6 +2268,8 @@ final class _ShellAdapter extends MediaPlatformAdapter {
   final List<MediaQualityOption> qualityOptions;
   @override
   final MediaQualityPolicy qualityPolicy;
+  final bool supportsAudioOnly;
+  final bool versionSourcesByResolveCall;
 
   /// 非空时 resolvePlayback 挂起，由测试手动完成（模拟慢解析/过时代际）。
   Completer<void>? resolveGate;
@@ -1508,15 +2285,27 @@ final class _ShellAdapter extends MediaPlatformAdapter {
     if (gate != null) {
       await gate.future;
     }
+    final versionSuffix = versionSourcesByResolveCall
+        ? '-$resolveCallCount'
+        : '';
     return ResolvedMediaPlayback(
       title: detail.title,
       subtitle: 'P${entry.pageNumber} · ${entry.title}',
-      uri: 'https://example.test/shell.mp4',
+      uri: 'https://example.test/shell$versionSuffix.mp4',
       protocol: VesperPlayerSourceProtocol.progressive,
       transportLabel: 'shell',
       isLocalFile: false,
       qualityOptions: qualityOptions,
       supportsCodecSelection: qualityPolicy.supportsCodecSelection,
+      audioOnlySource: supportsAudioOnly
+          ? ResolvedMediaSourceVariant(
+              uri:
+                  'https://example.test/${entry.entryId}-audio$versionSuffix.mpd',
+              protocol: VesperPlayerSourceProtocol.dash,
+              transportLabel: 'shell audio only',
+              isLocalFile: false,
+            )
+          : null,
     );
   }
 
@@ -1657,16 +2446,27 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   final StreamController<VesperPlayerEvent> _eventsController =
       StreamController<VesperPlayerEvent>.broadcast();
   final seekDeltas = <int>[];
+  final seekRatios = <double>[];
+  final selectedSources = <VesperPlayerSource>[];
+  final playbackRates = <double>[];
   final abrPolicyCalls =
       <({VesperAbrPolicy policy, int? expectedCatalogRevision})>[];
+  final systemPlaybackConfigurations = <VesperSystemPlaybackConfiguration>[];
   int playCalls = 0;
+  int createCalls = 0;
   int disposeCalls = 0;
   int refreshCalls = 0;
   int selectSourceCalls = 0;
+  int pauseCalls = 0;
+  int failSelectSourceCallsRemaining = 0;
+  int failPlayCallsRemaining = 0;
+  final Map<int, Completer<void>> _disposeWaiters = <int, Completer<void>>{};
   Object? setAbrPolicyError;
   Object? setSubtitleSelectionError;
   Completer<void>? setAbrPolicyGate;
   Future<void> Function(VesperAbrPolicy policy)? setAbrPolicyHandler;
+  VesperPlayerSnapshot? selectedSourceSuccessSnapshot;
+  bool updateSnapshotOnCommands = false;
 
   /// 非空时 selectSource 挂起，由测试手动完成（模拟切源窗口）。
   Completer<void>? selectSourceGate;
@@ -1724,6 +2524,20 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
     );
   }
 
+  void emitRecoverableSourceError() {
+    _eventsController.add(
+      const VesperPlayerErrorEvent(
+        playerId: 'shell-test-player',
+        error: VesperPlayerError(
+          message: '模拟播放地址失效',
+          code: VesperPlayerErrorCode.invalidSource,
+          category: VesperPlayerErrorCategory.source,
+          retriable: true,
+        ),
+      ),
+    );
+  }
+
   @override
   Future<VesperPlatformCreateResult> createPlayer({
     VesperPlayerSource? initialSource,
@@ -1747,6 +2561,7 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
     VesperPipelineEventHookConfiguration pipelineEventHookConfiguration =
         const VesperPipelineEventHookConfiguration(),
   }) async {
+    createCalls += 1;
     return VesperPlatformCreateResult(
       playerId: 'shell-test-player',
       snapshot: _current,
@@ -1760,12 +2575,26 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
 
   Future<void> closeEvents() => _eventsController.close();
 
+  Future<void> waitForDisposeCalls(int expected) {
+    if (disposeCalls >= expected) {
+      return Future<void>.value();
+    }
+    return (_disposeWaiters[expected] ??= Completer<void>()).future;
+  }
+
   @override
   Future<void> initialize(String playerId) async {}
 
   @override
   Future<void> dispose(String playerId) async {
     disposeCalls += 1;
+    final completedWaiters = _disposeWaiters.entries
+        .where((entry) => entry.key <= disposeCalls)
+        .toList(growable: false);
+    for (final entry in completedWaiters) {
+      entry.value.complete();
+      _disposeWaiters.remove(entry.key);
+    }
   }
 
   @override
@@ -1776,19 +2605,47 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   @override
   Future<void> selectSource(String playerId, VesperPlayerSource source) async {
     selectSourceCalls += 1;
+    selectedSources.add(source);
+    if (failSelectSourceCallsRemaining > 0) {
+      failSelectSourceCallsRemaining -= 1;
+      throw PlatformException(code: 'select-source-failed');
+    }
     final gate = selectSourceGate;
     if (gate != null) {
       await gate.future;
+    }
+    final successSnapshot = selectedSourceSuccessSnapshot;
+    if (successSnapshot != null) {
+      emitSnapshot(successSnapshot);
+      await Future<void>.delayed(Duration.zero);
     }
   }
 
   @override
   Future<void> play(String playerId) async {
     playCalls += 1;
+    if (failPlayCallsRemaining > 0) {
+      failPlayCallsRemaining -= 1;
+      throw PlatformException(code: 'play-failed');
+    }
+    if (updateSnapshotOnCommands) {
+      emitSnapshot(
+        _current.copyWith(playbackState: VesperPlaybackState.playing),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
   }
 
   @override
-  Future<void> pause(String playerId) async {}
+  Future<void> pause(String playerId) async {
+    pauseCalls += 1;
+    if (updateSnapshotOnCommands) {
+      emitSnapshot(
+        _current.copyWith(playbackState: VesperPlaybackState.paused),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 
   @override
   Future<void> togglePause(String playerId) async {}
@@ -1799,6 +2656,22 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   @override
   Future<void> seekBy(String playerId, int deltaMs) async {
     seekDeltas.add(deltaMs);
+    if (updateSnapshotOnCommands) {
+      final timeline = _current.timeline;
+      emitSnapshot(
+        _current.copyWith(
+          timeline: VesperTimeline(
+            kind: timeline.kind,
+            isSeekable: timeline.isSeekable,
+            seekableRange: timeline.seekableRange,
+            liveEdgeMs: timeline.liveEdgeMs,
+            positionMs: timeline.positionMs + deltaMs,
+            durationMs: timeline.durationMs,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
   }
 
   @override
@@ -1806,13 +2679,39 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
     if (failSeekToRatio) {
       throw PlatformException(code: 'seek-failed', message: '模拟 seek 失败');
     }
+    seekRatios.add(ratio);
+    if (updateSnapshotOnCommands) {
+      final timeline = _current.timeline;
+      final durationMs = timeline.durationMs;
+      if (durationMs != null && durationMs > 0) {
+        emitSnapshot(
+          _current.copyWith(
+            timeline: VesperTimeline(
+              kind: timeline.kind,
+              isSeekable: timeline.isSeekable,
+              seekableRange: timeline.seekableRange,
+              liveEdgeMs: timeline.liveEdgeMs,
+              positionMs: (durationMs * ratio).round(),
+              durationMs: durationMs,
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
   }
 
   @override
   Future<void> seekToLiveEdge(String playerId) async {}
 
   @override
-  Future<void> setPlaybackRate(String playerId, double rate) async {}
+  Future<void> setPlaybackRate(String playerId, double rate) async {
+    playbackRates.add(rate);
+    if (updateSnapshotOnCommands) {
+      emitSnapshot(_current.copyWith(playbackRate: rate));
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 
   @override
   Future<void> setVideoTrackSelection(
@@ -1880,7 +2779,9 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   Future<void> configureSystemPlayback(
     String playerId,
     VesperSystemPlaybackConfiguration configuration,
-  ) async {}
+  ) async {
+    systemPlaybackConfigurations.add(configuration);
+  }
 
   @override
   Future<void> clearSystemPlayback(String playerId) async {}

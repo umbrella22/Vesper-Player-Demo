@@ -8,6 +8,7 @@ import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_dash_manifest_builder.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_listen_audio_selector.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/bili/common/services/bili_transport.dart';
@@ -46,6 +47,42 @@ Map<String, Object?> _dashStreamJson({
       'indexRange': '11-20',
     },
   };
+}
+
+BiliDashStream _testDashAudioStream({
+  required int id,
+  required int bandwidth,
+  String codecs = 'mp4a.40.2',
+  String? url,
+}) {
+  return BiliDashStream(
+    id: id,
+    baseUrl: url ?? 'https://example.com/audio-$id.m4s',
+    mimeType: 'audio/mp4',
+    codecs: codecs,
+    bandwidth: bandwidth,
+    representationId: 'audio-$id-$bandwidth',
+    segmentInfo: const BiliDashSegmentInfo(
+      initialization: '0-10',
+      indexRange: '11-20',
+    ),
+  );
+}
+
+BiliDashStream _testDashVideoStream() {
+  return const BiliDashStream(
+    id: 80,
+    baseUrl: 'https://example.com/video.m4s',
+    mimeType: 'video/mp4',
+    codecs: 'avc1.640028',
+    bandwidth: 1200000,
+    codecid: 7,
+    representationId: 'video-80-7-1200000-0',
+    segmentInfo: BiliDashSegmentInfo(
+      initialization: '0-10',
+      indexRange: '11-20',
+    ),
+  );
 }
 
 void main() {
@@ -734,9 +771,156 @@ void main() {
         contains('<BaseURL>https://pcdn.example.com:4483/video.m4s</BaseURL>'),
       );
     });
+
+    test('audio-only MPD omits the video AdaptationSet', () {
+      const builder = BiliDashManifestBuilder();
+      final xml = builder.build(
+        BiliDashManifestData(
+          durationMs: 1000,
+          minBufferTimeMs: 1500,
+          videoStreams: const <BiliDashStream>[],
+          audioStreams: <BiliDashStream>[
+            _testDashAudioStream(
+              id: 30280,
+              bandwidth: 192000,
+              url: 'https://example.com/listen-audio.m4s',
+            ),
+          ],
+        ),
+      );
+
+      expect(xml, isNot(contains('contentType="video"')));
+      expect(xml, contains('contentType="audio"'));
+      expect(xml, contains('https://example.com/listen-audio.m4s'));
+    });
+  });
+
+  group('BiliListenAudioSelector', () {
+    test('prefers 30280, then 30232, then 30216 and skips special audio', () {
+      const selector = BiliListenAudioSelector();
+      final low = _testDashAudioStream(id: 30216, bandwidth: 64000);
+      final medium = _testDashAudioStream(id: 30232, bandwidth: 132000);
+      final high = _testDashAudioStream(id: 30280, bandwidth: 192000);
+      final dolby = _testDashAudioStream(
+        id: 30255,
+        bandwidth: 448000,
+        codecs: 'ec-3',
+      );
+      final flac = _testDashAudioStream(
+        id: 30251,
+        bandwidth: 900000,
+        codecs: 'fLaC',
+      );
+
+      expect(
+        selector.select(<BiliDashStream>[dolby, low, flac, medium, high]),
+        high,
+      );
+      expect(selector.select(<BiliDashStream>[low, medium]), medium);
+      expect(selector.select(<BiliDashStream>[low]), low);
+      expect(selector.select(<BiliDashStream>[dolby, flac]), isNull);
+    });
   });
 
   group('BiliClient DASH parser', () {
+    test('resolve writes distinct full and AAC-only MPD files', () async {
+      final transport = _PlaybackResolveTransport(
+        playbackData: <String, Object?>{
+          'support_formats': <Object?>[
+            <String, Object?>{'quality': 80, 'new_description': '1080P 高清'},
+          ],
+          'dash': <String, Object?>{
+            'duration': 60,
+            'min_buffer_time': 1.5,
+            'video': <Object?>[
+              _dashStreamJson(
+                id: 80,
+                baseUrl: 'https://example.com/full-video.m4s',
+                codecs: 'avc1.640028',
+                bandwidth: 1200000,
+              ),
+            ],
+            'audio': <Object?>[
+              _dashStreamJson(
+                id: 30232,
+                baseUrl: 'https://example.com/audio-132.m4s',
+                mimeType: 'audio/mp4',
+                codecs: 'mp4a.40.2',
+                bandwidth: 132000,
+              ),
+              _dashStreamJson(
+                id: 30280,
+                baseUrl: 'https://example.com/audio-192.m4s',
+                mimeType: 'audio/mp4',
+                codecs: 'mp4a.40.2',
+                bandwidth: 192000,
+              ),
+            ],
+            'dolby': <String, Object?>{
+              'audio': _dashStreamJson(
+                id: 30255,
+                baseUrl: 'https://example.com/dolby.m4s',
+                mimeType: 'audio/mp4',
+                codecs: 'ec-3',
+                bandwidth: 448000,
+              ),
+            },
+          },
+        },
+      );
+      final client = BiliClient(transport: transport);
+      addTearDown(() => transport.httpClient.close(force: true));
+
+      final resolved = await client.resolvePlayback(
+        detail: const BiliVideoDetail(
+          aid: 1,
+          bvid: 'BV1LISTENAUDIO',
+          title: '伴听解析测试',
+          ownerMid: 2,
+          ownerName: '测试UP',
+          ownerAvatarUrl: '',
+          coverUrl: '',
+          description: '',
+          publishedAtLabel: null,
+          playCountLabel: '',
+          danmakuCountLabel: '',
+          replyCountLabel: '',
+          likeCountLabel: '',
+          coinCountLabel: '',
+          favoriteCountLabel: '',
+          shareCountLabel: '',
+          pages: <BiliVideoPageEntry>[],
+        ),
+        page: const BiliVideoPageEntry(
+          cid: 991122,
+          pageNumber: 1,
+          title: '正片',
+          durationSeconds: 60,
+        ),
+        platform: TargetPlatform.android,
+      );
+      final audioOnly = resolved.audioOnlySource;
+      expect(audioOnly, isNotNull);
+      final fullFile = File.fromUri(Uri.parse(resolved.uri));
+      final audioFile = File.fromUri(Uri.parse(audioOnly!.uri));
+      addTearDown(() async {
+        if (await fullFile.exists()) await fullFile.delete();
+        if (await audioFile.exists()) await audioFile.delete();
+      });
+
+      expect(fullFile.path, isNot(audioFile.path));
+      expect(fullFile.path, endsWith('BV1LISTENAUDIO-991122.mpd'));
+      expect(audioFile.path, endsWith('BV1LISTENAUDIO-991122-audio.mpd'));
+      final fullMpd = await fullFile.readAsString();
+      final audioMpd = await audioFile.readAsString();
+      expect(fullMpd, contains('contentType="video"'));
+      expect(fullMpd, contains('https://example.com/full-video.m4s'));
+      expect(audioMpd, isNot(contains('contentType="video"')));
+      expect(audioMpd, contains('https://example.com/audio-192.m4s'));
+      expect(audioMpd, isNot(contains('https://example.com/audio-132.m4s')));
+      expect(audioMpd, isNot(contains('https://example.com/dolby.m4s')));
+    });
+
     test('accepts Bilibili SegmentBase Initialization fields', () {
       final client = BiliClient();
 
@@ -1404,6 +1588,45 @@ void main() {
       expect(videoResource.sizeBytes, 1000);
       expect(audioResource.sizeBytes, 333);
       expect(prepared.assetIndex.totalSizeBytes, 1333);
+    });
+
+    test('download classifies audio id 30255 as Dolby', () {
+      final client = BiliClient();
+      addTearDown(() => client.transport.httpClient.close(force: true));
+      final video = _testDashVideoStream();
+      final dolby = _testDashAudioStream(
+        id: 30255,
+        bandwidth: 448000,
+        codecs: 'mp4a.40.2',
+      );
+      final prepared = client.prepareDownloadAsset(
+        options: BiliDownloadOptions(
+          bvid: 'BV1DOLBY30255',
+          cid: 55,
+          videoTitle: 'Dolby ID 测试',
+          pageTitle: 'P1',
+          coverUrl: '',
+          referer: 'https://www.bilibili.com/video/BV1DOLBY30255',
+          headers: const <String, String>{},
+          manifest: BiliDashManifestData(
+            durationMs: 1000,
+            minBufferTimeMs: 1500,
+            videoStreams: <BiliDashStream>[video],
+            audioStreams: <BiliDashStream>[dolby],
+          ),
+          qualities: <BiliDownloadQualityOption>[
+            BiliDownloadQualityOption(
+              qualityId: 80,
+              label: '1080P',
+              videoStreams: <BiliDashStream>[video],
+            ),
+          ],
+          variantLabel: 'test',
+        ),
+        qualityId: 80,
+      );
+
+      expect(prepared.assetId, contains('dolby'));
     });
   });
 
@@ -2287,6 +2510,30 @@ final class _FakeSessionSecureStorage implements BiliSessionSecureStorage {
   @override
   Future<void> delete({required String key}) async {
     values.remove(key);
+  }
+}
+
+final class _PlaybackResolveTransport extends BiliTransport {
+  _PlaybackResolveTransport({required this.playbackData});
+
+  final Map<String, Object?> playbackData;
+
+  @override
+  Future<Map<String, Object?>> getData({
+    required String host,
+    required String path,
+    Map<String, Object?> params = const <String, Object?>{},
+    bool useWbi = false,
+    String referer = 'https://www.bilibili.com/',
+    bool ensureReady = true,
+    Set<int> allowedCodes = const <int>{0},
+  }) async {
+    if (path.endsWith('/playurl')) {
+      return playbackData;
+    }
+    return <String, Object?>{
+      'subtitle': <String, Object?>{'subtitles': <Object?>[]},
+    };
   }
 }
 

@@ -26,8 +26,12 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       final renderSurfaceKindFuture = _resolveRenderSurfaceKind();
       final sourceNormalizerConfiguration = await sourceNormalizerFuture;
       final renderSurfaceKind = await renderSurfaceKindFuture;
+      final initialSource = _sourceForMode(resolved, _sourceMode);
+      if (initialSource == null) {
+        throw StateError('当前条目没有可用的纯音频源。');
+      }
       nextController = await VesperPlayerController.create(
-        initialSource: resolved.toSource(),
+        initialSource: initialSource,
         renderSurfaceKind: renderSurfaceKind,
         resiliencePolicy: mediaPlayerResiliencePolicy,
         trackPreferencePolicy: mediaPlayerTrackPreferencePolicy,
@@ -51,7 +55,11 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
         _pendingInitialPositionMs = null;
         await _seekToResumePosition(nextController, initialPositionMs);
       }
-      await _configureSystemPlayback(nextController, resolved);
+      await _configureSystemPlayback(
+        nextController,
+        resolved,
+        activeSource: initialSource,
+      );
       if (_isDisposed || generation != _controllerGeneration) {
         await nextController.dispose();
         throw const _PlaybackSourceObsoleted();
@@ -67,7 +75,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
         throw const _PlaybackSourceObsoleted();
       }
       _controller = nextController;
-      _userController = _SeekAwareController(
+      _userController = SeekAwarePlayerController(
         nextController,
         () => _userSeekGeneration += 1,
       );
@@ -192,8 +200,10 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
 
   Future<void> _configureSystemPlayback(
     VesperPlayerController controller,
-    ResolvedMediaPlayback resolved,
-  ) async {
+    ResolvedMediaPlayback resolved, {
+    VesperPlayerSource? activeSource,
+    MediaPlaybackEntry? activeEntry,
+  }) async {
     if (_isDisposed) {
       return;
     }
@@ -210,7 +220,11 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       _systemPlaybackPermissionStatus.value = permissionStatus;
       await controller.configureSystemPlayback(
         mediaPlayerSystemPlaybackConfiguration(
-          metadata: _systemPlaybackMetadataForResolved(resolved),
+          metadata: _systemPlaybackMetadataForResolved(
+            resolved,
+            contentUri: activeSource?.uri,
+            entry: activeEntry,
+          ),
           backgroundMode: useLegacyCompatibility
               ? VesperBackgroundPlaybackMode.disabled
               : VesperBackgroundPlaybackMode.continueAudio,
@@ -278,9 +292,11 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
   }
 
   VesperSystemPlaybackMetadata _systemPlaybackMetadataForResolved(
-    ResolvedMediaPlayback resolved,
-  ) {
-    final selectedEntry = _selectedEntry.value;
+    ResolvedMediaPlayback resolved, {
+    String? contentUri,
+    MediaPlaybackEntry? entry,
+  }) {
+    final selectedEntry = entry ?? _selectedEntry.value;
     final durationSeconds = selectedEntry.durationSeconds;
     final durationMs = durationSeconds > 0 ? durationSeconds * 1000 : null;
     return mediaPlayerSystemPlaybackMetadata(
@@ -288,7 +304,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       subtitle: resolved.subtitle,
       artist: detail.ownerName,
       artworkUri: selectedEntry.coverUrl ?? detail.coverUrl,
-      contentUri: resolved.uri,
+      contentUri: contentUri ?? resolved.uri,
       durationMs: durationMs,
     );
   }
@@ -321,10 +337,11 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
   Future<void> _persistLatestHistory(
     VesperPlayerController controller, {
     required VesperPlayerSnapshot fallback,
+    MediaPlaybackEntry? entry,
   }) async {
     // Snapshot the selected entry synchronously: dispose() may dispose the
     // signal while this async body is awaiting controller.refresh().
-    final selectedEntry = _selectedEntry.value;
+    final selectedEntry = entry ?? _selectedEntry.value;
     var snapshot = fallback;
     try {
       await controller.refresh();

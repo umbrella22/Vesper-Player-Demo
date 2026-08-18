@@ -21,8 +21,9 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
   播放和离线缓存入口。
 - TV 模式：面向大屏和遥控器操作场景，提供沉浸式 Hero、媒体 Shelf、可折叠导航
   和四向焦点体验。
-- 通过本地 path dependency 接入 [`vesper-player-sdk`](https://github.com/umbrella22/Vesper)，用于验证 Vesper Player
-  在 Flutter 移动应用中的真实集成效果。
+- 通过 pub.dev 上发布的 Vesper Flutter packages 接入
+  [`vesper-player-sdk`](https://github.com/umbrella22/Vesper)，用于验证 Vesper
+  Player 在 Flutter 移动应用中的真实集成效果。
 - 已实现登录态、搜索、播放历史、分 P 播放、番剧分区、播放页评论区、投屏
   （Android DLNA / iOS AirPlay）、离线缓存与 SDK 调试信息展示等接近真实
   客户端的功能链路。
@@ -88,8 +89,9 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 
 - App 根目录：当前 Flutter 仓库。
 - Flutter 业务代码：`lib/`。
-- 本地播放器 SDK：`third_party/vesper-player-sdk`，作为 git submodule 引入。
-- Flutter 通过 `pubspec.yaml` 中的本地 path dependency 消费 Vesper SDK。
+- Flutter 通过 `pubspec.yaml` 中的 hosted version constraint 消费 Vesper SDK。
+- 应用仓库不构建或嵌入 SDK 原生制品；Vesper federated packages 必须提供可解析
+  的 Android Maven 与 iOS SwiftPM 制品。
 - 原生辅助脚本：`scripts/`，详见 [`scripts/README.md`](scripts/README.md)。
 
 ```text
@@ -107,16 +109,12 @@ scripts/
   sign_ios_flutter_native_asset_frameworks.sh  # native asset framework 补签名（Xcode 钩子）
   rewrite_playcover_native_assets.dart     # PlayCover 产物 native asset 路径改写
   tag_release.sh                           # 手动打 tag 的应急发版脚本
-third_party/
-  vesper-player-sdk/
 ```
 
 ## 初始化
 
 ```sh
-git submodule update --init --recursive
 bash scripts/prepare_flutter_workspace.sh
-third_party/vesper-player-sdk/scripts/vesper ios ffi release
 flutter analyze
 flutter test
 flutter run
@@ -164,8 +162,8 @@ bash scripts/build_ios_no_codesign.sh
 
 本仓库根目录代码使用 Apache License 2.0 开源，见 [LICENSE](LICENSE)。
 
-`third_party/vesper-player-sdk` 是独立的 SDK 子模块，保留其自己的许可证、版权
-声明和上游项目边界。使用或分发该子模块时，请同时遵守它自己的 license 文件。
+Vesper Player packages 是独立的上游依赖，保留各自的许可证、版权声明和项目
+边界。使用或分发这些 packages 时，请同时遵守其随包发布的 license 文件。
 
 ## 致谢
 

@@ -13,16 +13,19 @@ import '../models/resolved_media.dart';
 import '../player/media_text.dart';
 import '../player/player_options.dart';
 import 'media_external_playback_manager.dart';
+import 'seek_aware_player_controller.dart';
 
 part 'media_playback_view_model_controller.dart';
+part 'media_playback_view_model_listen.dart';
 part 'media_playback_view_model_recovery.dart';
 part 'media_playback_view_model_tracks.dart';
-part 'media_playback_seek_aware_controller.dart';
 
 /// 过时代际的播放器创建被取消（reload/dispose 后旧创建链才完成）。
 final class _PlaybackSourceObsoleted implements Exception {
   const _PlaybackSourceObsoleted();
 }
+
+enum MediaPlaybackSourceMode { video, audioOnly }
 
 final class _TrackSelectionAvailability {
   const _TrackSelectionAvailability({
@@ -88,6 +91,9 @@ final class MediaPlaybackViewModel {
   /// 切源代际：switchEntry 的 selectSource 前递增，使在途历史续播失效。
   int _sourceGeneration = 0;
 
+  /// 播放源事务代际：伴听切换、切分 P、reload/dispose 会使旧事务失效。
+  int _sourceTransitionGeneration = 0;
+
   /// 用户操作代际：经 VM 的 seek 入口（seekToRatio/seekBy）时递增，
   /// 使在途历史续播失效。
   int _userSeekGeneration = 0;
@@ -147,6 +153,9 @@ final class MediaPlaybackViewModel {
   bool _playbackRecoveryInFlight = false;
   bool _playbackRecoveryFailureReported = false;
   bool _playbackSourceTransitionInFlight = false;
+  Future<void> _sourceTransactionTail = Future<void>.value();
+  MediaPlaybackSourceMode _sourceMode = MediaPlaybackSourceMode.video;
+  _ListenVideoPolicyRestore? _listenVideoPolicyRestore;
   int _playbackRecoveryAttempts = 0;
   int _playbackRecoveryGeneration = 0;
   int _controllerGeneration = 0;
@@ -202,6 +211,11 @@ final class MediaPlaybackViewModel {
 
   bool get isFullscreen => _isFullscreen.value;
 
+  MediaPlaybackSourceMode get sourceMode => _sourceMode;
+
+  bool get isAudioOnlyPlaybackActive =>
+      _sourceMode == MediaPlaybackSourceMode.audioOnly;
+
   String? consumePendingMessage() {
     if (_isDisposed) {
       return null;
@@ -240,18 +254,40 @@ final class MediaPlaybackViewModel {
     return future;
   }
 
+  Future<T> _runSourceTransaction<T>(Future<T> Function() transaction) {
+    final result = Completer<T>();
+    final previous = _sourceTransactionTail;
+    _sourceTransactionTail = () async {
+      await previous;
+      try {
+        result.complete(await transaction());
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    }();
+    return result.future;
+  }
+
   Future<void> reloadCurrentPage() async {
     if (_isDisposed) {
       return;
     }
+    final sourceTransaction = _sourceTransactionTail;
+    final sourceTransitionWasInFlight =
+        _playbackSourceTransitionInFlight || _playbackRecoveryInFlight;
     _controllerGeneration += 1;
+    _sourceTransitionGeneration += 1;
+    _playbackSourceTransitionInFlight = false;
     _resetPlaybackRecoveryState(clearPendingNotice: true);
     final previous = _controller;
     final previousSnapshot = previous?.snapshot;
     _controller = null;
     _userController = null;
+    if (previous != null) {
+      await sourceTransaction;
+    }
     if (previous != null && previousSnapshot != null) {
-      if (previousSnapshot.lastError != null) {
+      if (sourceTransitionWasInFlight || previousSnapshot.lastError != null) {
         unawaited(_persistHistory(previousSnapshot));
       } else {
         await _persistLatestHistory(previous, fallback: previousSnapshot);
@@ -282,36 +318,108 @@ final class MediaPlaybackViewModel {
       return null;
     }
 
-    _playbackSourceTransitionInFlight = true;
-    _invalidatePlaybackSelectionRequests();
-    _resetPlaybackRecoveryState(clearPendingNotice: true);
+    final transitionGeneration = _beginSourceTransition();
     // 切源前递增：在途的历史续播查询（绑定旧 source）立即失效，
     // 避免 selectSource 之后、_selectedEntry 更新之前返回的旧进度
     // 被 seek 到新 source。
-    _sourceGeneration += 1;
+    final previousEntry = _selectedEntry.value;
+    final previousResolved = _resolvedPlayback.value;
+    final previousSnapshot = controller.snapshot;
+    final previousSource = previousResolved == null
+        ? null
+        : _sourceForMode(previousResolved, _sourceMode);
+    final previousVideoPolicy = _sourceMode == MediaPlaybackSourceMode.video
+        ? _ListenVideoPolicyRestore(
+            abrPolicy: previousSnapshot.trackSelection.abrPolicy,
+            qualityOptionId: _selectedQualityOptionId.value,
+            codecIdentity: _selectedCodecIdentity.value,
+          )
+        : null;
     try {
-      final currentSnapshot = controller.snapshot;
-      unawaited(_persistHistory(currentSnapshot));
+      unawaited(_persistHistory(previousSnapshot));
       final resolved = await adapter.resolvePlayback(
         detail: detail,
         entry: entry,
       );
-      await controller.selectSource(resolved.toSource());
-      await _configureSystemPlayback(controller, resolved);
-      await controller.play();
-      if (_isDisposed) {
+      if (!_isCurrentSourceTransition(
+        transitionGeneration,
+        controller: controller,
+      )) {
         return null;
       }
-      _selectedEntry.value = entry;
-      _resolvedPlayback.value = resolved;
-      _resetRuntimeTrackCapabilityState();
-      _selectedQualityOptionId.value = null;
-      _selectedCodecIdentity.value = null;
+      final nextSource = _sourceForMode(resolved, _sourceMode);
+      if (nextSource == null) {
+        return '该分 P 暂无可用的纯音频源，已保留当前播放。';
+      }
+      return await _runSourceTransaction(() async {
+        var sourceSelectionAttempted = false;
+        try {
+          _assertCurrentSourceTransition(
+            transitionGeneration,
+            controller: controller,
+          );
+          sourceSelectionAttempted = true;
+          await controller.selectSource(nextSource);
+          _assertCurrentSourceTransition(
+            transitionGeneration,
+            controller: controller,
+          );
+          await _configureSystemPlayback(
+            controller,
+            resolved,
+            activeSource: nextSource,
+            activeEntry: entry,
+          );
+          _assertCurrentSourceTransition(
+            transitionGeneration,
+            controller: controller,
+          );
+          await controller.play();
+          _assertCurrentSourceTransition(
+            transitionGeneration,
+            controller: controller,
+          );
+          _selectedEntry.value = entry;
+          _resolvedPlayback.value = resolved;
+          _resetRuntimeTrackCapabilityState();
+          if (_sourceMode == MediaPlaybackSourceMode.video) {
+            _selectedQualityOptionId.value = null;
+            _selectedCodecIdentity.value = null;
+          }
+          return null;
+        } on _PlaybackSourceObsoleted {
+          return null;
+        } catch (error) {
+          if (sourceSelectionAttempted &&
+              previousResolved != null &&
+              previousSource != null) {
+            final rollbackRestored = await _rollbackSourceTransition(
+              transitionGeneration: transitionGeneration,
+              controller: controller,
+              source: previousSource,
+              snapshot: previousSnapshot,
+              videoPolicy: previousVideoPolicy,
+            );
+            if (rollbackRestored) {
+              await _configureSystemPlayback(
+                controller,
+                previousResolved,
+                activeSource: previousSource,
+                activeEntry: previousEntry,
+              );
+            } else {
+              return '切换分 P 失败，且原播放源恢复失败，请重新加载。';
+            }
+          }
+          return '切换分 P 失败：${mediaErrorMessage(error)}';
+        }
+      });
+    } on _PlaybackSourceObsoleted {
       return null;
     } catch (error) {
       return '切换分 P 失败：${mediaErrorMessage(error)}';
     } finally {
-      _playbackSourceTransitionInFlight = false;
+      _finishSourceTransition(transitionGeneration);
     }
   }
 
@@ -324,7 +432,7 @@ final class MediaPlaybackViewModel {
       if (_isDisposed) {
         return null;
       }
-      return _dlnaManager.loadMedia(
+      return await _dlnaManager.loadMedia(
         resolved: resolved,
         selectedPage: _selectedEntry.value,
         refreshResolved: _refreshCurrentResolvedPlayback,
@@ -632,13 +740,15 @@ final class MediaPlaybackViewModel {
     }
     _isDisposed = true;
     _controllerGeneration += 1;
+    _sourceTransitionGeneration += 1;
     _playbackRecoveryGeneration += 1;
     _playbackRecoverySuccessTimer?.cancel();
+    final sourceTransaction = _sourceTransactionTail;
+    final sourceTransitionWasInFlight =
+        _playbackSourceTransitionInFlight || _playbackRecoveryInFlight;
     final controller = _controller;
     final snapshot = controller?.snapshot;
-    if (controller != null && snapshot != null) {
-      unawaited(_persistLatestHistory(controller, fallback: snapshot));
-    }
+    final selectedEntry = _selectedEntry.value;
     unawaited(_controllerEventsSubscription?.cancel() ?? Future<void>.value());
     unawaited(_castEventsSubscription?.cancel() ?? Future<void>.value());
     _externalPlaybackForCast.dispose();
@@ -647,7 +757,30 @@ final class MediaPlaybackViewModel {
     _controller = null;
     _userController = null;
     if (controller != null) {
-      unawaited(_disposeController(controller));
+      if (sourceTransitionWasInFlight) {
+        unawaited(() async {
+          await sourceTransaction;
+          if (snapshot != null) {
+            unawaited(_persistHistory(snapshot, entry: selectedEntry));
+          }
+          await _disposeController(controller);
+        }());
+      } else {
+        if (snapshot != null) {
+          if (snapshot.lastError != null) {
+            unawaited(_persistHistory(snapshot, entry: selectedEntry));
+          } else {
+            unawaited(
+              _persistLatestHistory(
+                controller,
+                fallback: snapshot,
+                entry: selectedEntry,
+              ),
+            );
+          }
+        }
+        unawaited(_disposeController(controller));
+      }
     }
     _selectedEntry.dispose();
     _controllerFuture.dispose();

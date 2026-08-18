@@ -685,6 +685,7 @@ extension _BiliClientDownloadImplementation on BiliClient {
       return 3000000000 + stream.bandwidth;
     }
     if (stream.id == 30250 ||
+        stream.id == 30255 ||
         codec.contains('ec-3') ||
         codec.contains('ac-3') ||
         codec.contains('eac3')) {
@@ -712,6 +713,7 @@ extension _BiliClientDownloadImplementation on BiliClient {
       return 'flac';
     }
     if (stream.id == 30250 ||
+        stream.id == 30255 ||
         codec.contains('ec-3') ||
         codec.contains('ac-3') ||
         codec.contains('eac3')) {

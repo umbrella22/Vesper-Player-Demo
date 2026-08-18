@@ -1,3 +1,0 @@
-[submodule "third_party/vesper-player-sdk"]
-	path = third_party/vesper-player-sdk
-	url = https://github.com/umbrella22/Vesper.git

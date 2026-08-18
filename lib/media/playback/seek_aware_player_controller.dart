@@ -1,13 +1,13 @@
-part of 'media_playback_view_model.dart';
+import 'package:flutter/foundation.dart';
+import 'package:vesper_player/vesper_player.dart';
 
-/// 用户 seek 感知的播放控制器代理：转发全部公开成员，
-/// 仅拦截 seek 入口（seekBy/seekToRatio）通知回调。
+/// Player-controller proxy that reports user-initiated seek commands.
 ///
-/// SDK 的 `VesperPlayerStage` 进度条直接调用原始 controller.seekToRatio，
-/// 不经 view model——用代理替换对外暴露的 controller 后，
-/// 主播放器手势 seek 也能使在途历史续播失效。
-final class _SeekAwareController implements VesperPlayerController {
-  _SeekAwareController(this._inner, this._onUserSeek);
+/// The SDK stage talks directly to its controller, so view-model wrappers do
+/// not see progress-bar seeks. This proxy keeps the controller contract intact
+/// while letting the playback owner invalidate stale history-resume work.
+final class SeekAwarePlayerController implements VesperPlayerController {
+  SeekAwarePlayerController(this._inner, this._onUserSeek);
 
   final VesperPlayerController _inner;
   final VoidCallback _onUserSeek;
@@ -86,7 +86,6 @@ final class _SeekAwareController implements VesperPlayerController {
 
   @override
   Future<void> seekToLiveEdge() {
-    // SDK Stage 的"回到直播"直接调用本方法：同样视为用户 seek。
     _onUserSeek();
     return _inner.seekToLiveEdge();
   }

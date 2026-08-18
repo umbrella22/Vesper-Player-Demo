@@ -1,21 +1,25 @@
 # Repository Guidance
 
-This workspace is a Flutter mobile app shell around a vendored Vesper Player SDK.
-Treat the app root and the SDK Android project as two separate build surfaces.
+This workspace is a Flutter mobile app shell that consumes the published Vesper
+Player packages. Treat this app and the upstream SDK repository as separate
+build surfaces.
 
 ## Project Map
 
 - App root: this repository.
 - Flutter app code: `lib/`.
-- Local SDK source: `third_party/vesper-player-sdk`.
-- Flutter packages from the SDK are consumed through local path dependencies in `pubspec.yaml`.
+- Vesper Flutter packages are consumed from pub.dev through version constraints
+  in `pubspec.yaml`.
 - Native helper scripts live in `scripts/` (see `scripts/README.md` for a per-script overview of purpose and callers).
 
 ## Default Workflow
 
-- Prefer the smallest possible change in the owning layer first: `lib/` for app behavior, `third_party/vesper-player-sdk` only when the issue is clearly inside the SDK.
+- Prefer the smallest possible change in the responsible layer first: `lib/`
+  for app behavior and the upstream Vesper repository for SDK behavior.
 - Do not edit generated or cached outputs under `build/`, `android/build/`, `ios/Flutter/`, or `.gradle/` unless the task is explicitly about generated artifacts.
-- Keep app changes and SDK changes logically separated. If both are required, validate each side in its own working directory.
+- Keep app changes and SDK changes logically separated. If both are required,
+  validate each repository in its own working directory and publish the SDK
+  artifacts before validating this app as an external consumer.
 - This repository is mobile-only for current work. Do not spend time on Flutter desktop paths unless the user explicitly asks.
 
 ## State Management Conventions
@@ -30,14 +34,13 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 
 - Default Flutter validation from the repository root: `flutter analyze` and `flutter test`.
 - For app Android changes, validate from `android/` with that project's wrapper.
-- For SDK Android changes, validate from `third_party/vesper-player-sdk/lib/android/` with that project's wrapper.
 - For iOS native or packaging changes, prefer `bash scripts/build_ios_no_codesign.sh` over raw `xcodebuild` unless the user asks for a lower-level flow.
 - If raw `xcodebuild` or direct iOS package resolution was run, rerun `bash scripts/prepare_flutter_workspace.sh` before going back to `flutter analyze`, `flutter test`, or `flutter run`.
 
 ## Android And Gradle Rules
 
-- Always be explicit about which Android project you are operating on before running Gradle tasks.
-- Do not mix the app's Gradle installation with the SDK's Gradle installation.
+- Always be explicit that Gradle tasks in this repository operate on the app
+  Android project. SDK Gradle tasks run in the upstream Vesper checkout.
 
 ### App Android Project
 
@@ -47,23 +50,18 @@ Treat the app root and the SDK Android project as two separate build surfaces.
 - If a tool requires the unpacked Gradle home instead of the wrapper, use:
   `android/.gradle/wrapper/dists/gradle-9.4.0-bin/lcvyxq3t37f6mx9miaydrrgs/gradle-9.4.0`
 
-### SDK Android Project
-
-- Directory: `third_party/vesper-player-sdk/lib/android/`
-- Preferred entrypoint: `cd third_party/vesper-player-sdk/lib/android && ./gradlew <task>`
-- Wrapper version: Gradle 9.6.0 from `third_party/vesper-player-sdk/lib/android/gradle/wrapper/gradle-wrapper.properties`
-- The SDK wrapper distribution follows the active `GRADLE_USER_HOME`; prefer
-  the SDK's wrapper and do not reuse the app project's Gradle 9.4.0 install.
-
 ## Repository-Specific Constraints
 
 - Android release output is intentionally `arm64-v8a` only. Do not broaden ABI settings unless the user explicitly asks.
-- The app uses the bundled SDK submodule by default. Do not switch to an external SDK checkout unless the user asks for that test setup.
+- The default integration path expects hosted Vesper packages to resolve their
+  published Android Maven and iOS SwiftPM artifacts. Local SDK overrides are a
+  separate, explicit test setup.
 - Bilibili playback, search, login, and history behavior live in `lib/bili/`; app shell and navigation live in `lib/app/`; player integration helpers live in `lib/media/player/`.
 - Preserve existing shell scripts in `scripts/` as the preferred build entrypoints when they already encode repository-specific setup.
 
 ## Practical Heuristics
 
 - If the problem is in Dart UI or app behavior, start in `lib/` and only step into the SDK when a concrete SDK boundary is implicated.
-- If the problem is in Android build logic, first decide whether it belongs to the app Android host or the SDK Android project; many issues only affect one of them.
+- If the problem is in Android build logic, first decide whether it belongs to
+  this app host or to an artifact published by the upstream SDK.
 - When a task mentions Gradle directly, include the exact project directory and Gradle version in your reasoning and validation notes.

@@ -251,29 +251,81 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
               recoveryEntry.entryId != _selectedEntry.value.entryId) {
             return;
           }
-          _resolvedPlayback.value = resolved;
-          await controller.selectSource(resolved.toSource());
-          await _configureSystemPlayback(controller, resolved);
-          if (resumeRatio != null && resumeRatio > 0) {
-            await controller.seekToRatio(resumeRatio);
+          final source = _sourceForMode(resolved, _sourceMode);
+          if (source == null) {
+            throw StateError('当前条目没有可用的纯音频源。');
           }
-          await controller.play();
-          if (_isDisposed ||
-              controllerGeneration != _controllerGeneration ||
-              recoveryGeneration != _playbackRecoveryGeneration ||
-              _playbackSourceTransitionInFlight) {
+          final shouldRetry = await _runSourceTransaction<bool?>(() async {
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
+            await controller.selectSource(source);
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
+            await _configureSystemPlayback(
+              controller,
+              resolved,
+              activeSource: source,
+              activeEntry: recoveryEntry,
+            );
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
+            if (resumeRatio != null && resumeRatio > 0) {
+              await controller.seekToRatio(resumeRatio);
+            }
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
+            await controller.play();
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
+            await Future<void>.delayed(Duration.zero);
+            final deferredError = _deferredPlaybackRecoveryError;
+            if (deferredError != null) {
+              lastFailureMessage = deferredError.message;
+              return true;
+            }
+            _resolvedPlayback.value = resolved;
+            _schedulePlaybackRecoverySuccessReset(
+              controllerGeneration,
+              recoveryGeneration,
+            );
+            return false;
+          });
+          if (shouldRetry == null) {
             return;
           }
-          await Future<void>.delayed(Duration.zero);
-          final deferredError = _deferredPlaybackRecoveryError;
-          if (deferredError != null) {
-            lastFailureMessage = deferredError.message;
+          if (shouldRetry) {
             continue;
           }
-          _schedulePlaybackRecoverySuccessReset(
-            controllerGeneration,
-            recoveryGeneration,
-          );
           return;
         } catch (error) {
           lastFailureMessage = '重新解析失败：${mediaErrorMessage(error)}';
@@ -292,6 +344,20 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
             MediaPlaybackViewModel._maxPlaybackRecoveryAttempts) {
       _emitPlaybackRecoveryFailure(lastFailureMessage);
     }
+  }
+
+  bool _isCurrentPlaybackRecovery({
+    required VesperPlayerController controller,
+    required MediaPlaybackEntry recoveryEntry,
+    required int controllerGeneration,
+    required int recoveryGeneration,
+  }) {
+    return !_isDisposed &&
+        identical(controller, _controller) &&
+        controllerGeneration == _controllerGeneration &&
+        recoveryGeneration == _playbackRecoveryGeneration &&
+        !_playbackSourceTransitionInFlight &&
+        recoveryEntry.entryId == _selectedEntry.value.entryId;
   }
 
   void _schedulePlaybackRecoverySuccessReset(

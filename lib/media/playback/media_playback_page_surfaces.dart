@@ -13,7 +13,25 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       isPortrait: usesPortraitChrome,
       sheetOpen: _settingsSurfaceOpen || _castingSurfaceOpen || _dlnaPickerOpen,
       deviceControls: widget.deviceControls,
-      topBarPrimaryAction: _buildStageProjectionAction(controller),
+      topBarPrimaryAction: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          vesper_ui.VesperStageIconButton(
+            key: const ValueKey<String>('enter-listen-mode'),
+            icon: Icons.headphones_rounded,
+            label: '听视频',
+            size: 38,
+            iconSize: 23,
+            containerAlpha: 0,
+            onPressed: _enterListenMode,
+          ),
+          if (_buildStageProjectionAction(controller)
+              case final projectionAction?) ...[
+            const SizedBox(width: 4),
+            projectionAction,
+          ],
+        ],
+      ),
       strings: const vesper_ui.VesperPlayerStageStrings.zhHans(),
       onOpenSheet: (sheet) =>
           unawaited(_openStageSheet(controller, sheet, usesPortraitChrome)),

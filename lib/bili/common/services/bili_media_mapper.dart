@@ -134,6 +134,17 @@ final class BiliMediaMapper {
         resolved.videoTracks,
       ),
       supportsCodecSelection: true,
+      audioOnlySource: switch (resolved.audioOnlySource) {
+        final variant? => ResolvedMediaSourceVariant(
+          uri: variant.uri,
+          protocol: variant.protocol,
+          transportLabel: variant.transportLabel,
+          isLocalFile: variant.isLocalFile,
+          headers: variant.headers,
+          debugPath: variant.debugPath,
+        ),
+        null => null,
+      },
     );
   }
 
@@ -183,6 +194,17 @@ final class BiliMediaMapper {
           .toList(growable: false),
       subtitleError: resolved.subtitleError,
       debugPath: resolved.debugPath,
+      audioOnlySource: switch (resolved.audioOnlySource) {
+        final variant? => BiliResolvedPlaybackVariant(
+          uri: variant.uri,
+          protocol: variant.protocol,
+          transportLabel: variant.transportLabel,
+          isLocalFile: variant.isLocalFile,
+          headers: variant.headers,
+          debugPath: variant.debugPath,
+        ),
+        null => null,
+      },
     );
   }
 }

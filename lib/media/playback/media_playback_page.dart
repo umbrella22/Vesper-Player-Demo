@@ -12,6 +12,8 @@ import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 
+import 'media_listen_mode_view.dart';
+
 part 'media_playback_page_actions.dart';
 part 'media_playback_page_phone.dart';
 part 'media_playback_page_tv.dart';
@@ -20,6 +22,8 @@ part 'media_playback_page_surfaces.dart';
 enum TvPlaybackPanelType { none, quality, speed, subtitles, pages }
 
 enum _PlaybackInfoTab { intro, comments }
+
+enum _MediaPlaybackDisplayMode { video, listen }
 
 /// 通用播放页壳。
 ///
@@ -131,6 +135,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   bool _tvPlaybackInitialFocusRequested = false;
   bool _playbackRecoveryDialogVisible = false;
   bool _tvBackDispatchPending = false;
+  _MediaPlaybackDisplayMode _displayMode = _MediaPlaybackDisplayMode.video;
 
   bool get _isTvMode =>
       widget.presentationMode == MediaPlaybackPresentationMode.tv;
@@ -246,11 +251,60 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                 child: ValueListenableBuilder<VesperPlayerSnapshot>(
                   valueListenable: controller.snapshotListenable,
                   builder: (context, snapshot, _) {
-                    return _buildPlaybackLayout(
-                      context,
-                      controller,
-                      snapshot,
-                      isFullscreen: isFullscreen,
+                    return AnimatedSwitcher(
+                      duration: AppVisualTokens.motionDuration(
+                        context,
+                        const Duration(milliseconds: 240),
+                      ),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      child:
+                          _displayMode == _MediaPlaybackDisplayMode.listen &&
+                              !isFullscreen
+                          ? PopScope(
+                              key: const ValueKey<String>(
+                                'listen-mode-container',
+                              ),
+                              canPop: false,
+                              onPopInvokedWithResult: (didPop, _) {
+                                if (!didPop) {
+                                  _returnToVideoMode();
+                                }
+                              },
+                              child: SignalBuilder(
+                                builder: (context) => MediaListenModeView(
+                                  controller: controller,
+                                  snapshot: snapshot,
+                                  detail: _viewModel.detail,
+                                  selectedEntry: _viewModel.selectedEntry,
+                                  isTv: _isTvMode,
+                                  onReturnToVideo: _returnToVideoMode,
+                                  onSelectEntry: _switchEntry,
+                                  onSeek: (ratio) {
+                                    unawaited(_viewModel.seekToRatio(ratio));
+                                  },
+                                  onOpenSubtitleSettings: _isTvMode
+                                      ? null
+                                      : () => unawaited(
+                                          _showSettingsSurface(
+                                            controller,
+                                            isPortrait: true,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            )
+                          : KeyedSubtree(
+                              key: const ValueKey<String>(
+                                'video-mode-container',
+                              ),
+                              child: _buildPlaybackLayout(
+                                context,
+                                controller,
+                                snapshot,
+                                isFullscreen: isFullscreen,
+                              ),
+                            ),
                     );
                   },
                 ),
