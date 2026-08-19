@@ -3,6 +3,7 @@ import 'package:vesper_media/bili/bili_media_platform_adapter.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_media_mapper.dart';
+import 'package:vesper_media/bili/common/services/bili_quality_mapping.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_player/vesper_player.dart';
 
@@ -172,6 +173,57 @@ void main() {
       );
       expect(policy.codecLabelFor!(dvTrack), 'Dolby Vision');
       expect(policy.codecStrategyIdentityFor!(dvTrack), 'HEVC');
+    });
+
+    test('原生轨道按语义和接近码率区分同尺寸清晰度', () {
+      const regular = VesperMediaTrack(
+        id: 'video-80-12-900000-0',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'hev1.1.6.L120',
+        bitRate: 900000,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      );
+      const highBitRate = VesperMediaTrack(
+        id: 'video-112-12-1800000-1',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P 高码率',
+        codec: 'hev1.1.6.L120',
+        bitRate: 1800000,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      );
+      const nativeTrack = VesperMediaTrack(
+        id: 'opaque-native-track',
+        kind: VesperMediaTrackKind.video,
+        codec: 'hev1.1.6.L120',
+        bitRate: 1794000,
+        width: 1920,
+        height: 1080,
+        frameRate: 29.97,
+      );
+
+      expect(
+        BiliQualityMapping.qualityOptionIdForNativeTrack(
+          nativeTrack,
+          const <MediaQualityOption>[
+            MediaQualityOption(
+              id: '112',
+              label: '1080P 高码率',
+              tracks: <VesperMediaTrack>[highBitRate],
+            ),
+            MediaQualityOption(
+              id: '80',
+              label: '1080P',
+              tracks: <VesperMediaTrack>[regular],
+            ),
+          ],
+        ),
+        '112',
+      );
     });
   });
 }

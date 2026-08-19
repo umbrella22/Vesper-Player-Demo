@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/bili/common/services/bili_quality_mapping.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
@@ -1100,6 +1101,133 @@ void main() {
       expect(call.policy.trackId, selectableTrack.id);
       expect(call.expectedCatalogRevision, 7);
       expect(harness.viewModel.selectedQualityOptionId, '80');
+    });
+
+    testWidgets('不透明原生轨道 ID 按语义映射并下发 SDK 原生 ID', (tester) async {
+      const declaredAvc = VesperMediaTrack(
+        id: 'video-80-7-1000000-0',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'avc1.640028',
+        bitRate: 1000000,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      );
+      const declaredHevc = VesperMediaTrack(
+        id: 'video-80-12-900000-1',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'hev1.1.6.L120',
+        bitRate: 900000,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      );
+      const declaredAv1 = VesperMediaTrack(
+        id: 'video-80-13-800000-2',
+        kind: VesperMediaTrackKind.video,
+        label: '1080P',
+        codec: 'av01.0.08M.08',
+        bitRate: 800000,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      );
+      const supported = VesperTrackSupport(
+        status: VesperTrackSupportStatus.supported,
+        reason: VesperTrackSupportReason.none,
+        source: VesperTrackSupportSource.runtimeTrackCatalog,
+      );
+      const nativeAvc = VesperMediaTrack(
+        id: '0:0:0:video-80-7-1000000-0:0',
+        kind: VesperMediaTrackKind.video,
+        codec: 'avc1.640028',
+        bitRate: 998500,
+        width: 1920,
+        height: 1080,
+        frameRate: 29.97,
+        support: supported,
+      );
+      const nativeHevc = VesperMediaTrack(
+        id: 'renderer/group/opaque-hevc',
+        kind: VesperMediaTrackKind.video,
+        codec: 'hev1.1.6.L120',
+        bitRate: 897000,
+        width: 1920,
+        height: 1080,
+        frameRate: 29.97,
+        support: supported,
+      );
+      const nativeAv1 = VesperMediaTrack(
+        id: 'native#opaque-av1',
+        kind: VesperMediaTrackKind.video,
+        codec: 'av01.0.08M.08',
+        bitRate: 796000,
+        width: 1920,
+        height: 1080,
+        frameRate: 29.97,
+        support: supported,
+      );
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsAbrPolicy: true,
+          supportsAbrFixedTrack: true,
+        ),
+        trackCatalog: const VesperTrackCatalog(
+          tracks: <VesperMediaTrack>[nativeAvc, nativeHevc, nativeAv1],
+          adaptiveVideo: true,
+          catalogRevision: 43,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(
+          qualityOptions: const <MediaQualityOption>[
+            MediaQualityOption(
+              id: '80',
+              label: '1080P',
+              tracks: <VesperMediaTrack>[
+                declaredAvc,
+                declaredHevc,
+                declaredAv1,
+              ],
+            ),
+          ],
+          qualityPolicy: BiliQualityMapping.buildQualityPolicy(),
+        ),
+        initialSnapshot: snapshot,
+      );
+
+      final option = harness.viewModel.qualitySelectionOptions(snapshot).single;
+      expect(option.availability, MediaQualityAvailability.available);
+      expect(option.candidateTracks.map((track) => track.id), <String>[
+        nativeAvc.id,
+        nativeHevc.id,
+        nativeAv1.id,
+      ]);
+      for (final identity in const <String>['AVC', 'HEVC', 'AV1']) {
+        expect(
+          harness.viewModel.codecSelectionAvailability(
+            snapshot,
+            identity,
+            optionId: '80',
+          ),
+          MediaQualityAvailability.available,
+        );
+      }
+
+      expect(await harness.viewModel.selectQualityOption('80'), isNull);
+      expect(await harness.viewModel.selectCodecIdentity('AVC'), isNull);
+      expect(harness.platform.abrPolicyCalls.last.policy.trackId, nativeAvc.id);
+      expect(await harness.viewModel.selectCodecIdentity('HEVC'), isNull);
+      expect(
+        harness.platform.abrPolicyCalls.last.policy.trackId,
+        nativeHevc.id,
+      );
+      expect(await harness.viewModel.selectCodecIdentity('AV1'), isNull);
+      expect(harness.platform.abrPolicyCalls.last.policy.trackId, nativeAv1.id);
+      expect(harness.platform.abrPolicyCalls.last.expectedCatalogRevision, 43);
     });
 
     testWidgets('清晰度按 supported、unknown、unsupported 聚合', (tester) async {

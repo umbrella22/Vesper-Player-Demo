@@ -19,6 +19,8 @@ Future<T?> showMediaGlassSheet<T>({
   assert(maxContentHeightFactor > 0 && maxContentHeightFactor <= 1);
   final maxContentHeight =
       MediaQuery.sizeOf(context).height * maxContentHeightFactor;
+  final readable = appearance == MediaGlassSheetAppearance.readable;
+  final visualTheme = AppVisualTheme.of(context);
 
   final transitionDuration = AppVisualTokens.motionDuration(
     context,
@@ -29,7 +31,9 @@ Future<T?> showMediaGlassSheet<T>({
     context: context,
     barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black.withValues(alpha: 0.42),
+    barrierColor: readable
+        ? visualTheme.scrim
+        : Colors.black.withValues(alpha: 0.42),
     transitionDuration: transitionDuration,
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -49,32 +53,28 @@ Future<T?> showMediaGlassSheet<T>({
       );
     },
     pageBuilder: (sheetContext, animation, secondaryAnimation) {
-      final visualTheme = AppVisualTheme.of(sheetContext);
-      final readable = appearance == MediaGlassSheetAppearance.readable;
+      if (readable) {
+        return SafeArea(
+          top: false,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: _ReadableMediaSheet(
+                maxContentHeight: maxContentHeight,
+                contentPadding: contentPadding,
+                child: builder(sheetContext),
+              ),
+            ),
+          ),
+        );
+      }
       return SafeArea(
         top: false,
         child: Align(
           alignment: Alignment.bottomCenter,
           child: GlassSheet(
-            key: readable
-                ? const ValueKey<String>('media-readable-glass-sheet')
-                : null,
             quality: quality,
-            settings: readable
-                ? LiquidGlassSettings(
-                    glassColor: visualTheme.surface.withValues(alpha: 0.96),
-                    thickness: 8,
-                    blur: 12,
-                    lightIntensity: 0.5,
-                    chromaticAberration: 0,
-                    refractiveIndex: 0.1,
-                    saturation: 1,
-                    ambientStrength: 0.28,
-                  )
-                : null,
-            dragIndicatorColor: readable
-                ? visualTheme.textSecondary.withValues(alpha: 0.42)
-                : null,
             topBorderRadius: AppVisualTokens.sheetRadius,
             bottomBorderRadius: AppVisualTokens.sheetRadius,
             margin: const EdgeInsets.all(8),
@@ -98,6 +98,93 @@ Future<T?> showMediaGlassSheet<T>({
       );
     },
   );
+}
+
+/// Theme-backed sheet for forms, lists, images, and other dense content.
+/// It intentionally avoids refraction so content behind the modal cannot bleed
+/// through and compete with the foreground hierarchy.
+final class _ReadableMediaSheet extends StatelessWidget {
+  const _ReadableMediaSheet({
+    required this.maxContentHeight,
+    required this.contentPadding,
+    required this.child,
+  });
+
+  final double maxContentHeight;
+  final EdgeInsetsGeometry contentPadding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    return SizedBox(
+      width: double.infinity,
+      child: MediaReadableSurface(
+        surfaceKey: const ValueKey<String>('media-readable-glass-sheet'),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxContentHeight),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 28,
+                  child: Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: visualTheme.textSecondary.withValues(
+                          alpha: 0.42,
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(padding: contentPadding, child: child),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opaque, theme-backed modal surface for dense content over image-rich pages.
+final class MediaReadableSurface extends StatelessWidget {
+  const MediaReadableSurface({
+    super.key,
+    required this.child,
+    this.surfaceKey,
+    this.borderRadius = const BorderRadius.all(
+      Radius.circular(AppVisualTokens.sheetRadius),
+    ),
+  });
+
+  final Widget child;
+  final Key? surfaceKey;
+  final BorderRadiusGeometry borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    return Material(
+      key: surfaceKey,
+      color: visualTheme.opaqueGlassFallback,
+      elevation: 12,
+      shadowColor: visualTheme.shadow.withValues(alpha: 0.82),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: borderRadius,
+        side: BorderSide(color: visualTheme.glassBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
 }
 
 final class MediaGlassDialogAction<T> {
@@ -210,16 +297,9 @@ final class _ReadableMediaGlassDialog<T> extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Material(
-          key: const ValueKey<String>('media-readable-glass-dialog'),
-          color: visualTheme.opaqueGlassFallback,
-          elevation: 12,
-          shadowColor: visualTheme.shadow.withValues(alpha: 0.82),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: visualTheme.glassBorder),
-          ),
-          clipBehavior: Clip.antiAlias,
+        child: MediaReadableSurface(
+          surfaceKey: const ValueKey<String>('media-readable-glass-dialog'),
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
             child: Column(

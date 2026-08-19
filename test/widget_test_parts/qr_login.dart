@@ -121,7 +121,7 @@ void _registerQrLoginWidgetTests() {
     await _flushRealAsync(tester);
     await tester.pump(const Duration(milliseconds: 240));
 
-    final sheet = tester.widget<GlassSheet>(
+    final sheet = tester.widget<Material>(
       find.byKey(const ValueKey<String>('media-readable-glass-sheet')),
     );
     final title = tester.widget<Text>(find.text('扫码登录哔哩哔哩'));
@@ -130,10 +130,7 @@ void _registerQrLoginWidgetTests() {
     );
     final qrDecoration = qrSurface.decoration as BoxDecoration;
 
-    expect(
-      sheet.settings?.glassColor,
-      AppVisualTheme.dark.surface.withValues(alpha: 0.96),
-    );
+    expect(sheet.color, AppVisualTheme.dark.opaqueGlassFallback);
     expect(title.style?.color, AppVisualTheme.dark.textPrimary);
     expect(qrDecoration.color, Colors.white);
   });

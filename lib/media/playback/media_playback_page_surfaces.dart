@@ -335,6 +335,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     try {
       await showMediaGlassSheet<void>(
         context: context,
+        appearance: MediaGlassSheetAppearance.readable,
         maxContentHeightFactor: 0.7,
         builder: (sheetContext) {
           return DlnaPickerContent(

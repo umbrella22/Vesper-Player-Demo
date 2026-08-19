@@ -72,6 +72,7 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
     final isPgc = detail.ownerMid <= 0 && detail.ownerName == '番剧';
     await showMediaGlassSheet<void>(
       context: context,
+      appearance: MediaGlassSheetAppearance.readable,
       maxContentHeightFactor: 0.82,
       contentPadding: EdgeInsets.zero,
       builder: (context) {

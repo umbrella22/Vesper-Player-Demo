@@ -94,6 +94,47 @@ void _registerRegionAndCacheWidgetTests() {
     expect(client.requestedPages, <int>[1]);
   });
 
+  testWidgets('landscape region cache drawer uses an opaque readable surface', (
+    WidgetTester tester,
+  ) async {
+    final client = _FakeRegionClient();
+    final detail = _testDetail();
+    final controller = _FakeCacheController(
+      options: _testDownloadOptions(detail),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileLightTheme(),
+        home: BiliRegionVideoPage(
+          section: _testRegionSection,
+          client: client,
+          historyStore: const BiliHistoryStore(),
+          offlineController: controller,
+        ),
+      ),
+    );
+    await _flushRealAsync(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('缓存').first);
+    await _flushRealAsync(tester);
+    await tester.pumpAndSettle();
+
+    final drawer = find.byKey(
+      const ValueKey<String>('media-readable-region-cache-drawer'),
+    );
+    expect(drawer, findsOneWidget);
+    expect(
+      tester.widget<Material>(drawer).color,
+      AppVisualTheme.light.opaqueGlassFallback,
+    );
+    expect(find.text('下载缓存'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('region hub hides category grid for unauthenticated access', (
     WidgetTester tester,
   ) async {
@@ -147,6 +188,49 @@ void _registerRegionAndCacheWidgetTests() {
 
     expect(controller.enqueuedCids, <int>[11]);
     expect(controller.enqueuedQualityIds, <int>[64]);
+  });
+
+  testWidgets('cache download panel keeps readable colors in dark mode', (
+    WidgetTester tester,
+  ) async {
+    final detail = _testDetail();
+    final controller = _FakeCacheController(
+      options: _testDownloadOptions(detail),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileDarkTheme(),
+        home: Scaffold(
+          body: BiliCacheDownloadPanel(
+            detail: detail,
+            currentPage: detail.pages.first,
+            selectedQualityId: null,
+            codecPreference: BiliVideoCodecPreference.automatic,
+            controller: controller,
+            onMessage: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Text>(find.text('下载缓存')).style?.color,
+      AppVisualTheme.dark.textPrimary,
+    );
+    expect(
+      tester.widget<Text>(find.text('选择清晰度后，点击合集中的分P开始缓存。')).style?.color,
+      AppVisualTheme.dark.textSecondary,
+    );
+    expect(
+      tester.widget<Text>(find.text('正片')).style?.color,
+      AppVisualTheme.dark.textPrimary,
+    );
+    expect(
+      tester.widget<Text>(find.text('720P')).style?.color,
+      AppVisualTheme.dark.textPrimary,
+    );
   });
 
   testWidgets('cache download panel shows loading, error, and retry states', (

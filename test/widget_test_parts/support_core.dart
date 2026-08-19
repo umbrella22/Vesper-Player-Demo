@@ -230,6 +230,9 @@ final class _FakeRegionClient extends BiliClient {
     }
     return pageItems[page] ?? const <BiliRegionVideo>[];
   }
+
+  @override
+  Future<BiliVideoDetail> fetchVideoDetail(String bvid) async => _testDetail();
 }
 
 final class _UnauthenticatedRegionClient extends BiliClient {

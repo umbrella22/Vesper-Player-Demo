@@ -267,6 +267,40 @@ void main() {
     expect(result, 'done');
   });
 
+  testWidgets('readable sheet uses an opaque themed surface', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileDarkTheme(),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () => showMediaGlassSheet<void>(
+              context: context,
+              appearance: MediaGlassSheetAppearance.readable,
+              builder: (sheetContext) => TextButton(
+                onPressed: () => Navigator.of(sheetContext).pop(),
+                child: const Text('完成'),
+              ),
+            ),
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pump(const Duration(milliseconds: 240));
+
+    final sheet = find.byKey(
+      const ValueKey<String>('media-readable-glass-sheet'),
+    );
+    expect(sheet, findsOneWidget);
+    expect(find.byType(GlassSheet), findsNothing);
+    expect(tester.widget<Material>(sheet).color, AppVisualTokens.darkSurface);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('glass scaffold bridges split Material descendants', (
     tester,
   ) async {

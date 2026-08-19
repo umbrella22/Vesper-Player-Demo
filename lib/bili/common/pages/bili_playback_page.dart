@@ -220,6 +220,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     return showMediaGlassDialog<bool>(
       context: dialogContext,
       barrierDismissible: false,
+      appearance: MediaGlassDialogAppearance.readable,
       title: notice.title,
       message: notice.message,
       actions: const [
@@ -337,6 +338,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   Future<void> _showCacheSheet() {
     return showMediaGlassSheet<void>(
       context: context,
+      appearance: MediaGlassSheetAppearance.readable,
       contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
       builder: (_) => BiliCacheDownloadPanel(
         detail: widget.detail,

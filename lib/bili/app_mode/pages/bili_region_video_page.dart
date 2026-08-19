@@ -380,6 +380,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     if (isPortrait) {
       await showMediaGlassSheet<void>(
         context: context,
+        appearance: MediaGlassSheetAppearance.readable,
         builder: (_) => _RegionCacheSurface(
           detailFuture: detailFuture,
           client: _client,
@@ -395,7 +396,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black.withValues(alpha: 0.40),
+      barrierColor: AppVisualTheme.of(context).scrim,
       transitionDuration: AppVisualTokens.motionDuration(
         context,
         AppVisualTokens.overlayDuration,
@@ -409,29 +410,23 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             .toDouble();
         return Align(
           alignment: Alignment.centerLeft,
-          child: GlassContainer(
-            useOwnLayer: true,
-            quality: GlassQuality.standard,
-            shape: const LiquidRoundedSuperellipse(
-              borderRadius: AppVisualTokens.sheetRadius,
+          child: MediaReadableSurface(
+            surfaceKey: const ValueKey<String>(
+              'media-readable-region-cache-drawer',
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Material(
-              type: MaterialType.transparency,
-              child: SafeArea(
-                right: false,
-                child: SizedBox(
-                  width: drawerWidth,
-                  height: double.infinity,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                    child: _RegionCacheSurface(
-                      detailFuture: detailFuture,
-                      client: _client,
-                      historyStore: _historyStore,
-                      controller: _offlineController,
-                      onMessage: _showMessage,
-                    ),
+            child: SafeArea(
+              right: false,
+              child: SizedBox(
+                width: drawerWidth,
+                height: double.infinity,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                  child: _RegionCacheSurface(
+                    detailFuture: detailFuture,
+                    client: _client,
+                    historyStore: _historyStore,
+                    controller: _offlineController,
+                    onMessage: _showMessage,
                   ),
                 ),
               ),

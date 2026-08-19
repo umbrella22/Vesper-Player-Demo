@@ -119,7 +119,12 @@ extension _MediaPlaybackTrackSelection on MediaPlaybackViewModel {
               identityForTrack?.call(track) == codecIdentity,
         )
         .toList(growable: false);
-    return _trackSelectionAvailability(snapshot, declaredTracks);
+    return _trackSelectionAvailability(
+      snapshot,
+      declaredTracks,
+      optionIds: <String>{option.id},
+      codecIdentity: codecIdentity,
+    );
   }
 
   _TrackSelectionAvailability _codecSelectionAvailability(
@@ -129,23 +134,32 @@ extension _MediaPlaybackTrackSelection on MediaPlaybackViewModel {
   }) {
     final identityForTrack = adapter.qualityPolicy.codecStrategyIdentityFor;
     final declaredTracks = <VesperMediaTrack>[];
+    final optionIds = <String>{};
     for (final option in availableQualityOptions()) {
       if (optionId != null && option.id != optionId) {
         continue;
       }
+      optionIds.add(option.id);
       declaredTracks.addAll(
         option.tracks.where(
           (track) => identityForTrack?.call(track) == identity,
         ),
       );
     }
-    return _trackSelectionAvailability(snapshot, declaredTracks);
+    return _trackSelectionAvailability(
+      snapshot,
+      declaredTracks,
+      optionIds: optionIds,
+      codecIdentity: identity,
+    );
   }
 
   _TrackSelectionAvailability _trackSelectionAvailability(
     VesperPlayerSnapshot snapshot,
-    List<VesperMediaTrack> declaredTracks,
-  ) {
+    List<VesperMediaTrack> declaredTracks, {
+    required Set<String> optionIds,
+    String? codecIdentity,
+  }) {
     if (declaredTracks.isEmpty) {
       return const _TrackSelectionAvailability(
         availability: MediaQualityAvailability.unavailable,
@@ -154,15 +168,31 @@ extension _MediaPlaybackTrackSelection on MediaPlaybackViewModel {
       );
     }
     final nativeTracks = snapshot.trackCatalog.videoTracks;
+    final policy = adapter.qualityPolicy;
+    final nativeOptionIdFor = policy.qualityOptionIdForNativeTrack;
+    final codecIdentityFor = policy.codecStrategyIdentityFor;
     final candidateTracks = nativeTracks.isEmpty
         ? List<VesperMediaTrack>.of(declaredTracks)
         : () {
-            final tracksById = <String, VesperMediaTrack>{
-              for (final track in nativeTracks) track.id: track,
-            };
-            return declaredTracks
-                .map((track) => tracksById[track.id])
-                .whereType<VesperMediaTrack>()
+            final declaredTrackIds = declaredTracks
+                .map((track) => track.id)
+                .toSet();
+            final declaredOptions = availableQualityOptions();
+            return nativeTracks
+                .where((track) {
+                  final mappedOptionId = nativeOptionIdFor?.call(
+                    track,
+                    declaredOptions,
+                  );
+                  final matchesQuality = mappedOptionId == null
+                      ? declaredTrackIds.contains(track.id)
+                      : optionIds.contains(mappedOptionId);
+                  if (!matchesQuality) {
+                    return false;
+                  }
+                  return codecIdentity == null ||
+                      codecIdentityFor?.call(track) == codecIdentity;
+                })
                 .toList(growable: false);
           }();
     if (candidateTracks.isEmpty) {

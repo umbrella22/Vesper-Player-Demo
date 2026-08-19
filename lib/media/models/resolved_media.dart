@@ -193,6 +193,7 @@ final class MediaQualitySelectionOption {
 final class MediaQualityPolicy {
   const MediaQualityPolicy({
     this.supportsCodecSelection = false,
+    this.qualityOptionIdForNativeTrack,
     this.codecLabelFor,
     this.codecIdentityFor,
     this.codecIdentityLabelFor,
@@ -200,6 +201,17 @@ final class MediaQualityPolicy {
 
   /// 是否支持在清晰度内细分 codec（AV1/HEVC/AVC）选择。
   final bool supportsCodecSelection;
+
+  /// SDK 原生轨道 -> 平台清晰度选项 ID。
+  ///
+  /// SDK 的轨道 ID 是不透明值，平台不得解析其格式。适配器应使用轨道的
+  /// label、codec、尺寸、帧率、码率等语义字段，并可结合解析阶段声明的
+  /// [MediaQualityOption]，返回对应的 [MediaQualityOption.id]。
+  final String? Function(
+    VesperMediaTrack nativeTrack,
+    List<MediaQualityOption> declaredOptions,
+  )?
+  qualityOptionIdForNativeTrack;
 
   /// 可选：轨道 → codec 子选项展示文案。
   final String? Function(VesperMediaTrack track)? codecLabelFor;

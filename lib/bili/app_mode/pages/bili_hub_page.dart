@@ -164,6 +164,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
     if (isPortrait) {
       await showMediaGlassSheet<void>(
         context: context,
+        appearance: MediaGlassSheetAppearance.readable,
         builder: (_) => _HomeCacheSurface(
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
@@ -179,7 +180,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black.withValues(alpha: 0.40),
+      barrierColor: AppVisualTheme.of(context).scrim,
       transitionDuration: AppVisualTokens.motionDuration(
         context,
         AppVisualTokens.overlayDuration,
@@ -193,29 +194,23 @@ class _BiliHubPageState extends State<BiliHubPage> {
             .toDouble();
         return Align(
           alignment: Alignment.centerLeft,
-          child: GlassContainer(
-            useOwnLayer: true,
-            quality: GlassQuality.standard,
-            shape: const LiquidRoundedSuperellipse(
-              borderRadius: AppVisualTokens.sheetRadius,
+          child: MediaReadableSurface(
+            surfaceKey: const ValueKey<String>(
+              'media-readable-home-cache-drawer',
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Material(
-              type: MaterialType.transparency,
-              child: SafeArea(
-                right: false,
-                child: SizedBox(
-                  width: drawerWidth,
-                  height: double.infinity,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                    child: _HomeCacheSurface(
-                      client: _viewModel.client,
-                      historyStore: _viewModel.historyStore,
-                      bvid: item.bvid,
-                      controller: _viewModel.offlineController,
-                      onMessage: _showMessage,
-                    ),
+            child: SafeArea(
+              right: false,
+              child: SizedBox(
+                width: drawerWidth,
+                height: double.infinity,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                  child: _HomeCacheSurface(
+                    client: _viewModel.client,
+                    historyStore: _viewModel.historyStore,
+                    bvid: item.bvid,
+                    controller: _viewModel.offlineController,
+                    onMessage: _showMessage,
                   ),
                 ),
               ),

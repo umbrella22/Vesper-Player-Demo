@@ -153,6 +153,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final errorMessage = _errorMessage.value;
     final options = _options.value;
     if (_loading.value) {
@@ -173,7 +174,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
         Text(
           '分辨率',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -187,7 +188,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
         Text(
           '合集',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -251,9 +252,10 @@ class _CacheEpisodeList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FA),
+        color: visualTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -266,11 +268,11 @@ class _CacheEpisodeList extends StatelessWidget {
               onTap: () => onTap(page),
             ),
             if (page != pages.last)
-              const Divider(
+              Divider(
                 height: 1,
                 indent: 14,
                 endIndent: 14,
-                color: Color(0xFFE5E8EE),
+                color: visualTheme.divider,
               ),
           ],
         ],
@@ -320,11 +322,18 @@ class _CacheQualityButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     final color = selected
         ? AppVisualTokens.primaryBlue
-        : const Color(0xFF162033);
+        : visualTheme.textPrimary;
+    final background = selected
+        ? Color.alphaBlend(
+            AppVisualTokens.primaryBlue.withValues(alpha: 0.14),
+            visualTheme.surfaceRaised,
+          )
+        : visualTheme.surfaceRaised;
     return Material(
-      color: selected ? const Color(0xFFFFEDF3) : const Color(0xFFF7F8FA),
+      color: background,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -363,6 +372,11 @@ class _CacheEpisodeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    final selectedBackground = Color.alphaBlend(
+      AppVisualTokens.primaryBlue.withValues(alpha: 0.14),
+      visualTheme.surfaceRaised,
+    );
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -377,8 +391,8 @@ class _CacheEpisodeRow extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selected
-                      ? const Color(0xFFFFEDF3)
-                      : const Color(0xFFEFF2F6),
+                      ? selectedBackground
+                      : visualTheme.surfaceRaised,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -386,7 +400,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                   style: TextStyle(
                     color: selected
                         ? AppVisualTokens.primaryBlue
-                        : const Color(0xFF687084),
+                        : visualTheme.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                   ),
@@ -402,7 +416,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF20232B),
+                        color: visualTheme.textPrimary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -410,7 +424,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                     Text(
                       biliFormatDurationSeconds(page.durationSeconds),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFF8B929F),
+                        color: visualTheme.textTertiary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -447,19 +461,23 @@ class _CacheInlineError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFEEF4),
+        color: Color.alphaBlend(
+          visualTheme.destructive.withValues(alpha: 0.12),
+          visualTheme.surfaceRaised,
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.error_outline_rounded,
               size: 19,
-              color: AppVisualTokens.primaryBlue,
+              color: visualTheme.destructive,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -468,7 +486,7 @@ class _CacheInlineError extends StatelessWidget {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF9B2F4D),
+                  color: visualTheme.destructive,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -490,6 +508,7 @@ class _CachePanelHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
     final subtitle = this.subtitle;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,7 +516,7 @@ class _CachePanelHeading extends StatelessWidget {
         Text(
           title,
           style: theme.textTheme.titleLarge?.copyWith(
-            color: const Color(0xFF162033),
+            color: visualTheme.textPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -506,7 +525,7 @@ class _CachePanelHeading extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF74859A),
+              color: visualTheme.textSecondary,
               height: 1.5,
             ),
           ),

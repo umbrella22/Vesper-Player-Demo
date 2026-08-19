@@ -25,7 +25,7 @@ void _registerPlaybackRecoveryWidgetTests() {
       expect(find.text('知道了'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(GlassDialog),
+          of: find.byKey(const ValueKey<String>('media-readable-glass-dialog')),
           matching: find.text('重新解析'),
         ),
         findsOneWidget,
