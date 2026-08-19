@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.9.1...vesper_media-v1.10.0) (2026-08-19)
+
+
+### Features
+
+* Add support for optional audio-only sources in media playback ([2157da5](https://github.com/umbrella22/Vesper-Player-Demo/commit/2157da5a746f049334b9886b5e1a60608576edcf))
+* enhance media glass sheets with readable surfaces ([1cfa4d9](https://github.com/umbrella22/Vesper-Player-Demo/commit/1cfa4d9593b18be55421591095408566bc279a27))
+
+
+### Bug Fixes
+
+* dep upgrade ([2c7386d](https://github.com/umbrella22/Vesper-Player-Demo/commit/2c7386d288918eb8aea1b7314b08b1fae95598dd))
+
 ## [1.9.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.9.0...vesper_media-v1.9.1) (2026-08-12)
 
 
