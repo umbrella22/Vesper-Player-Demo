@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.10.0...vesper_media-v1.10.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* upgrade Vesper SDK and dependencies ([1c75e80](https://github.com/umbrella22/Vesper-Player-Demo/commit/1c75e80e553aff20de761beba531f3b8d62b427c))
+
 ## [1.10.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.9.1...vesper_media-v1.10.0) (2026-08-19)
 
 
