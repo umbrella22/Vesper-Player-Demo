@@ -46,9 +46,9 @@ build surfaces.
 
 - Directory: `android/`
 - Preferred entrypoint: `cd android && ./gradlew <task>`
-- Wrapper version: Gradle 9.4.0 from `android/gradle/wrapper/gradle-wrapper.properties`
+- Wrapper version: Gradle 9.4.1 from `android/gradle/wrapper/gradle-wrapper.properties`
 - If a tool requires the unpacked Gradle home instead of the wrapper, use:
-  `android/.gradle/wrapper/dists/gradle-9.4.0-bin/lcvyxq3t37f6mx9miaydrrgs/gradle-9.4.0`
+  `android/.gradle/wrapper/dists/gradle-9.4.1-bin/arn2x92ynaizyzdaamcbpbhtj/gradle-9.4.1`
 
 ## Repository-Specific Constraints
 

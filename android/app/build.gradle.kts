@@ -25,7 +25,7 @@ val excludedAndroidAbiPatterns =
 
 android {
     namespace = "dev.ikaros.vesper_player"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = "29.0.14206865"
 
     compileOptions {

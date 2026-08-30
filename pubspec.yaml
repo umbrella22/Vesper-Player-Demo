@@ -31,21 +31,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vesper_player: ^0.4.3
-  vesper_player_ui: ^0.4.3
-  vesper_player_external_playback: ^0.4.3
-  vesper_player_source_normalizer_ffmpeg: ^0.4.3
-  vesper_player_remux_ffmpeg: ^0.4.3
-  crypto: ^3.0.6
-  cupertino_ui: ^1.0.0
-  material_ui: ^1.0.0
+  vesper_player: ^0.5.0
+  vesper_player_ui: ^0.5.0
+  vesper_player_external_playback: ^0.5.0
+  vesper_player_source_normalizer_ffmpeg: ^0.5.0
+  vesper_player_remux_ffmpeg: ^0.5.0
+  crypto: ^3.0.7
+  cupertino_ui: ^1.0.1
+  material_ui: ^1.1.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
   signals: ^7.1.0
 
-  cupertino_icons: ^1.0.8
-  flutter_secure_storage: ^10.3.1
-  liquid_glass_widgets: ^0.29.8
+  cupertino_icons: ^1.0.9
+  flutter_secure_storage: ^11.0.0
+  liquid_glass_widgets: ^1.2.1
   package_info_plus: ^10.2.1
 
 dev_dependencies:
