@@ -304,7 +304,7 @@ extension _BiliClientLibraryImplementation on BiliClient {
     } on BiliApiException catch (error) {
       // Authentication errors should remain visible to the library page;
       // other legacy endpoint failures can use the cursor fallback.
-      if (error.code == -101) {
+      if (isBiliSessionInvalidError(error)) {
         rethrow;
       }
       return null;
@@ -332,7 +332,7 @@ extension _BiliClientLibraryImplementation on BiliClient {
       );
       return _parseWatchLaterValue(data);
     } on BiliApiException catch (error) {
-      if (error.code == -101) {
+      if (isBiliSessionInvalidError(error)) {
         rethrow;
       }
       return null;
@@ -1059,25 +1059,19 @@ extension _BiliClientLibraryImplementation on BiliClient {
     final directory = Directory(
       '${Directory.systemTemp.path}/vesper/subtitles',
     );
-    await directory.create(recursive: true);
     final file = File(
       '${directory.path}/${sanitizeAssetPart(bvid)}-$cid-${sanitizeAssetPart(track.id)}.vtt',
     );
-    final temp = File(
-      '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-$pid',
-    );
-    await temp.writeAsString(webVtt, flush: true);
-    try {
-      await temp.rename(file.path);
-    } on FileSystemException {
-      if (await file.exists()) {
-        await file.delete();
-      }
-      await temp.rename(file.path);
-    }
+    await writeStringAtomically(file, webVtt);
     // Best-effort: keep the subtitle temp directory from growing unbounded
     // across sessions. Cleanup must never break playback resolution.
-    unawaited(_cleanupStaleSubtitleFiles(directory));
+    unawaited(
+      deleteStaleGeneratedFilesBestEffort(
+        directory,
+        fileExtension: '.vtt',
+        maxAge: const Duration(days: 1),
+      ),
+    );
     return BiliSubtitleTrack(
       id: 'subtitle:bili:${track.id}',
       language: track.language,
@@ -1085,34 +1079,6 @@ extension _BiliClientLibraryImplementation on BiliClient {
       url: file.uri.toString(),
       isDefault: track.isDefault,
     );
-  }
-
-  /// Best-effort cleanup of stale materialized subtitle files (same expiry
-  /// contract as `_cleanupStaleDashManifests`). Failures are ignored so a
-  /// cleanup hiccup can never break playback resolution.
-  Future<void> _cleanupStaleSubtitleFiles(Directory directory) async {
-    try {
-      final cutoff = DateTime.now().subtract(const Duration(days: 1));
-      await for (final entity in directory.list()) {
-        if (entity is! File) {
-          continue;
-        }
-        final name = entity.uri.pathSegments.last;
-        if (!name.endsWith('.vtt') && !name.contains('.tmp-')) {
-          continue;
-        }
-        try {
-          final stat = await entity.stat();
-          if (stat.modified.isBefore(cutoff)) {
-            await entity.delete();
-          }
-        } catch (_) {
-          // Ignore individual file failures.
-        }
-      }
-    } catch (_) {
-      // Cleanup must never break playback resolution.
-    }
   }
 
   String? _subtitleBodyToWebVtt(String body) {

@@ -1,69 +1,39 @@
 import 'dart:io';
 
-import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
 
-const String _appStorageFolderName = 'vesper-player';
-
-Future<Directory> resolveBiliStorageDirectory({
-  Directory? baseDirectory,
-}) async {
-  final directory = baseDirectory ?? await _defaultBiliStorageDirectory();
-  await directory.create(recursive: true);
-  return directory;
+@Deprecated('Use resolveApplicationStorageDirectory instead.')
+Future<Directory> resolveBiliStorageDirectory({Directory? baseDirectory}) {
+  return resolveApplicationStorageDirectory(baseDirectory: baseDirectory);
 }
 
+@Deprecated('Use resolveApplicationStorageFile instead.')
 Future<File> resolveBiliStorageFile({
   required String fileName,
   Directory? baseDirectory,
   Directory? legacyDirectory,
-}) async {
-  final directory = await resolveBiliStorageDirectory(
+}) {
+  return resolveApplicationStorageFile(
+    fileName: fileName,
     baseDirectory: baseDirectory,
+    legacyDirectory: legacyDirectory,
   );
-  final file = File('${directory.path}/$fileName');
-  if (await file.exists()) {
-    return file;
-  }
-
-  final legacyFile = File(
-    '${(legacyDirectory ?? legacyBiliStorageDirectory()).path}/$fileName',
-  );
-  if (await legacyFile.exists()) {
-    await legacyFile.copy(file.path);
-  }
-  return file;
 }
 
+@Deprecated('Use clearApplicationStorageFile instead.')
 Future<void> clearBiliStorageFile({
   required String fileName,
   Directory? baseDirectory,
   Directory? legacyDirectory,
-}) async {
-  final currentFile = File(
-    '${(await resolveBiliStorageDirectory(baseDirectory: baseDirectory)).path}/$fileName',
+}) {
+  return clearApplicationStorageFile(
+    fileName: fileName,
+    baseDirectory: baseDirectory,
+    legacyDirectory: legacyDirectory,
   );
-  if (await currentFile.exists()) {
-    await currentFile.delete();
-  }
-
-  final oldFile = File(
-    '${(legacyDirectory ?? legacyBiliStorageDirectory()).path}/$fileName',
-  );
-  if (oldFile.path != currentFile.path && await oldFile.exists()) {
-    await oldFile.delete();
-  }
 }
 
+@Deprecated('Use legacyApplicationStorageDirectory instead.')
 Directory legacyBiliStorageDirectory() {
-  return Directory('${Directory.systemTemp.path}/$_appStorageFolderName');
-}
-
-Future<Directory> _defaultBiliStorageDirectory() async {
-  try {
-    final supportDirectory = await getApplicationSupportDirectory();
-    return Directory('${supportDirectory.path}/$_appStorageFolderName');
-  } on MissingPluginException {
-    return legacyBiliStorageDirectory();
-  }
+  return legacyApplicationStorageDirectory();
 }

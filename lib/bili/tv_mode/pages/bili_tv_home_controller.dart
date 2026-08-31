@@ -495,12 +495,12 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
         return;
       }
       _mutate(() {
-        _regionErrorMessage = error is BiliApiException && error.code == -101
+        _regionErrorMessage = isBiliSessionInvalidError(error)
             ? '登录状态已失效，请重新登录后查看分区内容。'
             : biliErrorMessage(error);
         _regionLoading = false;
       });
-      if (error is BiliApiException && error.code == -101) {
+      if (isBiliSessionInvalidError(error)) {
         _showMessage('登录状态已失效，请重新登录。');
       }
     }

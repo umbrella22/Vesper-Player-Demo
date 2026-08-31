@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../../bili/common/services/bili_storage_directory.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
+import 'package:vesper_media/common/storage/atomic_file_writer.dart';
+
 import '../models/offline_download_models.dart';
 
 const String _offlineCacheMetadataFileName = 'bili-offline-cache.json';
@@ -56,27 +58,15 @@ final class BiliOfflineDownloadStore {
   ) async {
     final deduped = _dedupe(entries);
     final file = await _resolveFile();
-    await file.parent.create(recursive: true);
     final text = const JsonEncoder.withIndent('  ').convert(<String, Object?>{
       'version': 1,
       'entries': deduped.map((entry) => entry.toJson()).toList(),
     });
-    final tempFile = File(
-      '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-$pid',
-    );
-    await tempFile.writeAsString(text, flush: true);
-    try {
-      await tempFile.rename(file.path);
-    } on FileSystemException {
-      if (await file.exists()) {
-        await file.delete();
-      }
-      await tempFile.rename(file.path);
-    }
+    await writeStringAtomically(file, text);
   }
 
   Future<File> _resolveFile() {
-    return resolveBiliStorageFile(
+    return resolveApplicationStorageFile(
       fileName: fileName,
       baseDirectory: baseDirectory,
       legacyDirectory: legacyDirectory,

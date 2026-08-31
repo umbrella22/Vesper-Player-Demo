@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import 'package:vesper_media/bili/common/services/bili_storage_directory.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
 
 enum AppThemePreference { system, light, dark }
 
@@ -96,7 +96,7 @@ final class AppSettingsStore {
   }
 
   Future<File> _settingsFile() async {
-    return resolveBiliStorageFile(
+    return resolveApplicationStorageFile(
       fileName: 'vesper-app-settings.json',
       baseDirectory: baseDirectory,
       legacyDirectory: legacyDirectory,

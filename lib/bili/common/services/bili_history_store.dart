@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:vesper_media/common/storage/application_storage.dart';
+import 'package:vesper_media/common/storage/atomic_file_writer.dart';
+
 import '../models/bili_models.dart';
 import 'bili_api_core.dart';
-import 'bili_storage_directory.dart';
 
 final class BiliHistoryStore {
   const BiliHistoryStore({this._baseDirectory, this._legacyDirectory});
@@ -66,23 +68,11 @@ final class BiliHistoryStore {
           .map((historyEntry) => historyEntry.toJson())
           .toList(growable: false),
     );
-    await file.parent.create(recursive: true);
-    final tempFile = File(
-      '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-$pid',
-    );
-    await tempFile.writeAsString(payload, flush: true);
-    try {
-      await tempFile.rename(file.path);
-    } on FileSystemException {
-      if (await file.exists()) {
-        await file.delete();
-      }
-      await tempFile.rename(file.path);
-    }
+    await writeStringAtomically(file, payload);
   }
 
   Future<File> _historyFile() async {
-    return resolveBiliStorageFile(
+    return resolveApplicationStorageFile(
       fileName: 'bili-playback-history.json',
       baseDirectory: _baseDirectory,
       legacyDirectory: _legacyDirectory,

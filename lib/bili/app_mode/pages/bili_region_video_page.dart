@@ -109,7 +109,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       _loading.value = false;
     } catch (error) {
       if (!mounted) return;
-      if (error is BiliApiException && error.code == -101) {
+      if (isBiliSessionInvalidError(error)) {
         _loginRequired.value = true;
         _errorMessage.value = null;
       } else {
@@ -149,7 +149,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       _loadingMore.value = false;
     } catch (error) {
       if (!mounted) return;
-      if (error is BiliApiException && error.code == -101) {
+      if (isBiliSessionInvalidError(error)) {
         _loginRequired.value = true;
         _errorMessage.value = null;
       }

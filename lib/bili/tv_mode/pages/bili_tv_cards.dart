@@ -225,14 +225,14 @@ class _TvRegionVideoGrid extends StatelessWidget {
                       ? '剧集'
                       : '${item.scoreLabel}分'
                 : item.indexLabel ?? '';
-            return _TvVideoCard(
+            return BiliTvVideoCard(
               key: ValueKey('region_${item.id}'),
               coverUrl: item.coverUrl,
               coverCacheWidth: coverCacheWidth,
               title: item.title,
-              author: subtitle,
-              duration: duration,
-              playCount: item.followCountLabel ?? '',
+              subtitle: subtitle,
+              durationLabel: duration,
+              leadingLabel: item.followCountLabel ?? '',
               focusArea: TvFocusArea.regionGrid,
               onFocusChange: (focused) => onFocusItem(item, focused),
               onTap: () => onTapItem(item),
@@ -305,180 +305,6 @@ class _TvRegionPill extends StatelessWidget {
   }
 }
 
-class _TvVideoCard extends StatelessWidget {
-  const _TvVideoCard({
-    super.key,
-    required this.coverUrl,
-    required this.coverCacheWidth,
-    required this.title,
-    required this.author,
-    required this.duration,
-    required this.playCount,
-    required this.onTap,
-    this.onFocusChange,
-    this.focusArea = TvFocusArea.content,
-  });
-
-  final String coverUrl;
-  final int coverCacheWidth;
-  final String title;
-  final String author;
-  final String duration;
-  final String playCount;
-  final VoidCallback onTap;
-  final ValueChanged<bool>? onFocusChange;
-  final TvFocusArea focusArea;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusableSurface(
-      scale: 1.07,
-      focusPadding: _tvCardFocusPadding,
-      useOverlayLift: true,
-      focusArea: focusArea,
-      debugLabel: 'video_$title',
-      onFocusChange: onFocusChange,
-      onTap: onTap,
-      builder: (context, focused) => LayoutBuilder(
-        builder: (context, constraints) {
-          final boundedHeight = constraints.hasBoundedHeight;
-          final tight = boundedHeight && constraints.maxHeight < 116;
-          final condensed = boundedHeight && constraints.maxHeight < 136;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: const Color(0xFF1A1A24),
-                        child: coverUrl.isEmpty
-                            ? const Icon(
-                                Icons.video_library_outlined,
-                                color: Color(0x55FFFFFF),
-                                size: 40,
-                              )
-                            : Image.network(
-                                coverUrl,
-                                fit: BoxFit.cover,
-                                cacheWidth: coverCacheWidth,
-                                gaplessPlayback: true,
-                                errorBuilder: (_, _, _) =>
-                                    const ColoredBox(color: Color(0xFF1A1A24)),
-                              ),
-                      ),
-                      Positioned(
-                        left: 8,
-                        bottom: 6,
-                        child: Text(
-                          playCount,
-                          style: const TextStyle(
-                            color: Color(0xDDFFFFFF),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 8,
-                        bottom: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.65),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            duration,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: condensed ? 4 : 5),
-              Text(
-                title,
-                maxLines: tight ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: focused ? Colors.white : const Color(0xEEFFFFFF),
-                  fontSize: condensed ? 12 : 12.2,
-                  fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
-                  height: 1.17,
-                ),
-              ),
-              if (!condensed) ...[
-                const SizedBox(height: 2),
-                Text(
-                  author,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0x66FFFFFF),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TvSearchResultCard extends StatelessWidget {
-  const _TvSearchResultCard({
-    required this.coverUrl,
-    required this.coverCacheWidth,
-    required this.title,
-    required this.author,
-    required this.duration,
-    required this.playCount,
-    required this.onTap,
-    this.onFocusChange,
-  });
-
-  final String coverUrl;
-  final int coverCacheWidth;
-  final String title;
-  final String author;
-  final String duration;
-  final String playCount;
-  final VoidCallback onTap;
-  final ValueChanged<bool>? onFocusChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TvVideoCard(
-      coverUrl: coverUrl,
-      coverCacheWidth: coverCacheWidth,
-      title: title,
-      author: author,
-      duration: duration,
-      playCount: playCount,
-      onFocusChange: onFocusChange,
-      onTap: onTap,
-    );
-  }
-}
-
 class _TvHistoryCard extends StatelessWidget {
   const _TvHistoryCard({
     super.key,
@@ -505,7 +331,7 @@ class _TvHistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return TvFocusableSurface(
       scale: 1.07,
-      focusPadding: _tvCardFocusPadding,
+      focusPadding: BiliTvVideoCard.focusPadding,
       useOverlayLift: true,
       focusArea: TvFocusArea.content,
       debugLabel: 'history_$title',

@@ -24,6 +24,8 @@ import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart'
 import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_card.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_grid_layout.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/download/download.dart';

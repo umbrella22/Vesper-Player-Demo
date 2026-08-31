@@ -23,6 +23,8 @@ import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_card.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_grid_layout.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_qr_login_dialog.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
@@ -48,18 +50,14 @@ enum _TvNavItem {
   settings,
 }
 
-const _tvGridMaxCrossAxisExtent = 184.0;
-const _tvGridMaxCrossAxisExtentCeiling = 320.0;
 // Keep ResizeImage keys independent from the animated rail constraint. Use
 // the largest supported TV tile width for every cover in this page.
-const _tvCoverDecodeLogicalWidth = _tvGridMaxCrossAxisExtentCeiling;
-const _tvGridGrowthStartWidth = 1100.0;
-const _tvGridGrowthEndWidth = 2600.0;
-const _tvGridMainAxisSpacing = 14.0;
-const _tvGridCrossAxisSpacing = 16.0;
-const _tvGridChildAspectRatio = 1.14;
-const _tvCardFocusPadding = 12.0;
-const _tvGridFocusInset = 32.0;
+const _tvCoverDecodeLogicalWidth =
+    BiliTvVideoGridLayout.coverDecodeLogicalWidth;
+const _tvGridMainAxisSpacing = BiliTvVideoGridLayout.mainAxisSpacing;
+const _tvGridCrossAxisSpacing = BiliTvVideoGridLayout.crossAxisSpacing;
+const _tvGridChildAspectRatio = BiliTvVideoGridLayout.childAspectRatio;
+const _tvGridFocusInset = BiliTvVideoGridLayout.focusInset;
 const _tvHeroFocusDelay = Duration(milliseconds: 120);
 const _tvHeroCrossFadeDuration = Duration(milliseconds: 260);
 const _tvNestedRailGap = 12.0;
@@ -194,33 +192,18 @@ final class _TvHeroItem {
 
 @visibleForTesting
 double biliTvGridMaxCrossAxisExtentForWidth(double crossAxisExtent) {
-  assert(crossAxisExtent >= 0);
-  final progress =
-      ((crossAxisExtent - _tvGridGrowthStartWidth) /
-              (_tvGridGrowthEndWidth - _tvGridGrowthStartWidth))
-          .clamp(0.0, 1.0);
-  return _tvGridMaxCrossAxisExtent +
-      (_tvGridMaxCrossAxisExtentCeiling - _tvGridMaxCrossAxisExtent) * progress;
+  return BiliTvVideoGridLayout.maxCrossAxisExtentFor(crossAxisExtent);
 }
 
 @visibleForTesting
 double biliTvVideoGridTileWidthForCrossAxisExtent(
   double crossAxisExtent, {
-  double maxCrossAxisExtent = _tvGridMaxCrossAxisExtent,
+  double maxCrossAxisExtent = BiliTvVideoGridLayout.minimumMaxCrossAxisExtent,
 }) {
-  assert(crossAxisExtent >= 0);
-  assert(maxCrossAxisExtent > 0);
-  final calculatedCrossAxisCount =
-      (crossAxisExtent / (maxCrossAxisExtent + _tvGridCrossAxisSpacing)).ceil();
-  final crossAxisCount = calculatedCrossAxisCount < 1
-      ? 1
-      : calculatedCrossAxisCount;
-  final calculatedUsableExtent =
-      crossAxisExtent - _tvGridCrossAxisSpacing * (crossAxisCount - 1);
-  final usableExtent = calculatedUsableExtent < 0
-      ? 0.0
-      : calculatedUsableExtent;
-  return usableExtent / crossAxisCount;
+  return BiliTvVideoGridLayout.tileWidthFor(
+    crossAxisExtent,
+    maxCrossAxisExtent: maxCrossAxisExtent,
+  );
 }
 
 @visibleForTesting
@@ -228,9 +211,10 @@ int biliTvCoverCacheWidth({
   required double tileWidth,
   required double devicePixelRatio,
 }) {
-  assert(tileWidth >= 0);
-  assert(devicePixelRatio > 0);
-  return (tileWidth * devicePixelRatio).ceil().clamp(160, 720).toInt();
+  return BiliTvVideoGridLayout.coverCacheWidth(
+    tileWidth: tileWidth,
+    devicePixelRatio: devicePixelRatio,
+  );
 }
 
 extension on _TvNavItem {

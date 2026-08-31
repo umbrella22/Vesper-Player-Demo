@@ -3,11 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../../bili/common/models/bili_models.dart';
 import '../../bili/common/services/bili_client.dart';
-import '../../bili/common/services/bili_storage_directory.dart';
+import '../../bili/common/services/bili_download_asset_id.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 import 'offline_cache_inventory.dart';
@@ -452,7 +453,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       ..clear()
       ..addEntries(entries.map((entry) => MapEntry(entry.assetId, entry)));
 
-    final root = await resolveBiliStorageDirectory();
+    final root = await resolveApplicationStorageDirectory();
     final cacheRoot = Directory('${root.path}/offline-cache');
     await cacheRoot.create(recursive: true);
     _ensureNotDisposedDuringInitialize();
@@ -999,24 +1000,6 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     }
   }
 
-  static int? _qualityIdFromAssetId(String assetId) {
-    final match = RegExp(r'-q(\d+)-').firstMatch(assetId);
-    return match == null ? null : int.tryParse(match.group(1) ?? '');
-  }
-
-  static BiliVideoCodecPreference _codecPreferenceFromAssetId(String assetId) {
-    if (assetId.contains('-av1-')) {
-      return BiliVideoCodecPreference.av1;
-    }
-    if (assetId.contains('-hevc-')) {
-      return BiliVideoCodecPreference.hevc;
-    }
-    if (assetId.contains('-avc-')) {
-      return BiliVideoCodecPreference.avc;
-    }
-    return BiliVideoCodecPreference.automatic;
-  }
-
   Future<VesperDownloadRecoveredTaskPlan?> _recoverStaleDownloadPlan(
     VesperDownloadTaskSnapshot task,
     VesperDownloadStaleResource staleResource,
@@ -1031,8 +1014,8 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         return null;
       }
 
-      final qualityId = _qualityIdFromAssetId(assetId);
-      if (qualityId == null) {
+      final selection = tryParseBiliDownloadAssetSelection(assetId);
+      if (selection == null) {
         debugPrint(
           '[BiliOffline] stale recovery: cannot parse qualityId '
           'from assetId=$assetId',
@@ -1040,7 +1023,6 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         return null;
       }
 
-      final codecPreference = _codecPreferenceFromAssetId(assetId);
       final detail = await _client.fetchVideoDetail(metadata.bvid);
       final page = detail.pages.firstWhere(
         (page) => page.cid == metadata.cid,
@@ -1054,8 +1036,8 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
       final prepared = await _client.prepareVerifiedDownloadAsset(
         options: options,
-        qualityId: qualityId,
-        codecPreference: codecPreference,
+        qualityId: selection.qualityId,
+        codecPreference: selection.codecPreference,
         targetDirectory: '${_cacheRoot?.path ?? ''}/assets/$assetId',
       );
 

@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'bili_storage_directory.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
 
 const String _sessionFileName = 'bili-session.json';
 const String _secureSessionKey = 'bili-session-cookies-v1';
@@ -145,19 +145,7 @@ final class BiliSessionStore {
         return const <String, String>{};
       }
 
-      final decoded = jsonDecode(text);
-      if (decoded is! Map) {
-        return const <String, String>{};
-      }
-
-      final rawCookies = decoded['cookies'];
-      if (rawCookies is! Map) {
-        return const <String, String>{};
-      }
-
-      return rawCookies.map(
-        (key, value) => MapEntry(key.toString(), value.toString()),
-      );
+      return _parseCookiesPayload(text);
     } catch (error) {
       // A corrupt session file (interrupted write, partial migration) must
       // not fail bootstrap. Treat it as "no persisted session"; a later
@@ -177,7 +165,7 @@ final class BiliSessionStore {
   }
 
   Future<void> _clearSessionFile() async {
-    await clearBiliStorageFile(
+    await clearApplicationStorageFile(
       fileName: _sessionFileName,
       baseDirectory: _baseDirectory,
       legacyDirectory: _legacyDirectory,
@@ -185,7 +173,7 @@ final class BiliSessionStore {
   }
 
   Future<File> _sessionFile() async {
-    return resolveBiliStorageFile(
+    return resolveApplicationStorageFile(
       fileName: _sessionFileName,
       baseDirectory: _baseDirectory,
       legacyDirectory: _legacyDirectory,
@@ -205,19 +193,7 @@ final class BiliSessionStore {
     }
 
     try {
-      final decoded = jsonDecode(text);
-      if (decoded is! Map) {
-        return const <String, String>{};
-      }
-
-      final rawCookies = decoded['cookies'];
-      if (rawCookies is! Map) {
-        return const <String, String>{};
-      }
-
-      return rawCookies.map(
-        (key, value) => MapEntry(key.toString(), value.toString()),
-      );
+      return _parseCookiesPayload(text);
     } catch (error) {
       // A corrupt secure payload (e.g. partial migration) must not fail
       // bootstrap; the file fallback below still gets a chance to restore.
@@ -227,5 +203,21 @@ final class BiliSessionStore {
       );
       return const <String, String>{};
     }
+  }
+
+  Map<String, String> _parseCookiesPayload(String text) {
+    final decoded = jsonDecode(text);
+    if (decoded is! Map) {
+      return const <String, String>{};
+    }
+
+    final rawCookies = decoded['cookies'];
+    if (rawCookies is! Map) {
+      return const <String, String>{};
+    }
+
+    return rawCookies.map(
+      (key, value) => MapEntry(key.toString(), value.toString()),
+    );
   }
 }

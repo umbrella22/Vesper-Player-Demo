@@ -6,10 +6,10 @@ const _tvLibraryVideoMaxCrossAxisExtent = 278.0;
 const _tvLibraryCoverDecodeLogicalWidth = _tvLibraryVideoMaxCrossAxisExtent;
 
 int _tvLibraryCoverCacheWidth(BuildContext context, double logicalWidth) {
-  return (logicalWidth * MediaQuery.devicePixelRatioOf(context))
-      .ceil()
-      .clamp(160, 720)
-      .toInt();
+  return BiliTvVideoGridLayout.coverCacheWidth(
+    tileWidth: logicalWidth,
+    devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+  );
 }
 
 class _TvLibraryHeaderButton extends StatelessWidget {
@@ -359,9 +359,6 @@ class _TvLibraryVideoCard extends StatelessWidget {
     required this.autofocus,
     required this.debugLabel,
     required this.onTap,
-    this.durationLabel,
-    this.onFocusChange,
-    this.useOverlayLift = true,
     this.removeKey,
     this.onRemove,
   });
@@ -374,9 +371,6 @@ class _TvLibraryVideoCard extends StatelessWidget {
   final bool autofocus;
   final String debugLabel;
   final VoidCallback onTap;
-  final String? durationLabel;
-  final ValueChanged<bool>? onFocusChange;
-  final bool useOverlayLift;
   final Key? removeKey;
   final VoidCallback? onRemove;
 
@@ -398,13 +392,11 @@ class _TvLibraryVideoCard extends StatelessWidget {
             Positioned.fill(
               child: TvFocusableSurface(
                 autofocus: autofocus,
-                scale: 1.07,
-                useOverlayLift: useOverlayLift,
-                focusPadding: useOverlayLift ? 8 : 0,
+                scale: BiliTvVideoCard.focusScale,
+                focusPadding: 8,
                 borderRadius: AppVisualTokens.contentRadius,
                 focusArea: TvFocusArea.content,
                 debugLabel: debugLabel,
-                onFocusChange: onFocusChange,
                 onTap: onTap,
                 builder: (context, focused) {
                   return Column(
@@ -461,32 +453,6 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                         alpha: 0.42,
                                       ),
                                       color: AppVisualTokens.primaryBlue,
-                                    ),
-                                  ),
-                                if (durationLabel != null &&
-                                    durationLabel!.isNotEmpty)
-                                  Align(
-                                    alignment: Alignment.bottomRight,
-                                    child: Container(
-                                      margin: const EdgeInsets.all(7),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 5,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.68,
-                                        ),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        durationLabel!,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
                                     ),
                                   ),
                               ],

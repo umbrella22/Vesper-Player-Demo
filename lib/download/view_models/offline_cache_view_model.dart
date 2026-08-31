@@ -7,6 +7,7 @@ import 'package:vesper_media/media/player/media_text.dart';
 
 import '../../bili/common/models/bili_models.dart';
 import '../../bili/common/services/bili_client.dart';
+import '../../bili/common/services/bili_download_asset_id.dart';
 import '../../bili/common/services/bili_history_store.dart';
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
@@ -373,15 +374,17 @@ final class OfflineCacheViewModel {
       return;
     }
 
-    final qualityId = _qualityIdFromAssetId(entry.metadata.assetId);
-    if (qualityId == null) {
+    final selection = tryParseBiliDownloadAssetSelection(
+      entry.metadata.assetId,
+    );
+    if (selection == null) {
       return;
     }
     await controller.enqueueBiliPage(
       detail: detail,
       page: page,
-      qualityId: qualityId,
-      codecPreference: _codecPreferenceFromAssetId(entry.metadata.assetId),
+      qualityId: selection.qualityId,
+      codecPreference: selection.codecPreference,
     );
   }
 
@@ -403,24 +406,6 @@ final class OfflineCacheViewModel {
       isLocalFile: true,
       debugPath: outputPath,
     );
-  }
-
-  int? _qualityIdFromAssetId(String assetId) {
-    final match = RegExp(r'-q(\d+)-').firstMatch(assetId);
-    return match == null ? null : int.tryParse(match.group(1) ?? '');
-  }
-
-  BiliVideoCodecPreference _codecPreferenceFromAssetId(String assetId) {
-    if (assetId.contains('-av1-')) {
-      return BiliVideoCodecPreference.av1;
-    }
-    if (assetId.contains('-hevc-')) {
-      return BiliVideoCodecPreference.hevc;
-    }
-    if (assetId.contains('-avc-')) {
-      return BiliVideoCodecPreference.avc;
-    }
-    return BiliVideoCodecPreference.automatic;
   }
 
   String _exportFileName(BiliOfflineDownloadEntry entry) {

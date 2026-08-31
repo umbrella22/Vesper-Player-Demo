@@ -3,17 +3,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:vesper_media/common/storage/atomic_file_writer.dart';
+import 'package:vesper_media/common/storage/generated_file_cleanup.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../models/bili_models.dart';
 import '../models/bili_region_models.dart';
 import 'bili_api_core.dart';
+import 'bili_dash_api.dart';
 import 'bili_dash_manifest_builder.dart';
+import 'bili_dash_manifest_parser.dart';
 import 'bili_endpoints.dart';
 import 'bili_listen_audio_selector.dart';
 import 'bili_text.dart';
 import 'bili_transport.dart';
 import 'bili_wbi.dart';
+
+export 'bili_dash_api.dart' show biliDashRequestVariants;
 
 part 'bili_client_download.dart';
 part 'bili_client_library.dart';
@@ -68,9 +74,7 @@ class BiliClient {
 
   @visibleForTesting
   BiliDashManifestData? parseDashManifestForTesting(Map<String, Object?> data) {
-    return _BiliClientPlaybackImplementation(
-      this,
-    )._parseDashManifest(data).manifest;
+    return const BiliDashManifestParser().parse(data).manifest;
   }
 
   Future<BiliResolvedPlayback> resolvePlayback({
@@ -1209,31 +1213,3 @@ int? _parseCommentTimeSeconds(String label) {
   }
   return null;
 }
-
-const biliDashRequestVariants = <BiliDashRequestVariant>[
-  BiliDashRequestVariant(
-    label: 'web fnval=4048',
-    fnval: biliDashFnval,
-    extraParams: <String, Object?>{
-      'gaia_source': 'pre-load',
-      'isGaiaAvoided': 'true',
-      'from_client': 'BROWSER',
-      'web_location': 1315873,
-    },
-  ),
-  BiliDashRequestVariant(
-    label: 'web fnval=976',
-    fnval: biliDashCompatFnval,
-    extraParams: <String, Object?>{
-      'gaia_source': 'pre-load',
-      'isGaiaAvoided': 'true',
-      'from_client': 'BROWSER',
-      'web_location': 1315873,
-    },
-  ),
-  BiliDashRequestVariant(
-    label: 'plain fnval=976',
-    fnval: biliDashCompatFnval,
-    extraParams: <String, Object?>{'high_quality': 1},
-  ),
-];

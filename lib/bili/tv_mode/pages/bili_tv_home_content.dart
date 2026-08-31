@@ -441,14 +441,14 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
               }
               final item = items[index];
               final hero = _TvHeroItem.feed(item);
-              return _TvVideoCard(
+              return BiliTvVideoCard(
                 key: ValueKey<String>('feed_${item.bvid}'),
                 coverUrl: item.coverUrl,
                 coverCacheWidth: coverCacheWidth,
                 title: item.title,
-                author: item.author,
-                duration: item.durationLabel,
-                playCount: item.playCountLabel,
+                subtitle: item.author,
+                durationLabel: item.durationLabel,
+                leadingLabel: item.playCountLabel,
                 focusArea: TvFocusArea.recommendGrid,
                 onFocusChange: (focused) => _scheduleHeroUpdate(hero, focused),
                 onTap: () => unawaited(_playHero(hero)),

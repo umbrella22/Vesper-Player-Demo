@@ -546,7 +546,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
   }
 
   bool _isAuthenticationError(Object error) {
-    return error is BiliApiException && error.code == -101;
+    return isBiliSessionInvalidError(error);
   }
 
   String _spaceErrorMessage(Object error) {
@@ -991,55 +991,58 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
             : () => unawaited(_reloadSelectedSpace()),
       );
     }
-    return GridView.builder(
-      key: const ValueKey<String>('bili-tv-space-video-grid'),
-      clipBehavior: Clip.none,
-      padding: const EdgeInsets.fromLTRB(
-        tvInlineFocusSafeInset,
-        tvInlineFocusSafeInset,
-        tvInlineFocusSafeInset,
-        tvInlineFocusSafeInset,
-      ),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: _tvLibraryVideoMaxCrossAxisExtent,
-        mainAxisSpacing: 22,
-        crossAxisSpacing: 20,
-        childAspectRatio: 1.03,
-      ),
-      itemCount: _videos.length + (_spaceHasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == _videos.length) {
-          return _TvLibraryLoadMoreTile(
-            key: const ValueKey<String>('bili-tv-space-video-load-more'),
-            loading: _spaceLoadingMore,
-            useOverlayLift: false,
-            onTap: () => unawaited(_loadMoreVideos()),
-          );
-        }
-        final video = _videos[index];
-        final subtitle = <String>[
-          if (video.publishedAtLabel.isNotEmpty) video.publishedAtLabel,
-          if (video.playCountLabel.isNotEmpty) '${video.playCountLabel} 播放',
-        ].join(' · ');
-        return _TvLibraryVideoCard(
-          key: ValueKey<String>('bili-tv-space-video-${video.bvid}'),
-          title: video.title,
-          subtitle: subtitle,
-          coverUrl: video.coverUrl,
-          progressMs: 0,
-          durationMs: 0,
-          durationLabel: video.durationLabel,
-          useOverlayLift: false,
-          // The rail owns initial focus. Entering the submission area through
-          // directional focus is what collapses it to avatars.
-          autofocus: false,
-          debugLabel: 'tv_space_video_${video.bvid}',
-          onFocusChange: (focused) {
-            if (focused) {
-              _setRailCollapsed(true);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gridCrossAxisExtent =
+            constraints.maxWidth - BiliTvVideoGridLayout.focusInset * 2;
+        final maxCrossAxisExtent = BiliTvVideoGridLayout.maxCrossAxisExtentFor(
+          gridCrossAxisExtent,
+        );
+        final coverCacheWidth = BiliTvVideoGridLayout.coverCacheWidth(
+          tileWidth: BiliTvVideoGridLayout.coverDecodeLogicalWidth,
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        );
+        return GridView.builder(
+          key: const ValueKey<String>('bili-tv-space-video-grid'),
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.all(BiliTvVideoGridLayout.focusInset),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: maxCrossAxisExtent,
+            mainAxisSpacing: BiliTvVideoGridLayout.mainAxisSpacing,
+            crossAxisSpacing: BiliTvVideoGridLayout.crossAxisSpacing,
+            childAspectRatio: BiliTvVideoGridLayout.childAspectRatio,
+          ),
+          itemCount: _videos.length + (_spaceHasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index == _videos.length) {
+              return _TvLibraryLoadMoreTile(
+                key: const ValueKey<String>('bili-tv-space-video-load-more'),
+                loading: _spaceLoadingMore,
+                useOverlayLift: false,
+                onTap: () => unawaited(_loadMoreVideos()),
+              );
             }
+            final video = _videos[index];
+            return BiliTvVideoCard(
+              key: ValueKey<String>('bili-tv-space-video-${video.bvid}'),
+              title: video.title,
+              subtitle: video.publishedAtLabel,
+              coverUrl: video.coverUrl,
+              coverCacheWidth: coverCacheWidth,
+              durationLabel: video.durationLabel,
+              leadingLabel: video.playCountLabel,
+              // The rail owns initial focus. Entering the submission area
+              // through directional focus is what collapses it to avatars.
+              autofocus: false,
+              debugLabel: 'tv_space_video_${video.bvid}',
+              onFocusChange: (focused) {
+                if (focused) {
+                  _setRailCollapsed(true);
+                }
+              },
+              onTap: () => widget.onOpenVideo(video),
+            );
           },
-          onTap: () => widget.onOpenVideo(video),
         );
       },
     );

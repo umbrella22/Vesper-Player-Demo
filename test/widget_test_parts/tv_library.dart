@@ -1,6 +1,99 @@
 part of '../widget_test.dart';
 
 void _registerTvLibraryWidgetTests() {
+  testWidgets('tv following uploads share the recommendation focus card', (
+    WidgetTester tester,
+  ) async {
+    await _pumpTvHomePage(
+      tester,
+      initialFeedItems: _tvFeedItems(),
+      skipBootstrap: true,
+      loggedIn: true,
+      authenticatedSession: true,
+    );
+
+    TvFocusableSurface focusSurfaceOf(Finder card) {
+      expect(card, findsOneWidget);
+      expect(tester.widget(card), isA<BiliTvVideoCard>());
+      return tester.widget<TvFocusableSurface>(
+        find.descendant(of: card, matching: find.byType(TvFocusableSurface)),
+      );
+    }
+
+    final recommendSurface = focusSurfaceOf(
+      find.byKey(const ValueKey<String>('feed_BVTV00000000')),
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+    );
+
+    final followingSurface = focusSurfaceOf(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-BV1space0001')),
+    );
+    final followingGrid = tester.widget<GridView>(
+      find.byKey(const ValueKey<String>('bili-tv-space-video-grid')),
+    );
+    final followingGridDelegate =
+        followingGrid.gridDelegate as SliverGridDelegateWithMaxCrossAxisExtent;
+
+    for (final surface in <TvFocusableSurface>[
+      recommendSurface,
+      followingSurface,
+    ]) {
+      expect(surface.useOverlayLift, isTrue);
+      expect(surface.scale, BiliTvVideoCard.focusScale);
+      expect(surface.focusPadding, BiliTvVideoCard.focusPadding);
+      expect(surface.borderRadius, BiliTvVideoCard.surfaceBorderRadius);
+    }
+    expect(
+      followingGrid.padding,
+      const EdgeInsets.all(BiliTvVideoGridLayout.focusInset),
+    );
+    expect(
+      followingGridDelegate.mainAxisSpacing,
+      BiliTvVideoGridLayout.mainAxisSpacing,
+    );
+    expect(
+      followingGridDelegate.crossAxisSpacing,
+      BiliTvVideoGridLayout.crossAxisSpacing,
+    );
+    expect(
+      followingGridDelegate.childAspectRatio,
+      BiliTvVideoGridLayout.childAspectRatio,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(AppVisualTokens.overlayDuration);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      startsWith('tv_following_'),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    for (var motionStep = 0; motionStep < 10; motionStep += 1) {
+      await tester.pump(const Duration(milliseconds: 18));
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'TV card focus motion failed at step $motionStep',
+      );
+    }
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'tv_space_video_BV1space0001',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('tv-content-glass-overlay')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('tv home keeps the nested following browser alive', (
     WidgetTester tester,
   ) async {

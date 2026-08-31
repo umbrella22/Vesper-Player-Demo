@@ -277,13 +277,13 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
                         itemCount: results.length,
                         itemBuilder: (context, index) {
                           final result = results[index];
-                          return _TvSearchResultCard(
+                          return BiliTvVideoCard(
                             coverUrl: result.coverUrl,
                             coverCacheWidth: coverCacheWidth,
                             title: result.title,
-                            author: result.author,
-                            duration: result.durationLabel,
-                            playCount: result.playCountLabel,
+                            subtitle: result.author,
+                            durationLabel: result.durationLabel,
+                            leadingLabel: result.playCountLabel,
                             onFocusChange: (focused) => _scheduleHeroUpdate(
                               _TvHeroItem.search(result),
                               focused,

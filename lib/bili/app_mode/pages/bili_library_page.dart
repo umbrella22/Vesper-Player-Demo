@@ -10,6 +10,8 @@ import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_card.dart';
+import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_grid_layout.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_directional_focus_scope.dart';
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
@@ -233,8 +235,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       state.authenticationRequired = false;
     } catch (error) {
       state.error = _libraryError(error);
-      final authenticationRequired =
-          error is BiliApiException && error.code == -101;
+      final authenticationRequired = isBiliSessionInvalidError(error);
       state.authenticationRequired = authenticationRequired;
       if (authenticationRequired) {
         if (section == BiliLibrarySection.history) {
@@ -344,8 +345,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       state.authenticationRequired = false;
     } catch (error) {
       state.error = _libraryError(error);
-      state.authenticationRequired =
-          error is BiliApiException && error.code == -101;
+      state.authenticationRequired = isBiliSessionInvalidError(error);
       if (state.authenticationRequired) {
         _clearAuthenticatedData(section, state);
       } else {
@@ -410,7 +410,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   }
 
   String _libraryError(Object error) {
-    if (error is BiliApiException && error.code == -101) {
+    if (isBiliSessionInvalidError(error)) {
       return '登录状态已失效，请重新登录后再试。';
     }
     if (error is BiliApiException &&

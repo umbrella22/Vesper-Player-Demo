@@ -347,7 +347,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
   }
 
   bool _isAuthenticationError(Object error) {
-    return error is BiliApiException && error.code == -101;
+    return isBiliSessionInvalidError(error);
   }
 
   String _spaceErrorMessage(Object error) {
