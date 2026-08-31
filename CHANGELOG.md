@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.10.1...vesper_media-v1.10.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* unify TV video selection and shared services ([7f983d1](https://github.com/umbrella22/Vesper-Player-Demo/commit/7f983d14e0d2e9626610cd7dac4a703fd7fe2332))
+
 ## [1.10.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.10.0...vesper_media-v1.10.1) (2026-08-31)
 
 
