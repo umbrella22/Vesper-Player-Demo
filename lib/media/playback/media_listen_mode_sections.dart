@@ -228,45 +228,60 @@ final class MediaListenTvAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.iconOnly = false,
   });
 
   final String debugLabel;
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool iconOnly;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return TvFocusable(
-      debugLabel: debugLabel,
-      focusArea: TvFocusArea.playbackControls,
-      scale: 1.035,
-      focusCornerRadius: AppVisualTokens.contentRadius,
-      baseCornerRadius: AppVisualTokens.contentRadius,
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.28),
-          borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
-          border: Border.all(color: visualTheme.divider),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 22, color: visualTheme.textPrimary),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: visualTheme.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: TvFocusable(
+          debugLabel: debugLabel,
+          focusArea: TvFocusArea.playbackControls,
+          scale: 1.035,
+          focusCornerRadius: AppVisualTokens.contentRadius,
+          baseCornerRadius: AppVisualTokens.contentRadius,
+          onTap: onTap,
+          child: Container(
+            width: iconOnly ? 48 : null,
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: iconOnly ? 0 : 18),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(
+                AppVisualTokens.contentRadius,
               ),
+              border: Border.all(color: visualTheme.divider),
             ),
-          ],
+            child: iconOnly
+                ? Icon(icon, size: 22, color: visualTheme.textPrimary)
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 22, color: visualTheme.textPrimary),
+                      const SizedBox(width: 10),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: visualTheme.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );

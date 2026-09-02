@@ -66,9 +66,9 @@ final class MediaListenPhoneHeader extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: IconButton(
                 key: const ValueKey<String>('listen-return-video'),
-                tooltip: '返回视频',
+                tooltip: '退出听视频',
                 onPressed: onReturnToVideo,
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+                icon: const Icon(Icons.arrow_back_rounded, size: 26),
                 color: visualTheme.textPrimary,
               ),
             ),
@@ -78,15 +78,6 @@ final class MediaListenPhoneHeader extends StatelessWidget {
                 color: visualTheme.textPrimary,
                 fontSize: 19,
                 fontWeight: FontWeight.w700,
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: '返回视频',
-                onPressed: onReturnToVideo,
-                icon: const Icon(Icons.ondemand_video_rounded, size: 23),
-                color: visualTheme.textSecondary,
               ),
             ),
           ],

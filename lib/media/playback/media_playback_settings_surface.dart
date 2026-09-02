@@ -2,6 +2,75 @@ import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player/vesper_player.dart';
 
+enum MediaPlaybackDrawerSide { leading, trailing }
+
+/// 通用播放页侧边抽屉。调用方只提供内容与出现方向，遮罩、尺寸、滚动和
+/// 键盘避让由公共层统一处理。
+Future<T?> showMediaPlaybackSideDrawer<T>(
+  BuildContext context, {
+  required MediaPlaybackDrawerSide side,
+  required WidgetBuilder builder,
+  Key? surfaceKey,
+}) {
+  final appearsFromLeading = side == MediaPlaybackDrawerSide.leading;
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: 0.40),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, _) {
+      final visualTheme = AppVisualTheme.of(dialogContext);
+      final drawerWidth = MediaQuery.sizeOf(dialogContext).width * 0.42;
+      return Align(
+        alignment: appearsFromLeading
+            ? Alignment.centerLeft
+            : Alignment.centerRight,
+        child: Material(
+          key: surfaceKey,
+          color: visualTheme.background,
+          borderRadius: BorderRadius.horizontal(
+            left: appearsFromLeading ? Radius.zero : const Radius.circular(22),
+            right: appearsFromLeading ? const Radius.circular(22) : Radius.zero,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SafeArea(
+            left: appearsFromLeading,
+            right: !appearsFromLeading,
+            child: SizedBox(
+              width: drawerWidth,
+              height: double.infinity,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  18,
+                  20,
+                  22 + MediaQuery.viewInsetsOf(dialogContext).bottom,
+                ),
+                child: builder(dialogContext),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset(appearsFromLeading ? -1 : 1, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      );
+    },
+  );
+}
+
 /// 通用设置表面：窄屏弹出底栏，宽屏左侧抽屉。
 ///
 /// 内容由 [contentBuilder] 提供（如音画调校面板）；离线缓存等平台专属
@@ -24,59 +93,15 @@ Future<void> _showSettingsDrawer(
   VesperPlayerController controller,
   Widget Function(BuildContext, VesperPlayerSnapshot) contentBuilder,
 ) {
-  return showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black.withValues(alpha: 0.40),
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (dialogContext, _, _) {
-      final visualTheme = AppVisualTheme.of(dialogContext);
-      final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
-          .clamp(
-            MediaQuery.sizeOf(dialogContext).width * 0.28,
-            MediaQuery.sizeOf(dialogContext).width * 0.42,
-          )
-          .toDouble();
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Material(
-          color: visualTheme.background,
-          borderRadius: const BorderRadius.horizontal(
-            right: Radius.circular(22),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            right: false,
-            child: SizedBox(
-              width: drawerWidth,
-              height: double.infinity,
-              child: ValueListenableBuilder<VesperPlayerSnapshot>(
-                valueListenable: controller.snapshotListenable,
-                builder: (context, sheetSnapshot, _) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                    child: contentBuilder(context, sheetSnapshot),
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(-1, 0),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
+  return showMediaPlaybackSideDrawer<void>(
+    context,
+    side: MediaPlaybackDrawerSide.leading,
+    builder: (drawerContext) {
+      return ValueListenableBuilder<VesperPlayerSnapshot>(
+        valueListenable: controller.snapshotListenable,
+        builder: (context, drawerSnapshot, _) {
+          return contentBuilder(context, drawerSnapshot);
+        },
       );
     },
   );

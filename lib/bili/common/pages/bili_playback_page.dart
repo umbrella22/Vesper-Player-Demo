@@ -5,11 +5,14 @@ import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
+import 'package:vesper_media/app/services/danmaku_settings_controller.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/services/bili_device_controls.dart';
 import 'package:vesper_media/bili/common/view_models/bili_playback_view_model.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
+import 'package:vesper_media/danmaku/danmaku.dart';
+import 'package:vesper_media/danmaku/widgets/bili_danmaku_settings_panel.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -34,6 +37,7 @@ class BiliPlaybackPage extends StatefulWidget {
     this.initialResolvedPlayback,
     this.initialPositionMs = 0,
     this.presentationMode = BiliPlaybackPresentationMode.phone,
+    this.danmakuSettingsController,
   });
 
   final BiliVideoDetail detail;
@@ -44,6 +48,7 @@ class BiliPlaybackPage extends StatefulWidget {
   final BiliResolvedPlayback? initialResolvedPlayback;
   final int initialPositionMs;
   final BiliPlaybackPresentationMode presentationMode;
+  final DanmakuSettingsController? danmakuSettingsController;
 
   @override
   State<BiliPlaybackPage> createState() => _BiliPlaybackPageState();
@@ -52,6 +57,9 @@ class BiliPlaybackPage extends StatefulWidget {
 class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   late final BiliPlaybackViewModel _viewModel;
   late final MediaPlaybackBinding _playbackBinding;
+  late final DanmakuSettingsController _danmakuSettingsController;
+  bool _ownsDanmakuSettingsController = false;
+  bool _danmakuSettingsBound = false;
 
   bool get _isTvMode =>
       widget.presentationMode == BiliPlaybackPresentationMode.tv;
@@ -79,8 +87,30 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_danmakuSettingsBound) {
+      return;
+    }
+    final inheritedController = DanmakuSettingsScope.maybeOf(context);
+    _danmakuSettingsController =
+        widget.danmakuSettingsController ??
+        inheritedController ??
+        DanmakuSettingsController();
+    _ownsDanmakuSettingsController =
+        widget.danmakuSettingsController == null && inheritedController == null;
+    _viewModel.bindDanmakuSourceFilter(
+      _danmakuSettingsController.sourceFilterListenable,
+    );
+    _danmakuSettingsBound = true;
+  }
+
+  @override
   void dispose() {
     _viewModel.dispose();
+    if (_ownsDanmakuSettingsController) {
+      _danmakuSettingsController.dispose();
+    }
     super.dispose();
   }
 
@@ -97,6 +127,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       tuningCacheEntry: CacheEntryButton(
         onTap: () => unawaited(_openCacheSurfaceFromSettings(context)),
       ),
+      danmakuSettingsSurface: BiliDanmakuSettingsPanel(
+        settings: _danmakuSettingsController.listenable,
+        onChanged: _setDanmakuSettings,
+      ),
+      danmakuSettingsListenable: _danmakuSettingsController.overlayListenable,
+      onDanmakuSettingsChanged: (settings) {
+        _setDanmakuSettings(
+          _danmakuSettingsController.value.copyWith(overlay: settings),
+        );
+      },
       tvControlBarExtras: <Widget>[
         SignalBuilder(builder: (context) => _buildTvWatchLaterButton()),
       ],
@@ -108,6 +148,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       recoveryDialogBuilder: _showPlaybackRecoveryDialog,
       presentation: _buildPresentation(),
       onPushPlayback: _pushRelatedPlayback,
+    );
+  }
+
+  void _setDanmakuSettings(BiliDanmakuSettings settings) {
+    unawaited(
+      _danmakuSettingsController.setValue(settings).then((saved) {
+        if (!saved && mounted) {
+          _showMessage('弹幕设置保存失败');
+        }
+      }),
     );
   }
 

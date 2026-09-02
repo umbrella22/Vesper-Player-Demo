@@ -7,6 +7,7 @@ import 'package:vesper_player/vesper_player.dart';
 
 import 'package:vesper_media/bili/bili_media_platform_adapter.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
+import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/media/media.dart';
 import '../models/bili_models.dart';
 import '../services/bili_api_core.dart';
@@ -55,9 +56,11 @@ final class BiliPlaybackViewModel {
          const <BiliVideoComment>[],
        ),
        _relatedVideos = signal<List<BiliFeedVideo>>(const <BiliFeedVideo>[]) {
+    _danmakuProvider = BiliDanmakuProvider(client: client);
     final adapter = BiliMediaPlatformAdapter(
       client: client,
       historyStore: historyStore,
+      danmakuProvider: _danmakuProvider,
     );
     _playback = MediaPlaybackViewModel(
       detail: BiliMediaMapper.toGenericDetail(detail),
@@ -84,9 +87,16 @@ final class BiliPlaybackViewModel {
   final BiliHistoryStore historyStore;
   final BiliOfflineDownloadController offlineController;
   late final MediaPlaybackViewModel _playback;
+  late final BiliDanmakuProvider _danmakuProvider;
 
   /// 内部播放编排 VM（供壳页面消费；生命周期随本类 dispose）。
   MediaPlaybackViewModel get playbackViewModel => _playback;
+
+  void bindDanmakuSourceFilter(
+    ValueListenable<BiliDanmakuSourceFilterSettings> listenable,
+  ) {
+    _danmakuProvider.bindSourceFilter(listenable);
+  }
 
   static const int _commentsPageSize = 20;
   static const int _commentRepliesPageSize = 20;
@@ -975,6 +985,7 @@ final class BiliPlaybackViewModel {
     _commentRepliesRequestGeneration += 1;
     _watchLaterRequestGeneration += 1;
     _playback.dispose();
+    _danmakuProvider.dispose();
     _coinCountLabel.dispose();
     _shareCountLabel.dispose();
     _engagement.dispose();

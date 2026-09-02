@@ -107,6 +107,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                           positionMs: snapshot.timeline.positionMs,
                           playbackState: snapshot.playbackState,
                           playbackRate: snapshot.playbackRate,
+                          settings: _danmakuSettings,
                         ),
                       ),
                     Positioned.fill(
@@ -411,6 +412,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
       TvPlaybackPanelType.quality => '清晰度',
       TvPlaybackPanelType.speed => '倍速',
       TvPlaybackPanelType.subtitles => '字幕',
+      TvPlaybackPanelType.danmaku => '弹幕设置',
       TvPlaybackPanelType.pages => isPgc ? '选集' : '分P',
       TvPlaybackPanelType.none => '',
     };
@@ -418,6 +420,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
       TvPlaybackPanelType.quality => '确认后立即切换当前播放清晰度',
       TvPlaybackPanelType.speed => '确认后立即改变播放速度',
       TvPlaybackPanelType.subtitles => '字幕语言与显示方式',
+      TvPlaybackPanelType.danmaku => '显示类型、区域与画面密度',
       TvPlaybackPanelType.pages =>
         isPgc ? '上下选择剧集，确认播放选中的一集' : '上下选择分 P，确认播放选中的分段',
       TvPlaybackPanelType.none => '',
@@ -455,6 +458,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
             )
             .toList(),
       TvPlaybackPanelType.subtitles => subtitleOptions,
+      TvPlaybackPanelType.danmaku => _tvDanmakuPanelOptions(),
       TvPlaybackPanelType.pages =>
         pages
             .map(
@@ -518,6 +522,102 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
         ),
       ),
     );
+  }
+
+  List<TvPanelOption> _tvDanmakuPanelOptions() {
+    final settings = _danmakuSettings;
+    return <TvPanelOption>[
+      TvPanelOption(
+        label: '显示弹幕',
+        selected: settings.enabled,
+        onTap: _toggleDanmaku,
+      ),
+      TvPanelOption(
+        label: '滚动弹幕',
+        selected: settings.showScroll,
+        onTap: () => _setDanmakuSettings(
+          settings.copyWith(showScroll: !settings.showScroll),
+        ),
+      ),
+      TvPanelOption(
+        label: '顶部弹幕',
+        selected: settings.showTop,
+        onTap: () =>
+            _setDanmakuSettings(settings.copyWith(showTop: !settings.showTop)),
+      ),
+      TvPanelOption(
+        label: '底部弹幕',
+        selected: settings.showBottom,
+        onTap: () => _setDanmakuSettings(
+          settings.copyWith(showBottom: !settings.showBottom),
+        ),
+      ),
+      TvPanelOption(
+        label: '字幕弹幕',
+        selected: settings.showCaption,
+        onTap: () => _setDanmakuSettings(
+          settings.copyWith(showCaption: !settings.showCaption),
+        ),
+      ),
+      TvPanelOption(
+        label: '高级弹幕',
+        selected: settings.showAdvanced,
+        onTap: () => _setDanmakuSettings(
+          settings.copyWith(showAdvanced: !settings.showAdvanced),
+        ),
+      ),
+      TvPanelOption(
+        label: '彩色弹幕',
+        selected: settings.showColor,
+        onTap: () => _setDanmakuSettings(
+          settings.copyWith(showColor: !settings.showColor),
+        ),
+      ),
+      for (final option in const <(double, String)>[
+        (0.5, '区域 1/2'),
+        (0.75, '区域 3/4'),
+        (1.0, '区域 全屏'),
+      ])
+        TvPanelOption(
+          label: option.$2,
+          selected: settings.displayArea == option.$1,
+          onTap: () =>
+              _setDanmakuSettings(settings.copyWith(displayArea: option.$1)),
+        ),
+      for (final option in const <(double, String)>[
+        (0.5, '透明度 50%'),
+        (0.8, '透明度 80%'),
+        (1.0, '透明度 100%'),
+      ])
+        TvPanelOption(
+          label: option.$2,
+          selected: (settings.opacity - option.$1).abs() < 0.01,
+          onTap: () =>
+              _setDanmakuSettings(settings.copyWith(opacity: option.$1)),
+        ),
+      for (final option in const <(double, String)>[
+        (0.7, '字号 小'),
+        (1.0, '字号 标准'),
+        (1.3, '字号 大'),
+      ])
+        TvPanelOption(
+          label: option.$2,
+          selected: (settings.fontScale - option.$1).abs() < 0.01,
+          onTap: () =>
+              _setDanmakuSettings(settings.copyWith(fontScale: option.$1)),
+        ),
+      for (final option in const <(double, String)>[
+        (0.4, '密度 低'),
+        (0.7, '密度 标准'),
+        (1.0, '密度 高'),
+      ])
+        TvPanelOption(
+          label: option.$2,
+          selected: (settings.density - option.$1).abs() < 0.01,
+          onTap: () =>
+              _setDanmakuSettings(settings.copyWith(density: option.$1)),
+        ),
+    ];
   }
 
   void _closeTvPanelAndRestoreFocus() {
@@ -710,6 +810,27 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                       icon: Icons.playlist_play_rounded,
                       focusNode: _tvPanelButtonNode(TvPlaybackPanelType.pages),
                       onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
+                    ),
+                  ],
+                  if (_viewModel.adapter.danmaku != null) ...[
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      key: const ValueKey<String>('toggle-danmaku'),
+                      label: _danmakuEnabled ? '弹幕已开' : '弹幕已关',
+                      icon: _danmakuEnabled
+                          ? Icons.chat_bubble_rounded
+                          : Icons.chat_bubble_outline_rounded,
+                      onTap: _toggleDanmaku,
+                    ),
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      key: const ValueKey<String>('open-danmaku-settings'),
+                      label: '弹幕设置',
+                      icon: Icons.tune_rounded,
+                      focusNode: _tvPanelButtonNode(
+                        TvPlaybackPanelType.danmaku,
+                      ),
+                      onTap: () => _openTvPanel(TvPlaybackPanelType.danmaku),
                     ),
                   ],
                   for (final extra in widget.tvControlBarExtras) ...[

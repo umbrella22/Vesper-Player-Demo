@@ -19,7 +19,7 @@ part 'media_playback_page_phone.dart';
 part 'media_playback_page_tv.dart';
 part 'media_playback_page_surfaces.dart';
 
-enum TvPlaybackPanelType { none, quality, speed, subtitles, pages }
+enum TvPlaybackPanelType { none, quality, speed, subtitles, danmaku, pages }
 
 enum _PlaybackInfoTab { intro, comments }
 
@@ -44,6 +44,9 @@ class MediaPlaybackPage extends StatefulWidget {
     this.deviceControls = const MediaNoopDeviceControls(),
     this.contentTabsTrailing,
     this.tuningCacheEntry,
+    this.danmakuSettingsSurface,
+    this.danmakuSettingsListenable,
+    this.onDanmakuSettingsChanged,
     this.tvControlBarExtras = const <Widget>[],
     this.tvFallbackHome,
     this.recoveryDialogBuilder,
@@ -66,6 +69,13 @@ class MediaPlaybackPage extends StatefulWidget {
 
   /// 调校面板的离线缓存入口（下载保持 app 级）。
   final Widget? tuningCacheEntry;
+
+  /// 平台提供的完整弹幕设置区域；横屏播放器将它放入独立侧边抽屉。
+  /// 为空时弹幕设置入口完全折叠，不保留控制栏宽度。
+  final Widget? danmakuSettingsSurface;
+
+  final ValueListenable<MediaDanmakuOverlaySettings>? danmakuSettingsListenable;
+  final ValueChanged<MediaDanmakuOverlaySettings>? onDanmakuSettingsChanged;
 
   /// TV 控制条右侧扩展按钮（如稍后再看）。
   final List<Widget> tvControlBarExtras;
@@ -108,6 +118,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   bool? _commentsAvailable;
   String? _commentsAvailableEntryId;
   bool _settingsSurfaceOpen = false;
+  bool _danmakuSettingsSurfaceOpen = false;
   bool _castingSurfaceOpen = false;
   bool _dlnaPickerOpen = false;
   _PlaybackInfoTab _selectedInfoTab = _PlaybackInfoTab.intro;
@@ -136,6 +147,15 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   bool _playbackRecoveryDialogVisible = false;
   bool _tvBackDispatchPending = false;
   _MediaPlaybackDisplayMode _displayMode = _MediaPlaybackDisplayMode.video;
+  MediaDanmakuOverlaySettings _localDanmakuSettings =
+      const MediaDanmakuOverlaySettings();
+
+  VesperPlayerController? _pictureInPictureController;
+  StreamSubscription<VesperPlayerPictureInPictureEvent>?
+  _pictureInPictureEvents;
+  bool _pictureInPictureActive = false;
+  bool _pictureInPictureSupported = false;
+  bool _pictureInPictureAvailabilityPolled = false;
 
   bool get _isTvMode =>
       widget.presentationMode == MediaPlaybackPresentationMode.tv;
@@ -144,6 +164,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
 
   bool get _playbackModalRouteOpen =>
       _settingsSurfaceOpen ||
+      _danmakuSettingsSurfaceOpen ||
       _castingSurfaceOpen ||
       _dlnaPickerOpen ||
       _playbackRecoveryDialogVisible;
@@ -176,7 +197,17 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     // effect that tracks the VM's pending-message signals.
     _messageEffect = effect(_handleViewModelMessage);
     HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
+    widget.danmakuSettingsListenable?.addListener(
+      _handleDanmakuSettingsChanged,
+    );
     unawaited(_enterPlaybackPresentation());
+    unawaited(
+      _viewModel.controllerFuture.then(
+        _attachPictureInPicture,
+        // 解析失败的会话没有可附加的 PiP 配置；错误由页面错误态呈现。
+        onError: (Object _) {},
+      ),
+    );
   }
 
   @override
@@ -185,11 +216,25 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     if (oldWidget.presentationMode != widget.presentationMode) {
       _tvPlaybackInitialFocusRequested = false;
     }
+    if (!identical(
+      oldWidget.danmakuSettingsListenable,
+      widget.danmakuSettingsListenable,
+    )) {
+      oldWidget.danmakuSettingsListenable?.removeListener(
+        _handleDanmakuSettingsChanged,
+      );
+      widget.danmakuSettingsListenable?.addListener(
+        _handleDanmakuSettingsChanged,
+      );
+    }
   }
 
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleTvHardwareKeyEvent);
+    widget.danmakuSettingsListenable?.removeListener(
+      _handleDanmakuSettingsChanged,
+    );
     _infoTabController?.removeListener(_handleInfoTabChanged);
     _infoTabController?.dispose();
     _commentsScrollController.removeListener(_handleCommentsScrollPosition);
@@ -206,11 +251,128 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       node.dispose();
     }
     _messageEffect?.call();
+    _detachPictureInPicture();
     unawaited(_restoreAppPresentation());
     super.dispose();
   }
 
   void _mutate(VoidCallback mutation) => setState(mutation);
+
+  MediaDanmakuOverlaySettings get _danmakuSettings =>
+      widget.danmakuSettingsListenable?.value ?? _localDanmakuSettings;
+
+  bool get _danmakuEnabled => _danmakuSettings.enabled;
+
+  void _handleDanmakuSettingsChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _setDanmakuSettings(MediaDanmakuOverlaySettings value) {
+    final callback = widget.onDanmakuSettingsChanged;
+    if (callback != null) {
+      callback(value);
+      return;
+    }
+    _mutate(() {
+      _localDanmakuSettings = value;
+    });
+  }
+
+  void _toggleDanmaku() {
+    _setDanmakuSettings(
+      _danmakuSettings.copyWith(enabled: !_danmakuSettings.enabled),
+    );
+  }
+
+  Future<void> _attachPictureInPicture(
+    VesperPlayerController controller,
+  ) async {
+    if (!mounted) {
+      return;
+    }
+    _pictureInPictureController = controller;
+    _pictureInPictureEvents = controller.pictureInPictureEvents.listen(
+      _handlePictureInPictureEvent,
+    );
+    _syncPictureInPictureConfiguration();
+  }
+
+  void _detachPictureInPicture() {
+    _pictureInPictureEvents?.cancel();
+    _pictureInPictureEvents = null;
+    _pictureInPictureController = null;
+  }
+
+  /// TV 没有系统 PiP；听视频模式视频面不活跃，自动小窗只会得到黑窗，
+  /// 因此仅手机/平板的视频模式启用（autoEnter = 播放中按 Home 自动小窗）。
+  void _syncPictureInPictureConfiguration() {
+    final controller = _pictureInPictureController;
+    if (controller == null) {
+      return;
+    }
+    final enabled =
+        !_isTvMode && _displayMode == _MediaPlaybackDisplayMode.video;
+    unawaited(
+      controller.setPictureInPictureConfiguration(
+        VesperPictureInPictureConfiguration(
+          enabled: enabled,
+          autoEnter: enabled,
+        ),
+      ),
+    );
+  }
+
+  /// 顶栏小窗按钮的可见性。可用性依赖渲染面就绪，attached 时通常还未
+  /// 起播，因此首次进入 playing 后轮询一次。
+  void _maybePollPictureInPictureAvailability(VesperPlayerSnapshot snapshot) {
+    if (_pictureInPictureSupported ||
+        _pictureInPictureAvailabilityPolled ||
+        snapshot.playbackState != VesperPlaybackState.playing) {
+      return;
+    }
+    _pictureInPictureAvailabilityPolled = true;
+    final controller = _pictureInPictureController;
+    if (controller == null) {
+      return;
+    }
+    unawaited(
+      controller.isPictureInPictureAvailable().then((availability) {
+        if (!mounted || _pictureInPictureController != controller) {
+          return;
+        }
+        if (availability.isAvailable) {
+          _mutate(() {
+            _pictureInPictureSupported = true;
+          });
+        }
+      }),
+    );
+  }
+
+  Future<void> _requestPictureInPicture() async {
+    try {
+      await _pictureInPictureController?.requestPictureInPicture();
+    } catch (_) {
+      // 系统拒绝或画面不可用时保持现状；错误详情由 SDK 事件流上报。
+    }
+  }
+
+  void _handlePictureInPictureEvent(VesperPlayerPictureInPictureEvent event) {
+    // Android 8–11 没有系统 autoEnter：宿主转发 onUserLeaveHint 后 SDK 只发
+    // entering 事件，这里补一次进入请求；Android 12+ 系统已自动进入，重复
+    // 请求被系统忽略。
+    if (event.state == VesperPictureInPictureStatus.entering &&
+        event.diagnostics['reason'] == 'userLeaveHint') {
+      unawaited(_requestPictureInPicture());
+    }
+    if (_pictureInPictureActive != event.isActive) {
+      _mutate(() {
+        _pictureInPictureActive = event.isActive;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -193,6 +193,15 @@ final class _MediaListenModeViewState extends State<MediaListenModeView> {
           children: [
             Row(
               children: [
+                MediaListenTvAction(
+                  key: const ValueKey<String>('listen-return-video'),
+                  debugLabel: 'tv_listen_return_video',
+                  icon: Icons.arrow_back_rounded,
+                  label: '退出听视频',
+                  iconOnly: true,
+                  onTap: widget.onReturnToVideo,
+                ),
+                const SizedBox(width: 14),
                 Icon(
                   Icons.headphones_rounded,
                   size: 28,
@@ -208,12 +217,6 @@ final class _MediaListenModeViewState extends State<MediaListenModeView> {
                   ),
                 ),
                 const Spacer(),
-                MediaListenTvAction(
-                  debugLabel: 'tv_listen_return_video',
-                  icon: Icons.ondemand_video_rounded,
-                  label: '返回视频',
-                  onTap: widget.onReturnToVideo,
-                ),
               ],
             ),
             const SizedBox(height: 22),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -138,6 +139,9 @@ void main() {
         MediaPlaybackPresentationMode.phone,
     MediaPlayerDeviceControls? deviceControls,
     MediaHistoryStore? historyStore,
+    Widget? danmakuSettingsSurface,
+    ValueListenable<MediaDanmakuOverlaySettings>? danmakuSettingsListenable,
+    ValueChanged<MediaDanmakuOverlaySettings>? onDanmakuSettingsChanged,
     int initialPositionMs = 0,
     VesperPlayerSnapshot? initialSnapshot,
   }) async {
@@ -170,6 +174,9 @@ void main() {
           binding: binding,
           deviceControls: deviceControls ?? const MediaNoopDeviceControls(),
           presentation: _shellPresentation,
+          danmakuSettingsSurface: danmakuSettingsSurface,
+          danmakuSettingsListenable: danmakuSettingsListenable,
+          onDanmakuSettingsChanged: onDanmakuSettingsChanged,
         ),
       ),
     );
@@ -200,6 +207,12 @@ void main() {
         find.byKey(const ValueKey<String>('listen-mode-container')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const ValueKey<String>('listen-return-video')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('退出听视频'), findsOneWidget);
+      expect(find.byIcon(Icons.ondemand_video_rounded), findsNothing);
       expect(find.text('正在播放'), findsOneWidget);
       expect(harness.platform.createCalls, initialCreateCalls);
       expect(harness.platform.selectSourceCalls, 1);
@@ -360,7 +373,12 @@ void main() {
         find.byKey(const ValueKey<String>('listen-mode-container')),
         findsOneWidget,
       );
-      expect(find.text('返回视频'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('listen-return-video')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('退出听视频'), findsOneWidget);
+      expect(find.text('返回视频'), findsNothing);
       expect(find.text('字幕'), findsOneWidget);
       expect(find.text('合集'), findsOneWidget);
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_listen_播放');
@@ -1938,39 +1956,324 @@ void main() {
     testWidgets('未声明弹幕时无 overlay 挂载', (tester) async {
       await pumpShell(tester);
       expect(find.byType(MediaDanmakuLayer), findsNothing);
+      expect(
+        tester
+            .widget<vesper_ui.VesperPlayerStage>(
+              find.byType(vesper_ui.VesperPlayerStage),
+            )
+            .contentOverlay,
+        isNull,
+      );
     });
 
-    testWidgets('声明弹幕时挂载 overlay', (tester) async {
+    testWidgets('声明弹幕时通过 SDK contentOverlay 挂载', (tester) async {
       final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
       await pumpShell(tester, adapter: adapter);
 
       expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+      expect(
+        tester
+            .widget<vesper_ui.VesperPlayerStage>(
+              find.byType(vesper_ui.VesperPlayerStage),
+            )
+            .contentOverlay,
+        isA<MediaDanmakuLayer>(),
+      );
     });
 
-    testWidgets(
-      '未声明 DLNA 时 Android 不显示投屏按钮',
-      (tester) async {
-        await pumpShell(tester);
+    testWidgets('横屏控制栏按播放、弹幕、字幕、倍速、画质、全屏排序', (tester) async {
+      final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
+      final snapshot = _shellSnapshot.copyWith(
+        capabilities: const VesperPlayerCapabilities(
+          supportsSubtitleTrackSelection: true,
+        ),
+      );
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        initialSnapshot: snapshot,
+        danmakuSettingsSurface: const SizedBox(
+          key: ValueKey<String>('host-danmaku-settings'),
+        ),
+      );
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
 
-        expect(find.byType(StageDlnaProjectionButton), findsNothing);
-      },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
-    );
+      final play = find.byIcon(Icons.play_arrow_rounded);
+      final toggle = find.byKey(const ValueKey<String>('toggle-danmaku'));
+      final danmakuSettings = find.byKey(
+        const ValueKey<String>('open-danmaku-settings'),
+      );
+      final subtitleSettings = find.byKey(
+        const ValueKey<String>('open-subtitle-settings'),
+      );
+      final pills = find.byType(vesper_ui.VesperStagePillButton);
+      final fullscreen = find.byIcon(Icons.fullscreen_exit_rounded);
 
-    testWidgets(
-      '声明 DLNA 时 Android 显示投屏按钮',
-      (tester) async {
-        final adapter = _ShellAdapter(
-          dlnaConfig: const MediaDlnaConfig(
-            formatAdaptation: mediaDlnaFormatAdaptationConfig,
-          ),
-        );
-        await pumpShell(tester, adapter: adapter);
+      expect(
+        find.byKey(const ValueKey<String>('landscape-control-bar-leading')),
+        findsOneWidget,
+      );
+      expect(play, findsOneWidget);
+      expect(toggle, findsOneWidget);
+      expect(danmakuSettings, findsOneWidget);
+      expect(subtitleSettings, findsOneWidget);
+      expect(pills, findsNWidgets(2));
+      expect(fullscreen, findsOneWidget);
+      expect(tester.getCenter(play).dx, lessThan(tester.getCenter(toggle).dx));
+      expect(
+        tester.getCenter(toggle).dx,
+        lessThan(tester.getCenter(danmakuSettings).dx),
+      );
+      expect(
+        tester.getCenter(danmakuSettings).dx,
+        lessThan(tester.getCenter(subtitleSettings).dx),
+      );
+      expect(
+        tester.getCenter(subtitleSettings).dx,
+        lessThan(tester.getCenter(pills.first).dx),
+      );
+      expect(
+        tester.getCenter(pills.first).dx,
+        lessThan(tester.getCenter(pills.last).dx),
+      );
+      expect(
+        tester.getCenter(pills.last).dx,
+        lessThan(tester.getCenter(fullscreen).dx),
+      );
+      expect(find.byType(TextField), findsNothing);
+    });
 
-        expect(find.byType(StageDlnaProjectionButton), findsOneWidget);
-      },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
-    );
+    testWidgets('横屏无可用宿主能力时插槽不占位', (tester) async {
+      final harness = await pumpShell(tester);
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+
+      final stage = tester.widget<vesper_ui.VesperPlayerStage>(
+        find.byType(vesper_ui.VesperPlayerStage),
+      );
+      expect(stage.landscapeControlBarLeading, isNull);
+      expect(
+        find.byKey(const ValueKey<String>('landscape-control-bar-leading')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('弹幕抽屉独立显示并在打开期间保持控制层', (tester) async {
+      final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        danmakuSettingsSurface: const SizedBox(
+          key: ValueKey<String>('host-danmaku-settings'),
+          child: Text('宿主弹幕设置'),
+        ),
+      );
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('open-danmaku-settings')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('danmaku-settings-drawer')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('host-danmaku-settings')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<vesper_ui.VesperPlayerStage>(
+              find.byType(vesper_ui.VesperPlayerStage),
+            )
+            .keepControlsVisible,
+        isTrue,
+      );
+
+      Navigator.of(
+        tester.element(
+          find.byKey(const ValueKey<String>('danmaku-settings-drawer')),
+        ),
+      ).pop();
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<vesper_ui.VesperPlayerStage>(
+              find.byType(vesper_ui.VesperPlayerStage),
+            )
+            .keepControlsVisible,
+        isFalse,
+      );
+    });
+
+    testWidgets('播放器标题返回键按当前显示模式切换语义', (tester) async {
+      final harness = await pumpShell(tester);
+      var stage = tester.widget<vesper_ui.VesperPlayerStage>(
+        find.byType(vesper_ui.VesperPlayerStage),
+      );
+      expect(stage.navigateBackSemanticLabel, '返回上一页');
+
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+      stage = tester.widget<vesper_ui.VesperPlayerStage>(
+        find.byType(vesper_ui.VesperPlayerStage),
+      );
+      expect(stage.navigateBackSemanticLabel, '退出全屏');
+      stage.onNavigateBack!();
+      await tester.pumpAndSettle();
+      expect(harness.viewModel.isFullscreen, isFalse);
+    });
+
+    testWidgets('手机弹幕按钮切换当前播放页的显示状态', (tester) async {
+      final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
+      await pumpShell(
+        tester,
+        adapter: adapter,
+        surfaceSize: const Size(390, 844),
+      );
+
+      expect(
+        tester
+            .widget<MediaDanmakuLayer>(find.byType(MediaDanmakuLayer))
+            .settings
+            .enabled,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('toggle-danmaku')));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<MediaDanmakuLayer>(find.byType(MediaDanmakuLayer))
+            .settings
+            .enabled,
+        isFalse,
+      );
+      expect(find.bySemanticsLabel('开启弹幕'), findsOneWidget);
+    });
+
+    testWidgets('TV 提供显示开关和简化设置，但不挂载评论或互动输入', (tester) async {
+      final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
+      final settings = ValueNotifier<MediaDanmakuOverlaySettings>(
+        const MediaDanmakuOverlaySettings(),
+      );
+      addTearDown(settings.dispose);
+      final binding = MediaPlaybackBinding(
+        contentSurfacesBuilder: (_) => _EntryAwareSurfaces(),
+      );
+      const tvEntry = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: 'P2',
+        durationSeconds: 120,
+      );
+      const tvTarget = MediaPlaybackTarget(
+        detail: MediaDetail(
+          mediaId: 'BV1TV',
+          title: 'TV 弹幕测试',
+          coverUrl: '',
+          pages: <MediaPlaybackEntry>[tvEntry],
+        ),
+        entry: tvEntry,
+      );
+      await pumpShell(
+        tester,
+        adapter: adapter,
+        binding: binding,
+        playbackTarget: tvTarget,
+        presentationMode: MediaPlaybackPresentationMode.tv,
+        surfaceSize: const Size(1920, 1080),
+        danmakuSettingsListenable: settings,
+        onDanmakuSettingsChanged: (value) => settings.value = value,
+      );
+
+      expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+      expect(find.byType(PlaybackContextTabs), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('playback-comments-tab')),
+        findsNothing,
+      );
+      expect(find.byType(TextField), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('toggle-danmaku')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('open-danmaku-settings')),
+        findsOneWidget,
+      );
+      expect(find.text('弹幕已开'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey<String>('toggle-danmaku')));
+      await tester.pump();
+      expect(find.text('弹幕已关'), findsOneWidget);
+      expect(
+        tester
+            .widget<MediaDanmakuLayer>(find.byType(MediaDanmakuLayer))
+            .settings
+            .enabled,
+        isFalse,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('open-danmaku-settings')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('弹幕设置'), findsWidgets);
+      final optionLabels = tester
+          .widget<TvPanelOptionList>(find.byType(TvPanelOptionList))
+          .options
+          .map((option) => option.label);
+      expect(
+        optionLabels,
+        containsAll(<String>[
+          '滚动弹幕',
+          '顶部弹幕',
+          '底部弹幕',
+          '字幕弹幕',
+          '高级弹幕',
+          '彩色弹幕',
+          '区域 3/4',
+          '透明度 80%',
+          '字号 标准',
+          '密度 标准',
+        ]),
+      );
+      expect(find.byType(TextField), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_滚动弹幕');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+
+      expect(settings.value.showScroll, isFalse);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_滚动弹幕');
+    });
+
+    testWidgets('未声明 DLNA 时 Android 不显示投屏按钮', (tester) async {
+      await pumpShell(tester);
+
+      expect(find.byType(StageDlnaProjectionButton), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+    testWidgets('声明 DLNA 时 Android 显示投屏按钮', (tester) async {
+      final adapter = _ShellAdapter(
+        dlnaConfig: const MediaDlnaConfig(
+          formatAdaptation: mediaDlnaFormatAdaptationConfig,
+        ),
+      );
+      await pumpShell(tester, adapter: adapter);
+
+      expect(find.byType(StageDlnaProjectionButton), findsOneWidget);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   });
 
   group('设备控制与历史接缝', () {
@@ -2471,7 +2774,23 @@ final class _IntroOnlySurfaces implements MediaContentSurfaces {
 
 final class _EmptyDanmakuProvider implements MediaDanmakuProvider {
   @override
-  Stream<MediaDanmakuEvent> danmakuFor(MediaPlaybackTarget target) async* {}
+  MediaDanmakuSession openSession(MediaPlaybackTarget target) {
+    return const _EmptyDanmakuSession();
+  }
+}
+
+final class _EmptyDanmakuSession implements MediaDanmakuSession {
+  const _EmptyDanmakuSession();
+
+  @override
+  Stream<MediaDanmakuSnapshot> get snapshots =>
+      const Stream<MediaDanmakuSnapshot>.empty();
+
+  @override
+  void updatePosition(int positionMs) {}
+
+  @override
+  Future<void> close() async {}
 }
 
 final class _NullCommentsSurfaces implements MediaContentSurfaces {
@@ -2780,6 +3099,21 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
 
   @override
   Future<void> stop(String playerId) async {}
+
+  @override
+  Future<void> setPictureInPictureConfiguration(
+    String playerId,
+    VesperPictureInPictureConfiguration configuration,
+  ) async {}
+
+  @override
+  Future<void> requestPictureInPicture(
+    String playerId, {
+    VesperPictureInPictureConfiguration? configuration,
+  }) async {}
+
+  @override
+  Future<void> exitPictureInPicture(String playerId) async {}
 
   @override
   Future<void> seekBy(String playerId, int deltaMs) async {

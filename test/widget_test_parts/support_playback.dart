@@ -671,6 +671,21 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   }
 
   @override
+  Future<void> setPictureInPictureConfiguration(
+    String playerId,
+    VesperPictureInPictureConfiguration configuration,
+  ) async {}
+
+  @override
+  Future<void> requestPictureInPicture(
+    String playerId, {
+    VesperPictureInPictureConfiguration? configuration,
+  }) async {}
+
+  @override
+  Future<void> exitPictureInPicture(String playerId) async {}
+
+  @override
   Future<void> setVideoTrackSelection(
     String playerId,
     VesperTrackSelection selection,

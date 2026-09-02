@@ -202,11 +202,13 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
   @override
   void didUpdateWidget(TvPanelOptionList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final focusedIndex = _focusNodes.indexWhere((node) => node.hasFocus);
     final optionsChanged =
         oldWidget.options.length != widget.options.length ||
         _selectedIndex(oldWidget.options) != _selectedIndex(widget.options) ||
         !_sameEnabledState(oldWidget.options, widget.options);
-    if (oldWidget.options.length != widget.options.length) {
+    final lengthChanged = oldWidget.options.length != widget.options.length;
+    if (lengthChanged) {
       final staleNodes = _focusNodes;
       _focusNodes = _createFocusNodes(widget.options);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -219,7 +221,13 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
         _focusNodes[index].canRequestFocus = widget.options[index].enabled;
       }
     }
-    if (oldWidget.panelKey != widget.panelKey || optionsChanged) {
+    final focusedOptionBecameDisabled =
+        focusedIndex >= 0 &&
+        focusedIndex < widget.options.length &&
+        !widget.options[focusedIndex].enabled;
+    if (oldWidget.panelKey != widget.panelKey ||
+        lengthChanged ||
+        (optionsChanged && focusedOptionBecameDisabled)) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _focusSelectedOption(),
       );

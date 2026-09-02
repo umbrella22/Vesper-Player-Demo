@@ -104,6 +104,7 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     _mutate(() {
       _displayMode = _MediaPlaybackDisplayMode.listen;
     });
+    _syncPictureInPictureConfiguration();
   }
 
   Future<void> _returnToVideoMode() async {
@@ -122,6 +123,7 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     _mutate(() {
       _displayMode = _MediaPlaybackDisplayMode.video;
     });
+    _syncPictureInPictureConfiguration();
   }
 
   void _setCastingSurfaceOpen(bool value) {

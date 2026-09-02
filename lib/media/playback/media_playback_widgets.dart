@@ -59,40 +59,46 @@ class TuningOptionButton extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: enabled ? onTap : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: selected && enabled
-                          ? FontWeight.w900
-                          : FontWeight.w700,
-                      fontSize: 14,
-                      height: 1.15,
-                    ),
-                  ),
-                  if (detail != null && detail.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      detail,
-                      maxLines: 2,
+                      label,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: visualTheme.textTertiary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 11,
-                        height: 1.2,
+                        color: color,
+                        fontWeight: selected && enabled
+                            ? FontWeight.w900
+                            : FontWeight.w700,
+                        fontSize: 14,
+                        height: 1.15,
                       ),
                     ),
+                    if (detail != null && detail.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        detail,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: visualTheme.textTertiary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

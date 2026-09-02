@@ -6,29 +6,85 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     required VesperPlayerSnapshot snapshot,
     required bool isFullscreen,
   }) {
+    _maybePollPictureInPictureAvailability(snapshot);
     final usesPortraitChrome = !isFullscreen;
-    final stage = vesper_ui.VesperPlayerStage(
+    final danmakuProvider = _viewModel.adapter.danmaku;
+    final danmakuOverlay = danmakuProvider == null
+        ? null
+        : MediaDanmakuLayer(
+            provider: danmakuProvider,
+            target: MediaPlaybackTarget(
+              detail: _viewModel.detail,
+              entry: _viewModel.selectedEntry,
+            ),
+            positionMs: snapshot.timeline.positionMs,
+            playbackState: snapshot.playbackState,
+            playbackRate: snapshot.playbackRate,
+            settings: _danmakuSettings,
+          );
+    return vesper_ui.VesperPlayerStage(
       controller: controller,
       snapshot: snapshot,
       isPortrait: usesPortraitChrome,
-      sheetOpen: _settingsSurfaceOpen || _castingSurfaceOpen || _dlnaPickerOpen,
+      sheetOpen: _playbackModalRouteOpen,
       deviceControls: widget.deviceControls,
+      contentOverlay: danmakuOverlay,
+      landscapeControlBarLeading: usesPortraitChrome
+          ? null
+          : _buildLandscapeControlBarLeading(controller, snapshot),
+      onNavigateBack: () {
+        if (isFullscreen) {
+          unawaited(_exitFullscreen());
+        } else {
+          unawaited(Navigator.of(context).maybePop());
+        }
+      },
+      navigateBackSemanticLabel: isFullscreen ? '退出全屏' : '返回上一页',
+      keepControlsVisible: _playbackModalRouteOpen,
+      pictureInPicturePresentation: _pictureInPictureActive,
       topBarPrimaryAction: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          vesper_ui.VesperStageIconButton(
-            key: const ValueKey<String>('enter-listen-mode'),
-            icon: Icons.headphones_rounded,
-            label: '听视频',
-            size: 38,
-            iconSize: 23,
-            containerAlpha: 0,
-            onPressed: _enterListenMode,
-          ),
+          if (usesPortraitChrome && danmakuProvider != null) ...[
+            vesper_ui.VesperStageIconButton(
+              key: const ValueKey<String>('toggle-danmaku'),
+              icon: _danmakuEnabled
+                  ? Icons.chat_bubble_rounded
+                  : Icons.chat_bubble_outline_rounded,
+              label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
+              size: 40,
+              iconSize: 22,
+              containerAlpha: 0,
+              onPressed: _toggleDanmaku,
+            ),
+            const SizedBox(width: 4),
+          ],
+          if (usesPortraitChrome)
+            vesper_ui.VesperStageIconButton(
+              key: const ValueKey<String>('enter-listen-mode'),
+              icon: Icons.headphones_rounded,
+              label: '听视频',
+              size: 38,
+              iconSize: 23,
+              containerAlpha: 0,
+              onPressed: _enterListenMode,
+            ),
           if (_buildStageProjectionAction(controller)
               case final projectionAction?) ...[
             const SizedBox(width: 4),
             projectionAction,
+          ],
+          if (_pictureInPictureSupported) ...[
+            const SizedBox(width: 4),
+            vesper_ui.VesperStageIconButton(
+              key: const ValueKey<String>('enter-picture-in-picture'),
+              icon: Icons.picture_in_picture_alt_rounded,
+              label: '小窗',
+              size: 38,
+              iconSize: 23,
+              containerAlpha: 0,
+              onPressed: () => unawaited(_requestPictureInPicture()),
+            ),
           ],
         ],
       ),
@@ -37,24 +93,68 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           unawaited(_openStageSheet(controller, sheet, usesPortraitChrome)),
       onToggleFullscreen: () => unawaited(_toggleFullscreen()),
     );
-    final danmakuProvider = _viewModel.adapter.danmaku;
-    if (danmakuProvider == null) {
-      return stage;
+  }
+
+  Widget? _buildLandscapeControlBarLeading(
+    VesperPlayerController controller,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    final hasDanmaku = _viewModel.adapter.danmaku != null;
+    final hasDanmakuSettings =
+        hasDanmaku && widget.danmakuSettingsSurface != null;
+    final hasSubtitleSettings =
+        snapshot.capabilities.supportsSubtitleTrackSelection;
+    if (!hasDanmaku && !hasSubtitleSettings) {
+      return null;
     }
-    return Stack(
-      fit: StackFit.expand,
+    return Row(
+      key: const ValueKey<String>('landscape-control-bar-leading'),
+      mainAxisSize: MainAxisSize.min,
       children: [
-        stage,
-        MediaDanmakuLayer(
-          provider: danmakuProvider,
-          target: MediaPlaybackTarget(
-            detail: _viewModel.detail,
-            entry: _viewModel.selectedEntry,
+        if (hasDanmaku) ...[
+          const SizedBox(width: 4),
+          vesper_ui.VesperStageIconButton(
+            key: const ValueKey<String>('toggle-danmaku'),
+            icon: _danmakuEnabled
+                ? Icons.chat_bubble_rounded
+                : Icons.chat_bubble_outline_rounded,
+            label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
+            size: 36,
+            iconSize: 20,
+            containerAlpha: 0,
+            onPressed: _toggleDanmaku,
           ),
-          positionMs: snapshot.timeline.positionMs,
-          playbackState: snapshot.playbackState,
-          playbackRate: snapshot.playbackRate,
-        ),
+        ],
+        if (hasDanmakuSettings) ...[
+          const SizedBox(width: 2),
+          vesper_ui.VesperStageIconButton(
+            key: const ValueKey<String>('open-danmaku-settings'),
+            icon: Icons.tune_rounded,
+            label: '弹幕设置',
+            size: 36,
+            iconSize: 20,
+            containerAlpha: 0,
+            onPressed: () => unawaited(_openDanmakuSettingsSurface()),
+          ),
+        ],
+        if (hasSubtitleSettings) ...[
+          const SizedBox(width: 2),
+          vesper_ui.VesperStageIconButton(
+            key: const ValueKey<String>('open-subtitle-settings'),
+            icon: Icons.subtitles_rounded,
+            label: '字幕设置',
+            size: 36,
+            iconSize: 20,
+            containerAlpha: 0,
+            onPressed: () => unawaited(
+              _openStageSheet(
+                controller,
+                vesper_ui.VesperPlayerStageSheet.subtitle,
+                false,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -247,6 +347,30 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       if (mounted) {
         _mutate(() {
           _settingsSurfaceOpen = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openDanmakuSettingsSurface() async {
+    final settings = widget.danmakuSettingsSurface;
+    if (!mounted || settings == null) {
+      return;
+    }
+    _mutate(() {
+      _danmakuSettingsSurfaceOpen = true;
+    });
+    try {
+      await showMediaPlaybackSideDrawer<void>(
+        context,
+        side: MediaPlaybackDrawerSide.trailing,
+        surfaceKey: const ValueKey<String>('danmaku-settings-drawer'),
+        builder: (_) => settings,
+      );
+    } finally {
+      if (mounted) {
+        _mutate(() {
+          _danmakuSettingsSurfaceOpen = false;
         });
       }
     }
