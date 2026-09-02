@@ -85,6 +85,8 @@ abstract final class BiliApiPaths {
   static const replyReply = '/x/v2/reply/reply';
   static const replyAdd = '/x/v2/reply/add';
   static const danmakuList = '/x/v1/dm/list.so';
+  static const danmakuSegWeb = '/x/v2/dm/web/seg.so';
+  static const danmakuViewWeb = '/x/v2/dm/web/view';
 
   // ---- 收藏 ----
   static const favResourceDeal = '/x/v3/fav/resource/deal';

@@ -1293,79 +1293,71 @@ void main() {
       },
     );
 
-    test(
-      'probe aborts a 200 full-body response without draining it',
-      () async {
-        // CDN 忽略 Range 以 200 返回完整文件时，探测只读响应头并立即断开
-        // body，绝不下拉整个视频。若实现回归为 drain，测试会挂到超时。
-        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-        addTearDown(() => server.close(force: true));
-        const fullSizeBytes = 8 * 1024 * 1024;
-        server.listen((request) {
-          request.response
-            ..statusCode = HttpStatus.ok
-            ..headers.contentLength = fullSizeBytes
-            ..add(List<int>.filled(1024, 1));
-          // 故意不 close：客户端应主动中止 body 读取。
-        });
-        final origin = 'http://${server.address.host}:${server.port}';
-        final client = BiliClient();
-        final options = _buildProbeTestOptions(origin);
+    test('probe aborts a 200 full-body response without draining it', () async {
+      // CDN 忽略 Range 以 200 返回完整文件时，探测只读响应头并立即断开
+      // body，绝不下拉整个视频。若实现回归为 drain，测试会挂到超时。
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      const fullSizeBytes = 8 * 1024 * 1024;
+      server.listen((request) {
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentLength = fullSizeBytes
+          ..add(List<int>.filled(1024, 1));
+        // 故意不 close：客户端应主动中止 body 读取。
+      });
+      final origin = 'http://${server.address.host}:${server.port}';
+      final client = BiliClient();
+      final options = _buildProbeTestOptions(origin);
 
-        final prepared = await client.prepareVerifiedDownloadAsset(
-          options: options,
-          qualityId: 80,
+      final prepared = await client.prepareVerifiedDownloadAsset(
+        options: options,
+        qualityId: 80,
+      );
+
+      expect(prepared.selectedVideo.sizeBytes, fullSizeBytes);
+      expect(prepared.selectedAudio.sizeBytes, fullSizeBytes);
+      expect(prepared.assetIndex.totalSizeBytes, fullSizeBytes * 2);
+    }, timeout: const Timeout(Duration(seconds: 10)));
+
+    test('probe timeout closes the stalled connection', () async {
+      // 服务端不返回响应头时，超时必须主动关闭底层连接，不能遗留悬挂
+      // 的后台连接。不访问任何公网地址。用原始 ServerSocket：HttpServer
+      // 会在 handler 抛错/返回时自动完成响应，干扰"连接被客户端关闭"
+      // 的观测。
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close());
+      final connectionClosed = Completer<void>();
+      server.listen((socket) {
+        // 故意不回应：客户端 abort 时服务端会读到 EOF（read onDone）。
+        // socket.done 需本地 close 才完成，不能用于观测对端 FIN。
+        socket.listen(
+          (_) {},
+          onDone: () {
+            if (!connectionClosed.isCompleted) {
+              connectionClosed.complete();
+            }
+          },
         );
+      });
+      final origin = 'http://${server.address.address}:${server.port}';
+      final client = BiliClient();
+      final options = _buildProbeTestOptions(origin);
 
-        expect(prepared.selectedVideo.sizeBytes, fullSizeBytes);
-        expect(prepared.selectedAudio.sizeBytes, fullSizeBytes);
-        expect(prepared.assetIndex.totalSizeBytes, fullSizeBytes * 2);
-      },
-      timeout: const Timeout(Duration(seconds: 10)),
-    );
-
-    test(
-      'probe timeout closes the stalled connection',
-      () async {
-        // 服务端不返回响应头时，超时必须主动关闭底层连接，不能遗留悬挂
-        // 的后台连接。不访问任何公网地址。用原始 ServerSocket：HttpServer
-        // 会在 handler 抛错/返回时自动完成响应，干扰"连接被客户端关闭"
-        // 的观测。
-        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-        addTearDown(() => server.close());
-        final connectionClosed = Completer<void>();
-        server.listen((socket) {
-          // 故意不回应：客户端 abort 时服务端会读到 EOF（read onDone）。
-          // socket.done 需本地 close 才完成，不能用于观测对端 FIN。
-          socket.listen(
-            (_) {},
-            onDone: () {
-              if (!connectionClosed.isCompleted) {
-                connectionClosed.complete();
-              }
-            },
-          );
-        });
-        final origin = 'http://${server.address.address}:${server.port}';
-        final client = BiliClient();
-        final options = _buildProbeTestOptions(origin);
-
-        await expectLater(
-          client.prepareVerifiedDownloadAsset(options: options, qualityId: 80),
-          throwsA(
-            isA<BiliApiException>().having(
-              (error) => error.toString(),
-              'message',
-              contains('timed out'),
-            ),
+      await expectLater(
+        client.prepareVerifiedDownloadAsset(options: options, qualityId: 80),
+        throwsA(
+          isA<BiliApiException>().having(
+            (error) => error.toString(),
+            'message',
+            contains('timed out'),
           ),
-        );
+        ),
+      );
 
-        // 超时后服务端必须观察到连接被客户端关闭。
-        await connectionClosed.future.timeout(const Duration(seconds: 5));
-      },
-      timeout: const Timeout(Duration(seconds: 25)),
-    );
+      // 超时后服务端必须观察到连接被客户端关闭。
+      await connectionClosed.future.timeout(const Duration(seconds: 5));
+    }, timeout: const Timeout(Duration(seconds: 25)));
 
     test(
       'iOS verified DASH download keeps generated manifest for SDK target write',
@@ -2205,7 +2197,7 @@ void main() {
   });
 
   group('BiliDanmakuParser', () {
-    test('parses supported and unsupported danmaku entries from xml', () {
+    test('parses ordinary and advanced danmaku entries from xml', () {
       const parser = BiliDanmakuParser();
       final entries = parser.parse('''
 <?xml version="1.0" encoding="UTF-8"?>
@@ -2221,7 +2213,37 @@ void main() {
       expect(entries.first.mode, BiliDanmakuMode.scroll);
       expect(entries[1].mode, BiliDanmakuMode.top);
       expect(entries[1].text, '<顶部>');
-      expect(entries[2].mode, BiliDanmakuMode.unsupported);
+      expect(entries[2].mode, BiliDanmakuMode.advanced);
+      expect(entries[2].senderHash, 'hash');
+      expect(entries.map((entry) => entry.weight), <int?>[0, 0, 0]);
+    });
+
+    test('preserves ordinary whitespace and missing weight', () {
+      const parser = BiliDanmakuParser();
+      final entries = parser.parse('''
+<i>
+  <d p="1,1,25,16777215,0,0,hash,11"> first  line\nsecond </d>
+  <d p="2,1,25,16777215,0,0,hash,12"> \n </d>
+</i>
+''');
+
+      expect(entries, hasLength(1));
+      expect(entries.single.text, ' first  line second ');
+      expect(entries.single.weight, isNull);
+    });
+
+    test('distinguishes missing, malformed and explicit XML weights', () {
+      const parser = BiliDanmakuParser();
+      final entries = parser.parse('''
+<i>
+  <d p="1,1,25,16777215,0,0,hash,11">missing</d>
+  <d p="2,1,25,16777215,0,0,hash,12,invalid">malformed</d>
+  <d p="3,1,25,16777215,0,0,hash,13,0">zero</d>
+  <d p="4,1,25,16777215,0,0,hash,14,6">weighted</d>
+</i>
+''');
+
+      expect(entries.map((entry) => entry.weight), <int?>[null, null, 0, 6]);
     });
   });
 

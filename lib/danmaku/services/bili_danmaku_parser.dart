@@ -29,9 +29,9 @@ final class BiliDanmakuParser {
       final colorValue = int.tryParse(parts[3]) ?? 0xFFFFFF;
       final text = biliDecodeHtmlEntities(
         rawText,
-      ).replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      ).replaceAll(RegExp(r'[\r\n]+'), ' ');
 
-      if (appearAtMs < 0 || text.isEmpty) {
+      if (appearAtMs < 0 || text.trim().isEmpty) {
         continue;
       }
 
@@ -43,6 +43,9 @@ final class BiliDanmakuParser {
           colorValue: colorValue,
           text: text,
           rowId: parts.length > 7 ? parts[7] : '$appearAtMs:$text',
+          weight: parts.length > 8 ? int.tryParse(parts[8]) : null,
+          pool: parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0,
+          senderHash: parts.length > 6 ? parts[6] : '',
         ),
       );
     }

@@ -711,6 +711,65 @@ class BiliClient {
     return response.body;
   }
 
+  Future<List<int>> fetchDanmakuSegment({
+    required String bvid,
+    required int cid,
+    required int aid,
+    required int segmentIndex,
+  }) {
+    return _transport.getBinaryData(
+      host: biliApiHost,
+      path: BiliApiPaths.danmakuSegWeb,
+      params: <String, Object?>{
+        'type': 1,
+        'oid': cid,
+        'segment_index': segmentIndex,
+        if (aid > 0) 'pid': aid,
+      },
+      useWbi: true,
+      referer: biliVideoReferer(bvid),
+    );
+  }
+
+  Future<List<int>> fetchDanmakuView({
+    required String bvid,
+    required int cid,
+    required int aid,
+  }) {
+    return _transport.getBinaryData(
+      host: biliApiHost,
+      path: BiliApiPaths.danmakuViewWeb,
+      params: <String, Object?>{'type': 1, 'oid': cid, if (aid > 0) 'pid': aid},
+      useWbi: true,
+      referer: biliVideoReferer(bvid),
+    );
+  }
+
+  Future<List<int>> fetchDanmakuSpecialResource({
+    required String bvid,
+    required String resourceUrl,
+  }) {
+    final uri = Uri.tryParse(resourceUrl);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.userInfo.isNotEmpty ||
+        !_isAllowedBiliDanmakuResourceHost(uri.host)) {
+      final rejectedHost = uri == null || uri.host.isEmpty
+          ? '<none>'
+          : uri.host;
+      debugPrint('[BiliDanmaku] rejected special resource host: $rejectedHost');
+      throw const FormatException('unsupported danmaku resource URL');
+    }
+    return _transport
+        .sendRequest(
+          uri,
+          referer: biliVideoReferer(bvid),
+          acceptHeader: 'application/octet-stream, */*',
+          includeCookies: false,
+        )
+        .then((response) => response.bodyBytes);
+  }
+
   Future<BiliVideoEngagement> fetchVideoEngagement(
     BiliVideoDetail detail,
   ) async {
@@ -1092,6 +1151,15 @@ class BiliClient {
     return null;
   }
 }
+
+bool _isAllowedBiliDanmakuResourceHost(String host) {
+  final normalized = host.toLowerCase();
+  return _biliDanmakuResourceDomains.any(
+    (domain) => normalized == domain || normalized.endsWith('.$domain'),
+  );
+}
+
+const _biliDanmakuResourceDomains = <String>['bilibili.com', 'hdslb.com'];
 
 String _readBiliCommentMessage(Object? value) {
   final raw = readString(value) ?? '';

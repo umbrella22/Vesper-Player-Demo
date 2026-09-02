@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
@@ -133,6 +134,54 @@ class BiliTransport {
         }
 
         final recovered = await _recoverFromRiskControl(response.body);
+        if (!recovered) {
+          rethrow;
+        }
+      }
+    }
+
+    throw const BiliApiException(
+      'Bilibili 风控重试失败，请稍后重试或登录后再试。',
+      code: biliRiskControlCode,
+    );
+  }
+
+  /// Returns an endpoint's raw binary payload while retaining the same WBI,
+  /// cookie, timeout, and risk-recovery behavior as JSON API requests.
+  Future<List<int>> getBinaryData({
+    required String host,
+    required String path,
+    Map<String, Object?> params = const <String, Object?>{},
+    bool useWbi = false,
+    String referer = biliDefaultReferer,
+    bool ensureReady = true,
+  }) async {
+    if (ensureReady) {
+      await this.ensureReady();
+    }
+
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      final query = _buildQuery(params: params, useWbi: useWbi);
+      final response = await sendRequest(
+        Uri.https(host, path, _stringifyQuery(query)),
+        referer: referer,
+        acceptHeader: 'application/octet-stream, */*',
+      );
+      if (!_looksLikeJson(response.bodyBytes)) {
+        return response.bodyBytes;
+      }
+
+      final body = response.body;
+      try {
+        decodeApiData(body);
+        throw const BiliApiException(
+          'Bilibili returned JSON where binary data was expected.',
+        );
+      } on BiliApiException catch (error) {
+        if (error.code != biliRiskControlCode || attempt > 0) {
+          rethrow;
+        }
+        final recovered = await _recoverFromRiskControl(body);
         if (!recovered) {
           rethrow;
         }
@@ -305,7 +354,11 @@ class BiliTransport {
     final response = await request.close();
     _storeResponseCookies(uri, response.cookies);
 
-    final body = await utf8.decodeStream(response);
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in response) {
+      builder.add(chunk);
+    }
+    final bodyBytes = builder.takeBytes();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw BiliApiException(
         'HTTP ${response.statusCode} from Bilibili.',
@@ -313,7 +366,10 @@ class BiliTransport {
       );
     }
 
-    return BiliHttpResponse(statusCode: response.statusCode, body: body);
+    return BiliHttpResponse(
+      statusCode: response.statusCode,
+      bodyBytes: bodyBytes,
+    );
   }
 
   void _configureClientTimeouts(
@@ -562,6 +618,16 @@ class BiliTransport {
     }
   }
 
+  bool _looksLikeJson(List<int> bytes) {
+    for (final byte in bytes) {
+      if (byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D) {
+        continue;
+      }
+      return byte == 0x7B || byte == 0x5B;
+    }
+    return false;
+  }
+
   bool get _hasBuvidCookies =>
       (_cookies['buvid3'] ?? '').isNotEmpty &&
       (_cookies['buvid4'] ?? '').isNotEmpty;
@@ -599,8 +665,10 @@ class BiliTransport {
 }
 
 final class BiliHttpResponse {
-  const BiliHttpResponse({required this.statusCode, required this.body});
+  const BiliHttpResponse({required this.statusCode, required this.bodyBytes});
 
   final int statusCode;
-  final String body;
+  final List<int> bodyBytes;
+
+  String get body => utf8.decode(bodyBytes);
 }
