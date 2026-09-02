@@ -23,8 +23,10 @@ final class BiliUiModeController {
 
   ValueListenable<bool> get tvModeListenable => _tvMode;
 
-  Future<BiliUiMode> refresh() async {
-    final mode = await _resolver.resolveEffectiveUiMode();
+  Future<BiliUiMode> refresh({bool? knownForceTvMode}) async {
+    final mode = await _resolver.resolveEffectiveUiMode(
+      knownForceTvMode: knownForceTvMode,
+    );
     if (!_isDisposed) {
       _tvMode.value = mode == BiliUiMode.tv;
     }

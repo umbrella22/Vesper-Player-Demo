@@ -9,6 +9,7 @@ import android.media.MediaScannerConnection
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
@@ -16,10 +17,41 @@ import android.provider.Settings
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.github.umbrella22.vesper.player.flutter.android.VesperPlayerAndroidPlugin
 import java.io.File
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterFragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Impeller's first OpenGL frame is substantially slower on tested API 29
+        // hardware. Keep newer Android/HCPP devices on the default renderer.
+        if (
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q &&
+            !intent.hasExtra(ENABLE_IMPELLER_INTENT_EXTRA)
+        ) {
+            intent.putExtra(ENABLE_IMPELLER_INTENT_EXTRA, false)
+        }
+        super.onCreate(savedInstanceState)
+    }
+
+    // Vesper SDK 的 PiP autoEnter（Android 8–11）与模式变化事件依赖宿主
+    // Activity 转发这两个生命周期回调；Android 12+ 由系统 autoEnter 生效。
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        VesperPlayerAndroidPlugin.dispatchPictureInPictureUserLeaveHint(this)
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        VesperPlayerAndroidPlugin.dispatchPictureInPictureModeChanged(
+            this,
+            isInPictureInPictureMode,
+        )
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -287,5 +319,9 @@ class MainActivity : FlutterFragmentActivity() {
         ).joinToString(separator = " ").lowercase()
         return hardwareIdentity.contains("mt67") ||
             hardwareIdentity.contains("mediatek")
+    }
+
+    private companion object {
+        const val ENABLE_IMPELLER_INTENT_EXTRA = "enable-impeller"
     }
 }

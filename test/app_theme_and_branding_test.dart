@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,41 @@ void main() {
       await file.writeAsString('{"themePreference":"future-theme"}');
       expect(await settings.getThemePreference(), AppThemePreference.system);
     });
+
+    test(
+      'corrupt settings fall back and the next write repairs the file',
+      () async {
+        await root.create(recursive: true);
+        final file = File('${root.path}/vesper-app-settings.json');
+        await file.writeAsString('{"forceTvMode":');
+
+        final snapshot = await settings.loadSnapshot();
+
+        expect(snapshot.forceTvMode, isFalse);
+        expect(snapshot.glassQuality, isNull);
+        expect(snapshot.themePreference, AppThemePreference.system);
+        expect(
+          snapshot.danmakuSettings,
+          AppSettingsSnapshot.defaults.danmakuSettings,
+        );
+
+        await settings.setForceTvMode(true);
+
+        final repaired = jsonDecode(await file.readAsString()) as Map;
+        expect(repaired['forceTvMode'], isTrue);
+      },
+    );
+
+    test(
+      'invalid force TV representation falls back without throwing',
+      () async {
+        await root.create(recursive: true);
+        final file = File('${root.path}/vesper-app-settings.json');
+        await file.writeAsString('{"forceTvMode":"true"}');
+
+        expect((await settings.loadSnapshot()).forceTvMode, isFalse);
+      },
+    );
 
     test('controller maps preferences and persists changes', () async {
       final controller = AppThemeController(settings: settings);

@@ -17,8 +17,8 @@ final class BiliUiModeResolver {
 
   BiliUiMode? get currentMode => _currentMode;
 
-  Future<BiliUiMode> resolveEffectiveUiMode() async {
-    final forceTvMode = await _appSettings.getForceTvMode();
+  Future<BiliUiMode> resolveEffectiveUiMode({bool? knownForceTvMode}) async {
+    final forceTvMode = knownForceTvMode ?? await _appSettings.getForceTvMode();
     if (forceTvMode) {
       _currentMode = BiliUiMode.tv;
       return BiliUiMode.tv;
