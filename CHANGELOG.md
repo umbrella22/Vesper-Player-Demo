@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.12.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.11.0...vesper_media-v1.12.0) (2026-09-02)
+
+
+### Features
+
+* add resilient startup and persistent player settings ([e4319a6](https://github.com/umbrella22/Vesper-Player-Demo/commit/e4319a6a6393ee95c486bb42192fc4cce33d06a8))
+* add segmented advanced danmaku support ([9deb270](https://github.com/umbrella22/Vesper-Player-Demo/commit/9deb270ed44be3a3b1f8f1f23c44b278bd64f37f))
+* integrate danmaku with player controls ([6b57d42](https://github.com/umbrella22/Vesper-Player-Demo/commit/6b57d4236da709bef651a0bc802309326c61a51b))
+
+
+### Documentation
+
+* describe danmaku runtime and safety boundaries ([8a09400](https://github.com/umbrella22/Vesper-Player-Demo/commit/8a09400edfb8a9ece3b688451df6a0b609014a89))
+
 ## [1.11.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.10.2...vesper_media-v1.11.0) (2026-08-31)
 
 
