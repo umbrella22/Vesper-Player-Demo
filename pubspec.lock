@@ -574,66 +574,66 @@ packages:
     dependency: "direct main"
     description:
       name: vesper_player
-      sha256: "313543142390a15e0310f81f661d44a6a274ad6cab454fbcc13d30af53d3c798"
+      sha256: d0ee2ca2b97224c71e340550782b07300e487895ceff585216746c22b4233d7e
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_android:
     dependency: transitive
     description:
       name: vesper_player_android
-      sha256: "4ffd7837e92f1862c22a6da665ca9f1f297780dc54ea795ed668ae6003048f7f"
+      sha256: ddc3139aa8b7100b1fe46c1a0b85ff773eeee41f270ead42200d45203ff5be07
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_external_playback:
     dependency: "direct main"
     description:
       name: vesper_player_external_playback
-      sha256: "5848bd31eb4a176ac1cc132096f79caf6b7b74836986c2157b3eadd3602ad340"
+      sha256: "6420a3de6ec653f29904ed8f86f18c27e9963ad18abb3df5a14cc473c3175e6e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_ios:
     dependency: transitive
     description:
       name: vesper_player_ios
-      sha256: "2034a8f982344ab9cc481c4762c35ffaad1aa66a27f89d0fdf583430c3518356"
+      sha256: "2f42a47fe9f223671363f6f0262ed1756f165db1613387a55c4e193f8d9e06cf"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_platform_interface:
     dependency: transitive
     description:
       name: vesper_player_platform_interface
-      sha256: f9fd41271f57f14b65939f1f7ace3de4a496ba43fa0873d8aef7709abe925b59
+      sha256: "9edb3c063fafdc92ed657a15e7826588c5e3ce8ed5fb40145a16e60d546fbe8b"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_remux_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_remux_ffmpeg
-      sha256: c2c3fb1fe9dd463c63d4bb4e35f49e609fe470e919726b051ab0d39fd04f4117
+      sha256: "2272a65d6ba3cb9476e2769f70b2c89a4eceebf16d158149502dd48724db3eae"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_source_normalizer_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_source_normalizer_ffmpeg
-      sha256: "5038aa63baaffaf8c8d16858e3a097b9a20be03a99a3d323ab60ba40c7673cb4"
+      sha256: ba02caff7d95f2a7e6e137ca4f7be0e7dd2c7622d7133091716b48cd32d4239b
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vesper_player_ui:
     dependency: "direct main"
     description:
       name: vesper_player_ui
-      sha256: c1c01946022d5c4aede44734084748d64edd3badec2eef8925d0fc9f1792f63f
+      sha256: "6eba24ded9e5bf7862bb3c39c1385dc1596ff7a8cf4638b3988893d9d79734f1"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1-rc.1"
+    version: "0.5.1"
   vm_service:
     dependency: transitive
     description:
