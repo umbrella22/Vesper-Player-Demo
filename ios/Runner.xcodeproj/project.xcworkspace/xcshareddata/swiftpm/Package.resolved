@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/umbrella22/VesperPlayerKit.git",
       "state" : {
-        "revision" : "27a95c0005e4673b10c83427793b43d8c756211b",
-        "version" : "0.5.0"
+        "revision" : "1429356dc36d54916fb321a28315e6ad30d5307a",
+        "version" : "0.5.1-rc.1"
       }
     }
   ],

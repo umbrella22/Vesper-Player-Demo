@@ -201,8 +201,14 @@ void main() {
       ]) {
         expect(
           pubspec,
-          contains(RegExp('^  $package: \\^', multiLine: true)),
-          reason: '$package uses a hosted version constraint',
+          contains(
+            RegExp(
+              '^  $package: \\^?\\d+\\.\\d+\\.\\d+'
+              '(?:-[0-9A-Za-z.-]+)?\\s*\$',
+              multiLine: true,
+            ),
+          ),
+          reason: '$package uses a scalar hosted version constraint',
         );
       }
       expect(pubspec, isNot(contains('dependency_overrides:')));
