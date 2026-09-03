@@ -344,6 +344,48 @@ void main() {
     expect(end.dy, closeTo(size.height * 0.8, 0.01));
   });
 
+  testWidgets('高级弹幕限制同屏数量且仅渐变透明度使用合成层', (tester) async {
+    final advancedEvents = <MediaAdvancedDanmakuEvent>[
+      for (var index = 0; index < 12; index += 1)
+        _advancedEvent(id: 'advanced-${index.toString().padLeft(2, '0')}'),
+    ];
+    advancedEvents[1] = _advancedEvent(
+      id: 'advanced-01',
+      alphaFrom: 1,
+      alphaTo: 0.2,
+    );
+    final provider = _FakeDanmakuProvider(
+      const <MediaDanmakuEvent>[],
+      advancedEvents: advancedEvents,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaDanmakuLayer(
+          provider: provider,
+          target: target,
+          positionMs: 1000,
+          playbackState: VesperPlaybackState.paused,
+          playbackRate: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final (painter, size) = _painterAndSize(tester);
+    expect(
+      painter.debugVisibleAdvancedEventIdsAt(positionMs: 1000, size: size),
+      <String>[
+        for (var index = 0; index < 8; index += 1)
+          'advanced-${index.toString().padLeft(2, '0')}',
+      ],
+    );
+    expect(
+      painter.debugAdvancedOpacityLayerEventIdsAt(positionMs: 1000, size: size),
+      <String>['advanced-01'],
+    );
+  });
+
   testWidgets('显示区域、密度和字号设置改变确定性渲染计划', (tester) async {
     final events = <MediaDanmakuEvent>[
       const MediaDanmakuEvent(
@@ -431,6 +473,79 @@ void main() {
     expect(expandedFont!.dx, lessThan(compactFont!.dx));
   });
 
+  testWidgets('关闭后重新开启弹幕会复用既有布局缓存', (tester) async {
+    const events = <MediaDanmakuEvent>[
+      MediaDanmakuEvent(id: 'cached', timeMs: 0, text: '缓存弹幕'),
+    ];
+
+    Widget build(bool enabled) => MaterialApp(
+      home: SizedBox.expand(
+        child: MediaDanmakuOverlay(
+          events: events,
+          positionMs: 1000,
+          playbackState: VesperPlaybackState.paused,
+          playbackRate: 1,
+          settings: MediaDanmakuOverlaySettings(enabled: enabled),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(true));
+    await tester.pump();
+    var (painter, size) = _painterAndSize(tester);
+    expect(painter.debugStandardLayoutBuildCount(size), 1);
+
+    await tester.pumpWidget(build(false));
+    await tester.pump();
+    expect(_danmakuPaintFinder, findsNothing);
+
+    await tester.pumpWidget(build(true));
+    await tester.pump();
+    (painter, size) = _painterAndSize(tester);
+    expect(painter.debugStandardLayoutBuildCount(size), 1);
+  });
+
+  testWidgets('高密度弹幕使用滚动窗口和有界文字缓存', (tester) async {
+    final events = <MediaDanmakuEvent>[
+      for (var index = 0; index < 3000; index += 1)
+        MediaDanmakuEvent(
+          id: 'dense-$index',
+          timeMs: index * 40,
+          text: '高密度弹幕 $index',
+        ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox.expand(
+          child: MediaDanmakuOverlay(
+            events: events,
+            positionMs: 20000,
+            playbackState: VesperPlaybackState.paused,
+            playbackRate: 1,
+            settings: const MediaDanmakuOverlaySettings(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final (painter, size) = _painterAndSize(tester);
+    final windowCount = painter.debugStandardWindowEventCountAt(
+      positionMs: 20000,
+      size: size,
+    );
+    expect(windowCount, greaterThan(256));
+    expect(windowCount, lessThan(events.length));
+    expect(
+      painter.debugCachedTextLayoutCountAt(positionMs: 20000, size: size),
+      256,
+    );
+
+    expect(painter.debugStandardLayoutBuildCount(size, positionMs: 34000), 1);
+    expect(painter.debugStandardLayoutBuildCount(size, positionMs: 36000), 2);
+  });
+
   testWidgets('替换播放目标会关闭旧会话并打开新会话', (tester) async {
     final provider = _FakeDanmakuProvider(const <MediaDanmakuEvent>[]);
 
@@ -471,6 +586,45 @@ void main() {
     expect(firstSession.closed, isTrue);
     expect(provider.sessions, hasLength(2));
   });
+
+  testWidgets('诊断开启时弹幕指标最多每 500ms 合并上报一次', (tester) async {
+    final provider = _FakeDanmakuProvider(const <MediaDanmakuEvent>[
+      MediaDanmakuEvent(id: 'metric', timeMs: 0, text: 'metric'),
+    ]);
+    final reports = <MediaDanmakuOverlayMetrics>[];
+
+    Widget buildLayer(bool enabled) => MaterialApp(
+      home: MediaDanmakuLayer(
+        provider: provider,
+        target: target,
+        positionMs: 0,
+        playbackState: VesperPlaybackState.playing,
+        playbackRate: 1,
+        settings: MediaDanmakuOverlaySettings(enabled: enabled),
+        onMetricsChanged: reports.add,
+      ),
+    );
+
+    await tester.pumpWidget(buildLayer(true));
+    expect(reports, hasLength(1));
+
+    await tester.pumpWidget(buildLayer(false));
+    await tester.pump();
+    expect(reports, hasLength(1));
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(reports, hasLength(2));
+    expect(reports.last.active, isFalse);
+    expect(reports.last.loadedBasicItemCount, 1);
+
+    await tester.pumpWidget(buildLayer(true));
+    await tester.pump();
+    expect(reports, hasLength(2));
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(reports, hasLength(3));
+    expect(reports.last.active, isTrue);
+  });
 }
 
 final Finder _danmakuPaintFinder = find.byWidgetPredicate(
@@ -491,6 +645,8 @@ MediaAdvancedDanmakuEvent _advancedEvent({
   int durationMs = 4000,
   int motionDurationMs = 1000,
   int motionDelayMs = 0,
+  double alphaFrom = 1,
+  double alphaTo = 1,
   List<MediaDanmakuPoint> path = const <MediaDanmakuPoint>[
     MediaDanmakuPoint(0.5, 0.5),
   ],
@@ -503,8 +659,8 @@ MediaAdvancedDanmakuEvent _advancedEvent({
     durationMs: durationMs,
     motionDurationMs: motionDurationMs,
     motionDelayMs: motionDelayMs,
-    alphaFrom: 1,
-    alphaTo: 1,
+    alphaFrom: alphaFrom,
+    alphaTo: alphaTo,
     rotationZDegrees: 0,
     rotationYDegrees: 0,
     color: color,

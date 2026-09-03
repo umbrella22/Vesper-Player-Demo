@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/scheduler.dart';
@@ -7,6 +8,39 @@ import 'package:vesper_player/vesper_player.dart';
 
 import '../capabilities/media_danmaku.dart';
 import '../models/media_playback_target.dart';
+
+final class MediaDanmakuOverlayMetrics {
+  const MediaDanmakuOverlayMetrics({
+    required this.active,
+    required this.loadedBasicItemCount,
+    required this.loadedAdvancedItemCount,
+    required this.advancedEffectsActive,
+  });
+
+  final bool active;
+  final int loadedBasicItemCount;
+  final int loadedAdvancedItemCount;
+  final bool advancedEffectsActive;
+
+  bool get hasItems => loadedBasicItemCount + loadedAdvancedItemCount > 0;
+
+  @override
+  bool operator ==(Object other) {
+    return other is MediaDanmakuOverlayMetrics &&
+        other.active == active &&
+        other.loadedBasicItemCount == loadedBasicItemCount &&
+        other.loadedAdvancedItemCount == loadedAdvancedItemCount &&
+        other.advancedEffectsActive == advancedEffectsActive;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    active,
+    loadedBasicItemCount,
+    loadedAdvancedItemCount,
+    advancedEffectsActive,
+  );
+}
 
 /// 弹幕 overlay 的平台无关显示与文字过滤设置。
 final class MediaDanmakuOverlaySettings {
@@ -161,6 +195,24 @@ bool _sameStringList(List<String> left, List<String> right) {
   return true;
 }
 
+bool _sameDanmakuRenderSettings(
+  MediaDanmakuOverlaySettings left,
+  MediaDanmakuOverlaySettings right,
+) {
+  return left.opacity == right.opacity &&
+      left.density == right.density &&
+      left.fontScale == right.fontScale &&
+      left.displayArea == right.displayArea &&
+      left.showScroll == right.showScroll &&
+      left.showTop == right.showTop &&
+      left.showBottom == right.showBottom &&
+      left.showReverse == right.showReverse &&
+      left.showCaption == right.showCaption &&
+      left.showAdvanced == right.showAdvanced &&
+      left.showColor == right.showColor &&
+      _sameStringList(left.blockedKeywords, right.blockedKeywords);
+}
+
 /// 通用弹幕画布。Ticker 只通知 painter 重绘，不重建 widget 树。
 class MediaDanmakuOverlay extends StatefulWidget {
   const MediaDanmakuOverlay({
@@ -186,12 +238,16 @@ class MediaDanmakuOverlay extends StatefulWidget {
 
 class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
     with SingleTickerProviderStateMixin {
+  static const Duration _reducedFrameInterval = Duration(milliseconds: 33);
+  static const int _highVolumeEventThreshold = 5000;
+
   late final _MediaDanmakuClock _clock;
   late final Ticker _ticker;
   final _DanmakuTextCache _textCache = _DanmakuTextCache();
   final _DanmakuLayoutCache _layoutCache = _DanmakuLayoutCache();
   final _AdvancedDanmakuLayoutCache _advancedLayoutCache =
       _AdvancedDanmakuLayoutCache();
+  Duration? _lastPaintTick;
 
   @override
   void initState() {
@@ -201,7 +257,7 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
       playbackState: widget.playbackState,
       playbackRate: widget.playbackRate,
     );
-    _ticker = createTicker((_) => _clock.notifyFrame());
+    _ticker = createTicker(_handleTick);
     _syncTicker();
   }
 
@@ -217,18 +273,7 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
         playbackRate: widget.playbackRate,
       );
     }
-    if (!identical(oldWidget.events, widget.events) ||
-        !identical(oldWidget.advancedEvents, widget.advancedEvents) ||
-        oldWidget.settings != widget.settings) {
-      _textCache.retainKeys(<String>{
-        for (final event in widget.events)
-          if (widget.settings.allowsStandardEvent(event))
-            'standard:${event.id}',
-        for (final event in widget.advancedEvents)
-          if (widget.settings.allowsAdvancedEvent(event))
-            'advanced:${event.id}',
-      });
-    }
+    _lastPaintTick = null;
     _syncTicker();
   }
 
@@ -271,10 +316,28 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
         widget.settings.enabled &&
         (widget.events.isNotEmpty || widget.advancedEvents.isNotEmpty);
     if (shouldTick && !_ticker.isActive) {
+      _lastPaintTick = null;
       _ticker.start();
     } else if (!shouldTick && _ticker.isActive) {
       _ticker.stop();
+      _lastPaintTick = null;
     }
+  }
+
+  void _handleTick(Duration elapsed) {
+    final interval =
+        widget.advancedEvents.isNotEmpty ||
+            widget.events.length >= _highVolumeEventThreshold
+        ? _reducedFrameInterval
+        : Duration.zero;
+    final lastPaintTick = _lastPaintTick;
+    if (interval > Duration.zero &&
+        lastPaintTick != null &&
+        elapsed - lastPaintTick < interval) {
+      return;
+    }
+    _lastPaintTick = elapsed;
+    _clock.notifyFrame();
   }
 }
 
@@ -295,6 +358,7 @@ class MediaDanmakuPainter extends CustomPainter {
   static const int _scrollDurationMs = 6200;
   static const int _pinnedDurationMs = 4200;
   static const int _maximumVisibleDurationMs = 12000;
+  static const int _maximumVisibleAdvancedCount = 8;
 
   final List<MediaDanmakuEvent> _events;
   final List<MediaAdvancedDanmakuEvent> _advancedEvents;
@@ -313,12 +377,18 @@ class MediaDanmakuPainter extends CustomPainter {
     }
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final plans = _plansFor(size);
     final positionMs = _clock.currentPositionMs;
+    final plans = _plansFor(size, positionMs);
     for (final plan in _visiblePlans(plans, positionMs)) {
       final offset = _offsetFor(plan, size.width, positionMs);
       if (offset != null) {
-        plan.textPainter.paint(canvas, offset);
+        _textCache
+            .resolve(
+              event: plan.event,
+              fontSize: plan.fontSize,
+              opacity: _settings.opacity.clamp(0.0, 1.0).toDouble(),
+            )
+            .paint(canvas, offset);
       }
     }
     final advancedPlans = _advancedLayoutCache.resolve(
@@ -326,6 +396,7 @@ class MediaDanmakuPainter extends CustomPainter {
       size: size,
       settings: _settings,
       textCache: _textCache,
+      positionMs: positionMs,
     );
     for (final plan in _visibleAdvancedPlans(advancedPlans, positionMs)) {
       _paintAdvancedPlan(canvas, size, plan, positionMs);
@@ -344,9 +415,54 @@ class MediaDanmakuPainter extends CustomPainter {
         size: size,
         settings: _settings,
         textCache: _textCache,
+        positionMs: positionMs,
       ),
       positionMs,
     ).map((plan) => plan.event.id).toList(growable: false);
+  }
+
+  @visibleForTesting
+  List<String> debugAdvancedOpacityLayerEventIdsAt({
+    required int positionMs,
+    required Size size,
+  }) {
+    return _visibleAdvancedPlans(
+          _advancedLayoutCache.resolve(
+            events: _advancedEvents,
+            size: size,
+            settings: _settings,
+            textCache: _textCache,
+            positionMs: positionMs,
+          ),
+          positionMs,
+        )
+        .where((plan) => plan.usesOpacityLayer)
+        .map((plan) => plan.event.id)
+        .toList(growable: false);
+  }
+
+  @visibleForTesting
+  int debugStandardLayoutBuildCount(Size size, {int positionMs = 0}) {
+    _plansFor(size, positionMs);
+    return _layoutCache.buildCount;
+  }
+
+  @visibleForTesting
+  int debugCachedTextLayoutCountAt({
+    required int positionMs,
+    required Size size,
+  }) {
+    _plansFor(size, positionMs);
+    return _textCache.length;
+  }
+
+  @visibleForTesting
+  int debugStandardWindowEventCountAt({
+    required int positionMs,
+    required Size size,
+  }) {
+    _plansFor(size, positionMs);
+    return _layoutCache.windowEventCount;
   }
 
   @visibleForTesting
@@ -361,6 +477,7 @@ class MediaDanmakuPainter extends CustomPainter {
         size: size,
         settings: _settings,
         textCache: _textCache,
+        positionMs: positionMs,
       ),
       positionMs,
     )) {
@@ -377,7 +494,7 @@ class MediaDanmakuPainter extends CustomPainter {
     required Size size,
   }) {
     return _visiblePlans(
-      _plansFor(size),
+      _plansFor(size, positionMs),
       positionMs,
     ).map((plan) => plan.event.id).toList(growable: false);
   }
@@ -388,7 +505,7 @@ class MediaDanmakuPainter extends CustomPainter {
     required int positionMs,
     required Size size,
   }) {
-    for (final plan in _visiblePlans(_plansFor(size), positionMs)) {
+    for (final plan in _visiblePlans(_plansFor(size, positionMs), positionMs)) {
       if (plan.event.id == eventId) {
         return _offsetFor(plan, size.width, positionMs);
       }
@@ -396,12 +513,13 @@ class MediaDanmakuPainter extends CustomPainter {
     return null;
   }
 
-  List<_DanmakuRenderPlan> _plansFor(Size size) {
+  List<_DanmakuRenderPlan> _plansFor(Size size, int positionMs) {
     return _layoutCache.resolve(
       events: _events,
       size: size,
       settings: _settings,
       textCache: _textCache,
+      positionMs: positionMs,
     );
   }
 
@@ -446,6 +564,7 @@ class MediaDanmakuPainter extends CustomPainter {
         high = middle;
       }
     }
+    var visibleCount = 0;
     for (var index = low; index < plans.length; index += 1) {
       final plan = plans[index];
       if (plan.event.timeMs > positionMs) {
@@ -454,6 +573,10 @@ class MediaDanmakuPainter extends CustomPainter {
       final elapsedMs = positionMs - plan.event.timeMs;
       if (elapsedMs >= 0 && elapsedMs <= plan.event.durationMs) {
         yield plan;
+        visibleCount += 1;
+        if (visibleCount >= _maximumVisibleAdvancedCount) {
+          break;
+        }
       }
     }
   }
@@ -480,22 +603,29 @@ class MediaDanmakuPainter extends CustomPainter {
       return;
     }
 
+    final textPainter = _textCache.resolveAdvanced(
+      event: event,
+      fontSize: plan.fontSize,
+      opacity: plan.usesOpacityLayer ? 1 : plan.fixedOpacity,
+    );
+
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
-    final center = Offset(
-      plan.textPainter.width / 2,
-      plan.textPainter.height / 2,
-    );
+    final center = Offset(plan.textWidth / 2, plan.textHeight / 2);
     canvas.translate(center.dx, center.dy);
     canvas.rotate(event.rotationZDegrees * math.pi / 180);
     canvas.scale(math.cos(event.rotationYDegrees * math.pi / 180), 1);
     canvas.translate(-center.dx, -center.dy);
-    canvas.saveLayer(
-      Offset.zero & Size(plan.textPainter.width, plan.textPainter.height),
-      Paint()..color = Colors.white.withValues(alpha: opacity),
-    );
-    plan.textPainter.paint(canvas, Offset.zero);
-    canvas.restore();
+    if (plan.usesOpacityLayer) {
+      canvas.saveLayer(
+        Offset.zero & Size(plan.textWidth, plan.textHeight),
+        Paint()..color = Colors.white.withValues(alpha: opacity),
+      );
+      textPainter.paint(canvas, Offset.zero);
+      canvas.restore();
+    } else {
+      textPainter.paint(canvas, Offset.zero);
+    }
     canvas.restore();
   }
 
@@ -554,11 +684,11 @@ class MediaDanmakuPainter extends CustomPainter {
         plan.top,
       ),
       _DanmakuRenderKind.reverse => Offset(
-        -plan.textPainter.width + plan.speed * elapsedMs,
+        -plan.textWidth + plan.speed * elapsedMs,
         plan.top,
       ),
       _DanmakuRenderKind.top || _DanmakuRenderKind.bottom => Offset(
-        (canvasWidth - plan.textPainter.width) / 2,
+        (canvasWidth - plan.textWidth) / 2,
         plan.top,
       ),
     };
@@ -568,30 +698,47 @@ class MediaDanmakuPainter extends CustomPainter {
   bool shouldRepaint(covariant MediaDanmakuPainter oldDelegate) {
     return !identical(oldDelegate._events, _events) ||
         !identical(oldDelegate._advancedEvents, _advancedEvents) ||
-        oldDelegate._settings != _settings;
+        !_sameDanmakuRenderSettings(oldDelegate._settings, _settings);
   }
 }
 
 final class _DanmakuLayoutCache {
+  final _timeline = _DanmakuTimelineIndex<MediaDanmakuEvent>(
+    timeOf: (event) => event.timeMs,
+    idOf: (event) => event.id,
+  );
   Size? _size;
-  List<MediaDanmakuEvent>? _events;
   MediaDanmakuOverlaySettings? _settings;
+  int? _windowAnchorMs;
   List<_DanmakuRenderPlan> _plans = const <_DanmakuRenderPlan>[];
+  int buildCount = 0;
+  int windowEventCount = 0;
 
   List<_DanmakuRenderPlan> resolve({
     required List<MediaDanmakuEvent> events,
     required Size size,
     required MediaDanmakuOverlaySettings settings,
     required _DanmakuTextCache textCache,
+    required int positionMs,
   }) {
-    if (_size == size && identical(_events, events) && _settings == settings) {
+    final sourceChanged = _timeline.updateSource(events);
+    final windowAnchorMs = _windowAnchorMs;
+    if (_size == size &&
+        !sourceChanged &&
+        _settings != null &&
+        _sameDanmakuRenderSettings(_settings!, settings) &&
+        windowAnchorMs != null &&
+        _DanmakuTimelineIndex.covers(windowAnchorMs, positionMs)) {
       return _plans;
     }
     _size = size;
-    _events = events;
     _settings = settings;
+    _windowAnchorMs = positionMs;
+    buildCount += 1;
+    final windowEvents = _timeline.windowAt(positionMs);
+    windowEventCount = windowEvents.length;
     _plans = _buildPlans(
-      events: events,
+      events: windowEvents,
       size: size,
       settings: settings,
       textCache: textCache,
@@ -609,8 +756,8 @@ final class _DanmakuLayoutCache {
     if (density <= 0) {
       return const <_DanmakuRenderPlan>[];
     }
-    final prepared = <_PreparedDanmaku>[];
-    var maximumTextHeight = 0.0;
+    final prepared = <MediaDanmakuEvent>[];
+    var maximumFontSize = 0.0;
     for (final event in events) {
       if (!settings.allowsStandardEvent(event)) {
         continue;
@@ -618,20 +765,11 @@ final class _DanmakuLayoutCache {
       final fontSize = (25 * event.style.fontSizeScale * settings.fontScale)
           .clamp(10.0, 48.0)
           .toDouble();
-      final painter = textCache.resolve(
-        event: event,
-        fontSize: fontSize,
-        opacity: settings.opacity.clamp(0.0, 1.0).toDouble(),
-      );
-      maximumTextHeight = math.max(maximumTextHeight, painter.height);
-      prepared.add(_PreparedDanmaku(event: event, textPainter: painter));
+      maximumFontSize = math.max(maximumFontSize, fontSize);
+      prepared.add(event);
     }
-    prepared.sort((left, right) {
-      final byTime = left.event.timeMs.compareTo(right.event.timeMs);
-      return byTime != 0 ? byTime : left.event.id.compareTo(right.event.id);
-    });
 
-    final laneHeight = math.max(22.0, maximumTextHeight + 4).toDouble();
+    final laneHeight = math.max(22.0, maximumFontSize * 1.35 + 4).toDouble();
     final scrollingBandHeight =
         size.height * settings.displayArea.clamp(0.25, 1.0).toDouble();
     final scrollLaneCount = ((scrollingBandHeight / laneHeight) * density)
@@ -647,8 +785,15 @@ final class _DanmakuLayoutCache {
     final bottomLanes = List<int>.filled(staticLaneCount, 0);
     final plans = <_DanmakuRenderPlan>[];
 
-    for (final item in prepared) {
-      final event = item.event;
+    for (final event in prepared) {
+      final fontSize = (25 * event.style.fontSizeScale * settings.fontScale)
+          .clamp(10.0, 48.0)
+          .toDouble();
+      final textPainter = textCache.resolve(
+        event: event,
+        fontSize: fontSize,
+        opacity: settings.opacity.clamp(0.0, 1.0).toDouble(),
+      );
       final position = event.channel == MediaDanmakuChannel.caption
           ? MediaDanmakuPosition.bottom
           : event.style.position;
@@ -659,13 +804,14 @@ final class _DanmakuLayoutCache {
               ? _DanmakuRenderKind.reverse
               : _DanmakuRenderKind.scroll;
           final speed =
-              (size.width + item.textPainter.width) /
+              (size.width + textPainter.width) /
               MediaDanmakuPainter._scrollDurationMs;
           final candidate = _DanmakuRenderPlan(
             event: event,
             kind: kind,
             top: 0,
-            textPainter: item.textPainter,
+            fontSize: fontSize,
+            textWidth: textPainter.width,
             durationMs: MediaDanmakuPainter._scrollDurationMs,
             speed: speed,
           );
@@ -695,7 +841,8 @@ final class _DanmakuLayoutCache {
               event: event,
               kind: _DanmakuRenderKind.top,
               top: 8 + laneIndex * laneHeight,
-              textPainter: item.textPainter,
+              fontSize: fontSize,
+              textWidth: textPainter.width,
               durationMs: MediaDanmakuPainter._pinnedDurationMs,
               speed: 0,
             ),
@@ -718,7 +865,8 @@ final class _DanmakuLayoutCache {
               event: event,
               kind: _DanmakuRenderKind.bottom,
               top: bottomBoundary - ((laneIndex + 1) * laneHeight) - 8,
-              textPainter: item.textPainter,
+              fontSize: fontSize,
+              textWidth: textPainter.width,
               durationMs: MediaDanmakuPainter._pinnedDurationMs,
               speed: 0,
             ),
@@ -768,14 +916,11 @@ final class _DanmakuLayoutCache {
     final (entryGap, previousExitMs) = switch (previous.kind) {
       _DanmakuRenderKind.scroll => () {
         final trailingEdge =
-            canvasWidth +
-            previous.textPainter.width -
-            previous.speed * elapsedMs;
+            canvasWidth + previous.textWidth - previous.speed * elapsedMs;
         return (canvasWidth - trailingEdge, trailingEdge / previous.speed);
       }(),
       _DanmakuRenderKind.reverse => () {
-        final leadingEdge =
-            -previous.textPainter.width + previous.speed * elapsedMs;
+        final leadingEdge = -previous.textWidth + previous.speed * elapsedMs;
         return (leadingEdge, (canvasWidth - leadingEdge) / previous.speed);
       }(),
       _DanmakuRenderKind.top || _DanmakuRenderKind.bottom => throw StateError(
@@ -809,9 +954,13 @@ final class _DanmakuLayoutCache {
 }
 
 final class _AdvancedDanmakuLayoutCache {
+  final _timeline = _DanmakuTimelineIndex<MediaAdvancedDanmakuEvent>(
+    timeOf: (event) => event.timeMs,
+    idOf: (event) => event.id,
+  );
   Size? _size;
-  List<MediaAdvancedDanmakuEvent>? _events;
   MediaDanmakuOverlaySettings? _settings;
+  int? _windowAnchorMs;
   List<_AdvancedDanmakuRenderPlan> _plans =
       const <_AdvancedDanmakuRenderPlan>[];
 
@@ -820,42 +969,132 @@ final class _AdvancedDanmakuLayoutCache {
     required Size size,
     required MediaDanmakuOverlaySettings settings,
     required _DanmakuTextCache textCache,
+    required int positionMs,
   }) {
-    if (_size == size && identical(_events, events) && _settings == settings) {
+    final sourceChanged = _timeline.updateSource(events);
+    final windowAnchorMs = _windowAnchorMs;
+    if (_size == size &&
+        !sourceChanged &&
+        _settings != null &&
+        _sameDanmakuRenderSettings(_settings!, settings) &&
+        windowAnchorMs != null &&
+        _DanmakuTimelineIndex.covers(windowAnchorMs, positionMs)) {
       return _plans;
     }
     _size = size;
-    _events = events;
     _settings = settings;
+    _windowAnchorMs = positionMs;
     final plans = <_AdvancedDanmakuRenderPlan>[];
-    for (final event in events) {
+    for (final event in _timeline.windowAt(positionMs)) {
       if (!settings.allowsAdvancedEvent(event) || event.path.isEmpty) {
         continue;
       }
       final fontSize = (25 * event.fontSizeScale * settings.fontScale)
           .clamp(10.0, 72.0)
           .toDouble();
+      final usesOpacityLayer = (event.alphaFrom - event.alphaTo).abs() > 0.001;
+      final fixedOpacity = (event.alphaFrom * settings.opacity)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      if (!usesOpacityLayer && fixedOpacity <= 0) {
+        continue;
+      }
+      final textPainter = textCache.resolveAdvanced(
+        event: event,
+        fontSize: fontSize,
+        opacity: usesOpacityLayer ? 1 : fixedOpacity,
+      );
       plans.add(
         _AdvancedDanmakuRenderPlan(
           event: event,
-          textPainter: textCache.resolveAdvanced(
-            event: event,
-            fontSize: fontSize,
-          ),
+          fontSize: fontSize,
+          textWidth: textPainter.width,
+          textHeight: textPainter.height,
+          usesOpacityLayer: usesOpacityLayer,
+          fixedOpacity: fixedOpacity,
         ),
       );
     }
-    plans.sort((left, right) {
-      final byTime = left.event.timeMs.compareTo(right.event.timeMs);
-      return byTime != 0 ? byTime : left.event.id.compareTo(right.event.id);
-    });
     return _plans = List<_AdvancedDanmakuRenderPlan>.unmodifiable(plans);
   }
 }
 
+final class _DanmakuTimelineIndex<T> {
+  _DanmakuTimelineIndex({required this.timeOf, required this.idOf});
+
+  static const int _lookBehindMs =
+      MediaDanmakuPainter._maximumVisibleDurationMs + 1000;
+  static const int _lookAheadMs = 30000;
+  static const int _refreshAfterMs = 15000;
+  static const int _backwardToleranceMs = 1000;
+
+  final int Function(T event) timeOf;
+  final String Function(T event) idOf;
+  List<T>? _source;
+  List<T> _sorted = <T>[];
+
+  bool updateSource(List<T> source) {
+    if (identical(_source, source)) {
+      return false;
+    }
+    _source = source;
+    _sorted = List<T>.of(source)
+      ..sort((left, right) {
+        final byTime = timeOf(left).compareTo(timeOf(right));
+        return byTime != 0 ? byTime : idOf(left).compareTo(idOf(right));
+      });
+    return true;
+  }
+
+  List<T> windowAt(int positionMs) {
+    final startMs = positionMs - _lookBehindMs;
+    final endMs = positionMs + _lookAheadMs;
+    final start = _lowerBound(startMs);
+    final end = _upperBound(endMs);
+    return _sorted.sublist(start, end);
+  }
+
+  static bool covers(int anchorMs, int positionMs) {
+    return positionMs >= anchorMs - _backwardToleranceMs &&
+        positionMs <= anchorMs + _refreshAfterMs;
+  }
+
+  int _lowerBound(int timeMs) {
+    var low = 0;
+    var high = _sorted.length;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (timeOf(_sorted[middle]) < timeMs) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  int _upperBound(int timeMs) {
+    var low = 0;
+    var high = _sorted.length;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (timeOf(_sorted[middle]) <= timeMs) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+}
+
 final class _DanmakuTextCache {
-  final Map<String, _CachedDanmakuText> _entries =
-      <String, _CachedDanmakuText>{};
+  static const int maximumEntryCount = 256;
+
+  final LinkedHashMap<String, _CachedDanmakuText> _entries =
+      LinkedHashMap<String, _CachedDanmakuText>();
+
+  int get length => _entries.length;
 
   TextPainter resolve({
     required MediaDanmakuEvent event,
@@ -878,13 +1117,14 @@ final class _DanmakuTextCache {
   TextPainter resolveAdvanced({
     required MediaAdvancedDanmakuEvent event,
     required double fontSize,
+    required double opacity,
   }) {
     return _resolve(
       key: 'advanced:${event.id}',
       text: event.text,
       fontSize: fontSize,
       colorValue: (event.color ?? 0xFFFFFF).clamp(0, 0xFFFFFF).toInt(),
-      opacity: 1,
+      opacity: opacity,
       maxLines: null,
     );
   }
@@ -897,17 +1137,21 @@ final class _DanmakuTextCache {
     required double opacity,
     required int? maxLines,
   }) {
-    final cached = _entries[key];
+    final cached = _entries.remove(key);
     if (cached != null &&
         cached.text == text &&
         cached.fontSize == fontSize &&
         cached.colorValue == colorValue &&
         cached.opacity == opacity &&
         cached.maxLines == maxLines) {
+      _entries[key] = cached;
       return cached.painter;
     }
     cached?.painter.dispose();
     final color = Color(0xFF000000 | colorValue).withValues(alpha: opacity);
+    final shadow = const Color(
+      0xE6000000,
+    ).withValues(alpha: (0.9 * opacity).clamp(0.0, 1.0).toDouble());
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -915,14 +1159,7 @@ final class _DanmakuTextCache {
           color: color,
           fontSize: fontSize,
           fontWeight: FontWeight.w700,
-          shadows: const <Shadow>[
-            Shadow(
-              color: Color(0xCC000000),
-              blurRadius: 4,
-              offset: Offset(0, 1),
-            ),
-            Shadow(color: Color(0xAA000000), blurRadius: 1),
-          ],
+          shadows: <Shadow>[Shadow(color: shadow, offset: const Offset(1, 1))],
         ),
       ),
       maxLines: maxLines,
@@ -936,16 +1173,10 @@ final class _DanmakuTextCache {
       maxLines: maxLines,
       painter: painter,
     );
-    return painter;
-  }
-
-  void retainKeys(Set<String> keys) {
-    final removedIds = _entries.keys
-        .where((id) => !keys.contains(id))
-        .toList(growable: false);
-    for (final id in removedIds) {
-      _entries.remove(id)?.painter.dispose();
+    while (_entries.length > maximumEntryCount) {
+      _entries.remove(_entries.keys.first)?.painter.dispose();
     }
+    return painter;
   }
 
   void dispose() {
@@ -1028,6 +1259,7 @@ class MediaDanmakuLayer extends StatefulWidget {
     required this.playbackState,
     required this.playbackRate,
     this.settings = const MediaDanmakuOverlaySettings(),
+    this.onMetricsChanged,
   });
 
   final MediaDanmakuProvider provider;
@@ -1036,6 +1268,7 @@ class MediaDanmakuLayer extends StatefulWidget {
   final VesperPlaybackState playbackState;
   final double playbackRate;
   final MediaDanmakuOverlaySettings settings;
+  final ValueChanged<MediaDanmakuOverlayMetrics>? onMetricsChanged;
 
   @override
   State<MediaDanmakuLayer> createState() => _MediaDanmakuLayerState();
@@ -1046,6 +1279,9 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
   StreamSubscription<MediaDanmakuSnapshot>? _subscription;
   MediaDanmakuSnapshot _snapshot = const MediaDanmakuSnapshot();
   int _sessionGeneration = 0;
+  Timer? _metricsTimer;
+  MediaDanmakuOverlayMetrics? _pendingMetrics;
+  DateTime? _lastMetricsSentAt;
 
   @override
   void initState() {
@@ -1065,6 +1301,10 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
     } else if (oldWidget.positionMs != widget.positionMs) {
       _session?.updatePosition(widget.positionMs);
     }
+    if (oldWidget.onMetricsChanged != widget.onMetricsChanged ||
+        oldWidget.settings != widget.settings) {
+      _scheduleMetricsReport();
+    }
   }
 
   @override
@@ -1072,6 +1312,7 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
     _sessionGeneration += 1;
     unawaited(_subscription?.cancel());
     unawaited(_session?.close());
+    _metricsTimer?.cancel();
     super.dispose();
   }
 
@@ -1082,12 +1323,14 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
     final session = widget.provider.openSession(widget.target);
     _session = session;
     _snapshot = const MediaDanmakuSnapshot();
+    _scheduleMetricsReport();
     _subscription = session.snapshots.listen(
       (snapshot) {
         if (mounted && generation == _sessionGeneration) {
           setState(() {
             _snapshot = snapshot;
           });
+          _scheduleMetricsReport();
         }
       },
       onError: (Object error) {
@@ -1095,10 +1338,55 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
           setState(() {
             _snapshot = MediaDanmakuSnapshot(error: error);
           });
+          _scheduleMetricsReport();
         }
       },
     );
     session.updatePosition(widget.positionMs);
+  }
+
+  void _scheduleMetricsReport() {
+    final callback = widget.onMetricsChanged;
+    if (callback == null) {
+      _pendingMetrics = null;
+      _metricsTimer?.cancel();
+      _metricsTimer = null;
+      return;
+    }
+    _pendingMetrics = MediaDanmakuOverlayMetrics(
+      active: widget.settings.enabled,
+      loadedBasicItemCount: _snapshot.events.length,
+      loadedAdvancedItemCount: _snapshot.advancedEvents.length,
+      advancedEffectsActive:
+          widget.settings.enabled &&
+          widget.settings.showAdvanced &&
+          _snapshot.advancedEvents.isNotEmpty,
+    );
+    final lastSentAt = _lastMetricsSentAt;
+    final elapsed = lastSentAt == null
+        ? const Duration(milliseconds: 500)
+        : DateTime.now().difference(lastSentAt);
+    if (elapsed >= const Duration(milliseconds: 500)) {
+      _emitMetricsReport();
+      return;
+    }
+    _metricsTimer ??= Timer(
+      const Duration(milliseconds: 500) - elapsed,
+      _emitMetricsReport,
+    );
+  }
+
+  void _emitMetricsReport() {
+    _metricsTimer?.cancel();
+    _metricsTimer = null;
+    final callback = widget.onMetricsChanged;
+    final metrics = _pendingMetrics;
+    _pendingMetrics = null;
+    if (!mounted || callback == null || metrics == null) {
+      return;
+    }
+    _lastMetricsSentAt = DateTime.now();
+    callback(metrics);
   }
 
   @override
@@ -1119,18 +1407,19 @@ enum _DanmakuRenderKind { scroll, reverse, top, bottom }
 final class _AdvancedDanmakuRenderPlan {
   const _AdvancedDanmakuRenderPlan({
     required this.event,
-    required this.textPainter,
+    required this.fontSize,
+    required this.textWidth,
+    required this.textHeight,
+    required this.usesOpacityLayer,
+    required this.fixedOpacity,
   });
 
   final MediaAdvancedDanmakuEvent event;
-  final TextPainter textPainter;
-}
-
-final class _PreparedDanmaku {
-  const _PreparedDanmaku({required this.event, required this.textPainter});
-
-  final MediaDanmakuEvent event;
-  final TextPainter textPainter;
+  final double fontSize;
+  final double textWidth;
+  final double textHeight;
+  final bool usesOpacityLayer;
+  final double fixedOpacity;
 }
 
 final class _DanmakuRenderPlan {
@@ -1138,7 +1427,8 @@ final class _DanmakuRenderPlan {
     required this.event,
     required this.kind,
     required this.top,
-    required this.textPainter,
+    required this.fontSize,
+    required this.textWidth,
     required this.durationMs,
     required this.speed,
   });
@@ -1146,7 +1436,8 @@ final class _DanmakuRenderPlan {
   final MediaDanmakuEvent event;
   final _DanmakuRenderKind kind;
   final double top;
-  final TextPainter textPainter;
+  final double fontSize;
+  final double textWidth;
   final int durationMs;
   final double speed;
 
@@ -1155,7 +1446,8 @@ final class _DanmakuRenderPlan {
       event: event,
       kind: kind,
       top: top,
-      textPainter: textPainter,
+      fontSize: fontSize,
+      textWidth: textWidth,
       durationMs: durationMs,
       speed: speed,
     );
