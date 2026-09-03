@@ -12,9 +12,12 @@ import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 
+import '../diagnostics/media_diagnostics_report_share.dart';
+
 import 'media_listen_mode_view.dart';
 
 part 'media_playback_page_actions.dart';
+part 'media_playback_page_diagnostics.dart';
 part 'media_playback_page_phone.dart';
 part 'media_playback_page_tv.dart';
 part 'media_playback_page_surfaces.dart';
@@ -102,11 +105,12 @@ class MediaPlaybackPage extends StatefulWidget {
 }
 
 class _MediaPlaybackPageState extends State<MediaPlaybackPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final MediaPlaybackViewModel _viewModel;
   MediaContentSurfaces? _contentSurfaces;
   late final MediaPlaybackContentHost _contentHost;
   void Function()? _messageEffect;
+  void Function()? _diagnosticsTargetEffect;
 
   /// 内容 tab 控制器；平台未声明内容面板时为 null（不渲染 tab 区）。
   /// build 中按能力同步（评论面板可用性依赖 context，initState 无法判定）。
@@ -119,6 +123,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   String? _commentsAvailableEntryId;
   bool _settingsSurfaceOpen = false;
   bool _danmakuSettingsSurfaceOpen = false;
+  bool _performanceDiagnosticsSurfaceOpen = false;
   bool _castingSurfaceOpen = false;
   bool _dlnaPickerOpen = false;
   _PlaybackInfoTab _selectedInfoTab = _PlaybackInfoTab.intro;
@@ -147,8 +152,11 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   bool _playbackRecoveryDialogVisible = false;
   bool _tvBackDispatchPending = false;
   _MediaPlaybackDisplayMode _displayMode = _MediaPlaybackDisplayMode.video;
-  MediaDanmakuOverlaySettings _localDanmakuSettings =
-      const MediaDanmakuOverlaySettings();
+  late final Signal<MediaDanmakuOverlaySettings> _danmakuSettingsSignal;
+  final Signal<bool?> _diagnosticsDanmakuEnabledOverride = Signal<bool?>(null);
+  late final MediaPlaybackPerformanceDiagnosticsController
+  _performanceDiagnosticsController;
+  String? _diagnosticsPlaybackTargetIdentity;
 
   VesperPlayerController? _pictureInPictureController;
   StreamSubscription<VesperPlayerPictureInPictureEvent>?
@@ -165,6 +173,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   bool get _playbackModalRouteOpen =>
       _settingsSurfaceOpen ||
       _danmakuSettingsSurfaceOpen ||
+      _performanceDiagnosticsSurfaceOpen ||
       _castingSurfaceOpen ||
       _dlnaPickerOpen ||
       _playbackRecoveryDialogVisible;
@@ -173,6 +182,16 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   void initState() {
     super.initState();
     _viewModel = widget.viewModel;
+    _danmakuSettingsSignal = Signal<MediaDanmakuOverlaySettings>(
+      widget.danmakuSettingsListenable?.value ??
+          const MediaDanmakuOverlaySettings(),
+    );
+    _performanceDiagnosticsController =
+        MediaPlaybackPerformanceDiagnosticsController(
+          onDanmakuEnabledOverride: (enabled) {
+            _diagnosticsDanmakuEnabledOverride.value = enabled;
+          },
+        );
     _contentHost = MediaPlaybackContentHost(
       surfaceHost: MediaSurfaceHost(
         pushPlayback: (detail, entry) {
@@ -196,6 +215,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     // One-shot messages and playback-recovery notices are surfaced through an
     // effect that tracks the VM's pending-message signals.
     _messageEffect = effect(_handleViewModelMessage);
+    _diagnosticsTargetEffect = effect(_trackDiagnosticsPlaybackTarget);
+    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
     widget.danmakuSettingsListenable?.addListener(
       _handleDanmakuSettingsChanged,
@@ -203,7 +224,10 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     unawaited(_enterPlaybackPresentation());
     unawaited(
       _viewModel.controllerFuture.then(
-        _attachPictureInPicture,
+        (controller) async {
+          _performanceDiagnosticsController.attach(controller);
+          await _attachPictureInPicture(controller);
+        },
         // 解析失败的会话没有可附加的 PiP 配置；错误由页面错误态呈现。
         onError: (Object _) {},
       ),
@@ -226,11 +250,16 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       widget.danmakuSettingsListenable?.addListener(
         _handleDanmakuSettingsChanged,
       );
+      final nextSettings = widget.danmakuSettingsListenable?.value;
+      if (nextSettings != null) {
+        _danmakuSettingsSignal.value = nextSettings;
+      }
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleTvHardwareKeyEvent);
     widget.danmakuSettingsListenable?.removeListener(
       _handleDanmakuSettingsChanged,
@@ -251,6 +280,10 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       node.dispose();
     }
     _messageEffect?.call();
+    _diagnosticsTargetEffect?.call();
+    unawaited(_performanceDiagnosticsController.dispose());
+    _diagnosticsDanmakuEnabledOverride.dispose();
+    _danmakuSettingsSignal.dispose();
     _detachPictureInPicture();
     unawaited(_restoreAppPresentation());
     super.dispose();
@@ -258,14 +291,20 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
 
   void _mutate(VoidCallback mutation) => setState(mutation);
 
-  MediaDanmakuOverlaySettings get _danmakuSettings =>
-      widget.danmakuSettingsListenable?.value ?? _localDanmakuSettings;
+  MediaDanmakuOverlaySettings get _danmakuSettings {
+    final settings = _danmakuSettingsSignal.value;
+    final enabledOverride = _diagnosticsDanmakuEnabledOverride.value;
+    return enabledOverride == null
+        ? settings
+        : settings.copyWith(enabled: enabledOverride);
+  }
 
   bool get _danmakuEnabled => _danmakuSettings.enabled;
 
   void _handleDanmakuSettingsChanged() {
-    if (mounted) {
-      setState(() {});
+    final nextSettings = widget.danmakuSettingsListenable?.value;
+    if (nextSettings != null) {
+      _danmakuSettingsSignal.value = nextSettings;
     }
   }
 
@@ -275,15 +314,36 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
       callback(value);
       return;
     }
-    _mutate(() {
-      _localDanmakuSettings = value;
-    });
+    _danmakuSettingsSignal.value = value;
   }
 
   void _toggleDanmaku() {
+    _performanceDiagnosticsController.cancelGuidedCollection();
     _setDanmakuSettings(
-      _danmakuSettings.copyWith(enabled: !_danmakuSettings.enabled),
+      _danmakuSettingsSignal.value.copyWith(
+        enabled: !_danmakuSettingsSignal.value.enabled,
+      ),
     );
+  }
+
+  void _trackDiagnosticsPlaybackTarget() {
+    final targetIdentity =
+        '${_viewModel.detail.mediaId}:${_viewModel.selectedEntry.entryId}';
+    final previous = _diagnosticsPlaybackTargetIdentity;
+    _diagnosticsPlaybackTargetIdentity = targetIdentity;
+    if (previous != null && previous != targetIdentity) {
+      unawaited(_performanceDiagnosticsController.interrupt());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_performanceDiagnosticsController.interrupt());
+    }
   }
 
   Future<void> _attachPictureInPicture(

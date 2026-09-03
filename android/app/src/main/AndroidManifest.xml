@@ -17,7 +17,7 @@
             android:name="io.flutter.embedding.android.EnableHcpp"
             android:value="true" />
         <activity
-            android:name=".MainActivity"
+            android:name="${mainActivityName}"
             android:exported="true"
             android:launchMode="singleTop"
             android:supportsPictureInPicture="true"

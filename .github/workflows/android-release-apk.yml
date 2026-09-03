@@ -96,6 +96,11 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release --target-platform android-arm64
 
+      - name: Verify release excludes performance diagnostics
+        run: >-
+          bash scripts/verify_performance_diagnostics_excluded.sh
+          build/app/outputs/flutter-apk/app-release.apk
+
       - name: Stage APK artifact
         run: |
           mkdir -p artifacts

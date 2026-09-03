@@ -11,16 +11,22 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     final danmakuProvider = _viewModel.adapter.danmaku;
     final danmakuOverlay = danmakuProvider == null
         ? null
-        : MediaDanmakuLayer(
-            provider: danmakuProvider,
-            target: MediaPlaybackTarget(
-              detail: _viewModel.detail,
-              entry: _viewModel.selectedEntry,
+        : SignalBuilder(
+            builder: (context) => MediaDanmakuLayer(
+              provider: danmakuProvider,
+              target: MediaPlaybackTarget(
+                detail: _viewModel.detail,
+                entry: _viewModel.selectedEntry,
+              ),
+              positionMs: snapshot.timeline.positionMs,
+              playbackState: snapshot.playbackState,
+              playbackRate: snapshot.playbackRate,
+              settings: _danmakuSettings,
+              onMetricsChanged:
+                  _performanceDiagnosticsController.overlayReportingActive.value
+                  ? _performanceDiagnosticsController.updateOverlayMetrics
+                  : null,
             ),
-            positionMs: snapshot.timeline.positionMs,
-            playbackState: snapshot.playbackState,
-            playbackRate: snapshot.playbackRate,
-            settings: _danmakuSettings,
           );
     return vesper_ui.VesperPlayerStage(
       controller: controller,
@@ -46,16 +52,30 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (usesPortraitChrome && danmakuProvider != null) ...[
+            SignalBuilder(
+              builder: (context) => vesper_ui.VesperStageIconButton(
+                key: const ValueKey<String>('toggle-danmaku'),
+                icon: _danmakuEnabled
+                    ? Icons.chat_bubble_rounded
+                    : Icons.chat_bubble_outline_rounded,
+                label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
+                size: 40,
+                iconSize: 22,
+                containerAlpha: 0,
+                onPressed: _toggleDanmaku,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          if (mediaPerformanceDiagnosticsAvailable) ...[
             vesper_ui.VesperStageIconButton(
-              key: const ValueKey<String>('toggle-danmaku'),
-              icon: _danmakuEnabled
-                  ? Icons.chat_bubble_rounded
-                  : Icons.chat_bubble_outline_rounded,
-              label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
-              size: 40,
+              key: const ValueKey<String>('open-performance-diagnostics'),
+              icon: Icons.monitor_heart_outlined,
+              label: '性能诊断',
+              size: 38,
               iconSize: 22,
               containerAlpha: 0,
-              onPressed: _toggleDanmaku,
+              onPressed: () => unawaited(_openPerformanceDiagnosticsSurface()),
             ),
             const SizedBox(width: 4),
           ],
@@ -113,16 +133,18 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       children: [
         if (hasDanmaku) ...[
           const SizedBox(width: 4),
-          vesper_ui.VesperStageIconButton(
-            key: const ValueKey<String>('toggle-danmaku'),
-            icon: _danmakuEnabled
-                ? Icons.chat_bubble_rounded
-                : Icons.chat_bubble_outline_rounded,
-            label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
-            size: 36,
-            iconSize: 20,
-            containerAlpha: 0,
-            onPressed: _toggleDanmaku,
+          SignalBuilder(
+            builder: (context) => vesper_ui.VesperStageIconButton(
+              key: const ValueKey<String>('toggle-danmaku'),
+              icon: _danmakuEnabled
+                  ? Icons.chat_bubble_rounded
+                  : Icons.chat_bubble_outline_rounded,
+              label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
+              size: 36,
+              iconSize: 20,
+              containerAlpha: 0,
+              onPressed: _toggleDanmaku,
+            ),
           ),
         ],
         if (hasDanmakuSettings) ...[

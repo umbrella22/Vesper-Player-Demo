@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # 无签名构建 iOS 应用（debug/release）。本机开发与 CI 出包的统一入口：
-#   bash scripts/build_ios_no_codesign.sh [debug|release]
+#   bash scripts/build_ios_no_codesign.sh [debug|profile|release]
 #
 # 流程：准备 Flutter 工作区（flutter pub get + SwiftPM 平台同步）
 #   → flutter build ios --config-only → xcodebuild（关闭代码签名）。
@@ -14,18 +14,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${1:-release}"
 
-if [[ "$PROFILE" != "debug" && "$PROFILE" != "release" ]]; then
+if [[ "$PROFILE" != "debug" && "$PROFILE" != "profile" && "$PROFILE" != "release" ]]; then
   echo "Unsupported profile: $PROFILE" >&2
-  echo "Usage: $0 [debug|release]" >&2
+  echo "Usage: $0 [debug|profile|release]" >&2
   exit 1
 fi
 
 CONFIGURATION="Release"
+XCCONFIG_CONFIGURATION="Release"
 if [[ "$PROFILE" == "debug" ]]; then
   CONFIGURATION="Debug"
+  XCCONFIG_CONFIGURATION="Debug"
+elif [[ "$PROFILE" == "profile" ]]; then
+  CONFIGURATION="Profile"
 fi
 
-XCCONFIG_PATH="$ROOT_DIR/ios/Flutter/$CONFIGURATION.xcconfig"
+XCCONFIG_PATH="$ROOT_DIR/ios/Flutter/$XCCONFIG_CONFIGURATION.xcconfig"
 IOS_DEPLOYMENT_TARGET="$(
   sed -n \
     's/^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET[[:space:]]*=[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' \

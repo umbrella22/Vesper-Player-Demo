@@ -21,7 +21,7 @@ import io.github.umbrella22.vesper.player.flutter.android.VesperPlayerAndroidPlu
 import java.io.File
 import kotlin.math.roundToInt
 
-class MainActivity : FlutterFragmentActivity() {
+open class MainActivity : FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Impeller's first OpenGL frame is substantially slower on tested API 29
         // hardware. Keep newer Android/HCPP devices on the default renderer.

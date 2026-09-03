@@ -2,6 +2,7 @@ export 'adapter/media_platform_adapter.dart';
 export 'capabilities/media_content_surfaces.dart';
 export 'capabilities/media_danmaku.dart';
 export 'danmaku/media_danmaku_overlay.dart';
+export 'diagnostics/media_playback_performance_diagnostics.dart';
 export 'capabilities/media_engagement.dart';
 export 'capabilities/media_history.dart';
 export 'models/media_detail.dart';

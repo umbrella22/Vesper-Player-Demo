@@ -1,4 +1,5 @@
 {
+  "originHash" : "0cf1d41023287cb81a7edb01cbbf966521cfe4443d7f951115bb519b53792dde",
   "pins" : [
     {
       "identity" : "vesperplayerkit",
@@ -10,5 +11,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }

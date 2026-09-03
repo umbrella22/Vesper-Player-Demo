@@ -7,6 +7,9 @@ import UIKit
   private var storageSpaceChannel: FlutterMethodChannel?
   private var mediaExportChannel: FlutterMethodChannel?
   private var platformInfoChannel: FlutterMethodChannel?
+#if DEBUG || PROFILE
+  private var performanceDiagnosticsShareChannel: FlutterMethodChannel?
+#endif
 
   override func application(
     _ application: UIApplication,
@@ -63,8 +66,84 @@ import UIKit
     }
     mediaExportChannel = mediaChannel
 
+#if DEBUG || PROFILE
+    let diagnosticsShareChannel = FlutterMethodChannel(
+      name: "dev.ikaros.vesper_player/performance_diagnostics_share",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    diagnosticsShareChannel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "shareReport" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.sharePerformanceDiagnosticsReport(call: call, result: result)
+    }
+    performanceDiagnosticsShareChannel = diagnosticsShareChannel
+#endif
+
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
+
+#if DEBUG || PROFILE
+  private func sharePerformanceDiagnosticsReport(
+    call: FlutterMethodCall,
+    result: @escaping FlutterResult
+  ) {
+    guard
+      let arguments = call.arguments as? [String: Any],
+      let json = arguments["json"] as? String,
+      let data = json.data(using: .utf8),
+      !data.isEmpty,
+      data.count <= 4 * 1024 * 1024
+    else {
+      result(FlutterError(code: "SHARE_FAILED", message: "Diagnostics report size is invalid.", details: nil))
+      return
+    }
+
+    do {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vesper-performance-diagnostics", isDirectory: true)
+      try? FileManager.default.removeItem(at: directory)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let reportURL = directory.appendingPathComponent("vesper-performance-report.json")
+      try data.write(to: reportURL, options: .atomic)
+
+      guard let presenter = topViewController() else {
+        throw CocoaError(.coderInvalidValue)
+      }
+      let activity = UIActivityViewController(
+        activityItems: [reportURL],
+        applicationActivities: nil
+      )
+      if let popover = activity.popoverPresentationController {
+        popover.sourceView = presenter.view
+        popover.sourceRect = CGRect(
+          x: presenter.view.bounds.midX,
+          y: presenter.view.bounds.maxY,
+          width: 1,
+          height: 1
+        )
+      }
+      presenter.present(activity, animated: true)
+      result(nil)
+    } catch {
+      result(FlutterError(code: "SHARE_FAILED", message: "Unable to share diagnostics report.", details: nil))
+    }
+  }
+
+  private func topViewController() -> UIViewController? {
+    let root = window?.rootViewController ?? UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first(where: \.isKeyWindow)?
+      .rootViewController
+    var current = root
+    while let presented = current?.presentedViewController {
+      current = presented
+    }
+    return current
+  }
+#endif
 
   private func deviceStorageUsage() -> [String: Int64] {
     do {

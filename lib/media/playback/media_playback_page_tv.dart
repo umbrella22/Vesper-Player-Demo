@@ -98,16 +98,25 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                     ),
                     if (_viewModel.adapter.danmaku case final danmaku?)
                       Positioned.fill(
-                        child: MediaDanmakuLayer(
-                          provider: danmaku,
-                          target: MediaPlaybackTarget(
-                            detail: _viewModel.detail,
-                            entry: _viewModel.selectedEntry,
+                        child: SignalBuilder(
+                          builder: (context) => MediaDanmakuLayer(
+                            provider: danmaku,
+                            target: MediaPlaybackTarget(
+                              detail: _viewModel.detail,
+                              entry: _viewModel.selectedEntry,
+                            ),
+                            positionMs: snapshot.timeline.positionMs,
+                            playbackState: snapshot.playbackState,
+                            playbackRate: snapshot.playbackRate,
+                            settings: _danmakuSettings,
+                            onMetricsChanged:
+                                _performanceDiagnosticsController
+                                    .overlayReportingActive
+                                    .value
+                                ? _performanceDiagnosticsController
+                                      .updateOverlayMetrics
+                                : null,
                           ),
-                          positionMs: snapshot.timeline.positionMs,
-                          playbackState: snapshot.playbackState,
-                          playbackRate: snapshot.playbackRate,
-                          settings: _danmakuSettings,
                         ),
                       ),
                     Positioned.fill(
@@ -831,6 +840,18 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                         TvPlaybackPanelType.danmaku,
                       ),
                       onTap: () => _openTvPanel(TvPlaybackPanelType.danmaku),
+                    ),
+                  ],
+                  if (mediaPerformanceDiagnosticsAvailable) ...[
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      key: const ValueKey<String>(
+                        'open-performance-diagnostics',
+                      ),
+                      label: '性能诊断',
+                      icon: Icons.monitor_heart_outlined,
+                      onTap: () =>
+                          unawaited(_openPerformanceDiagnosticsSurface()),
                     ),
                   ],
                   for (final extra in widget.tvControlBarExtras) ...[

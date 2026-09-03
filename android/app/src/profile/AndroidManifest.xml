@@ -4,4 +4,15 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <provider
+            android:name=".PerformanceDiagnosticsFileProvider"
+            android:authorities="${applicationId}.performance-diagnostics.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/performance_diagnostics_file_paths" />
+        </provider>
+    </application>
 </manifest>

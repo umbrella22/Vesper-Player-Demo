@@ -39,6 +39,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["mainActivityName"] = ".MainActivity"
 
         ndk {
             abiFilters += configuredAndroidAbis
@@ -46,13 +47,29 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            manifestPlaceholders["mainActivityName"] = ".DiagnosticsMainActivity"
+        }
+
         getByName("profile") {
             matchingFallbacks.clear()
             matchingFallbacks += "release"
+            manifestPlaceholders["mainActivityName"] = ".DiagnosticsMainActivity"
         }
 
         release {
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    sourceSets {
+        getByName("debug") {
+            java.srcDir("src/diagnostics/kotlin")
+            res.srcDir("src/diagnostics/res")
+        }
+        getByName("profile") {
+            java.srcDir("src/diagnostics/kotlin")
+            res.srcDir("src/diagnostics/res")
         }
     }
 
@@ -72,4 +89,16 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    debugImplementation("androidx.core:core-ktx:1.17.0")
+    add("profileImplementation", "androidx.core:core-ktx:1.17.0")
+    debugImplementation(
+        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2-rc.4",
+    )
+    add(
+        "profileImplementation",
+        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2-rc.4",
+    )
 }

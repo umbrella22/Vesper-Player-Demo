@@ -5,9 +5,11 @@
 | 脚本 | 用途（一句话） | 谁调用它 | 用法 |
 |---|---|---|---|
 | `build_ios_no_codesign.sh` | 从 hosted Flutter/SwiftPM 依赖无签名构建 iOS 应用（debug/release），iOS 出包的统一入口 | 本机开发；CI `ios-release-ipa.yml` | `bash scripts/build_ios_no_codesign.sh [debug\|release]` |
+| `embed_ios_performance_diagnostics.sh` | Xcode 构建阶段钩子：仅为 Debug/Profile App 嵌入 SwiftPM 性能诊断 framework，Release 清理同名残留 | Xcode build phase（`project.pbxproj`），勿手动执行 | — |
 | `prepare_flutter_workspace.sh` | 归档 stale 的 Swift package 链接并 `flutter pub get`，初始化/构建前必跑 | 本机初始化；`build_ios_no_codesign.sh`；Android CI `android-release-apk.yml` | `bash scripts/prepare_flutter_workspace.sh` |
 | `sync_ios_swiftpm_platforms.sh` | 把 iOS 部署目标同步到 Flutter 生成的 SwiftPM manifest | Xcode scheme PreAction（每次 Xcode 构建）；`build_ios_no_codesign.sh` | `bash scripts/sync_ios_swiftpm_platforms.sh [仓库根目录]` |
 | `sign_ios_flutter_native_asset_frameworks.sh` | Xcode 构建阶段钩子：给 Flutter native asset framework 补签名 | Xcode build phase（`project.pbxproj`），勿手动执行 | — |
+| `verify_performance_diagnostics_excluded.sh` | 校验 Release APK、IPA 或 `.app` 未携带可选性能诊断二进制、registry fragment 或 Flutter 注册器 | 本机发布验收；Android/iOS Release CI | `bash scripts/verify_performance_diagnostics_excluded.sh <artifact>` |
 | `rewrite_playcover_native_assets.dart` | 把 PlayCover 版 App 的 native asset 路径改写为 `@executable_path` 相对路径 | CI `ios-release-ipa.yml`；配套单元测试 `test/rewrite_playcover_native_assets_test.dart` | `dart run scripts/rewrite_playcover_native_assets.dart <Runner.app 路径>` |
 | `tag_release.sh` | 手动打 tag 的应急/备用发版脚本（从 `pubspec.yaml` 升版 → 提交 → 打 `v<x.y.z>`） | 仅本地手动应急；正常发版走 release-please | `bash scripts/tag_release.sh [--push] [patch\|minor\|major\|<x.y.z>]` |
 

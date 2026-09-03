@@ -85,6 +85,8 @@ jobs:
             exit 1
           fi
 
+          bash scripts/verify_performance_diagnostics_excluded.sh "$app_path"
+
           platform_name="$(/usr/libexec/PlistBuddy -c 'Print :DTPlatformName' "$app_path/Info.plist")"
           if [[ "$platform_name" != "iphoneos" ]]; then
             echo "Expected an iphoneos application, got: $platform_name" >&2

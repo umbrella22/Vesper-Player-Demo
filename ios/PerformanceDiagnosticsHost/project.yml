@@ -1,0 +1,27 @@
+name: VesperPerformanceDiagnosticsHost
+options:
+  bundleIdPrefix: dev.ikaros.vesperPlayer
+configs:
+  Debug: debug
+  Profile: release
+  Release: release
+packages:
+  VesperPlayerKit:
+    url: https://github.com/umbrella22/VesperPlayerKit.git
+    exactVersion: 0.5.2-rc.4
+targets:
+  VesperPerformanceDiagnosticsHost:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Sources
+    dependencies:
+      - package: VesperPlayerKit
+        product: VesperPlayerPerformanceDiagnostics
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ikaros.vesperPlayer.performanceDiagnosticsHost
+        SKIP_INSTALL: true
+        SWIFT_VERSION: 5.0

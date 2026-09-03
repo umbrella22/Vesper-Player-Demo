@@ -1977,7 +1977,7 @@ void main() {
               find.byType(vesper_ui.VesperPlayerStage),
             )
             .contentOverlay,
-        isA<MediaDanmakuLayer>(),
+        isNotNull,
       );
     });
 

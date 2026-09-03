@@ -25,6 +25,20 @@
       </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
+            buildForTesting = "NO"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E832232A9CF940D190E16254"
+               BuildableName = "VesperPerformanceDiagnosticsHost.framework"
+               BlueprintName = "VesperPerformanceDiagnosticsHost"
+               ReferencedContainer = "container:PerformanceDiagnosticsHost/VesperPerformanceDiagnosticsHost.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
             buildForProfiling = "YES"
