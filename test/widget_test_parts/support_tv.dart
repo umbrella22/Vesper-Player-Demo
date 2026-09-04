@@ -3,22 +3,33 @@ part of '../widget_test.dart';
 final class _FakeTvHomeClient extends BiliClient {
   factory _FakeTvHomeClient({
     List<BiliFeedVideo>? feedItems,
+    List<BiliSearchResult>? searchResults,
     bool emptyFollowing = false,
   }) {
     final libraryHttpClient = _FakeTvHomeLibraryHttpClient(
       emptyFollowing: emptyFollowing,
     );
-    return _FakeTvHomeClient._(libraryHttpClient, feedItems: feedItems);
+    return _FakeTvHomeClient._(
+      libraryHttpClient,
+      feedItems: feedItems,
+      searchResults: searchResults,
+    );
   }
 
-  _FakeTvHomeClient._(this.libraryHttpClient, {List<BiliFeedVideo>? feedItems})
-    : feedItems = feedItems ?? _tvFeedItems(),
-      super(httpClient: libraryHttpClient);
+  _FakeTvHomeClient._(
+    this.libraryHttpClient, {
+    List<BiliFeedVideo>? feedItems,
+    List<BiliSearchResult>? searchResults,
+  }) : feedItems = feedItems ?? _tvFeedItems(),
+       searchResults = searchResults ?? const <BiliSearchResult>[],
+       super(httpClient: libraryHttpClient);
 
   final List<BiliFeedVideo> feedItems;
+  final List<BiliSearchResult> searchResults;
   final _FakeTvHomeLibraryHttpClient libraryHttpClient;
   final List<BiliRegionSection> requestedSections = <BiliRegionSection>[];
   final List<String> requestedVideoDetails = <String>[];
+  final List<String> requestedSearchKeywords = <String>[];
   var recommendedFeedRequests = 0;
   Completer<List<BiliSearchResult>>? searchCompleter;
   bool loggedIn = false;
@@ -71,12 +82,13 @@ final class _FakeTvHomeClient extends BiliClient {
     String keyword, {
     int page = 1,
   }) async {
+    requestedSearchKeywords.add(keyword);
     final completer = searchCompleter;
     if (page == 1 && completer != null) {
       searchCompleter = null;
       return completer.future;
     }
-    return const <BiliSearchResult>[];
+    return page == 1 ? searchResults : const <BiliSearchResult>[];
   }
 
   @override

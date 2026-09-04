@@ -242,7 +242,7 @@ class MediaDanmakuOverlay extends StatefulWidget {
 
 class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
     with SingleTickerProviderStateMixin {
-  static const Duration _reducedFrameInterval = Duration(milliseconds: 33);
+  static const Duration _advancedFrameInterval = Duration(milliseconds: 33);
   static const Duration _highVolumeFrameInterval = Duration(milliseconds: 50);
 
   late final _MediaDanmakuClock _clock;
@@ -285,7 +285,7 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
   @override
   void dispose() {
     _ticker.dispose();
-    _reducedFrameTimer?.cancel();
+    _cancelReducedFrameTimer();
     _clock.dispose();
     _textCache.dispose();
     super.dispose();
@@ -319,35 +319,45 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
         (widget.events.isNotEmpty || widget.advancedEvents.isNotEmpty);
     if (!shouldAnimate) {
       _ticker.stop();
-      _reducedFrameTimer?.cancel();
-      _reducedFrameTimer = null;
-      _reducedFrameTimerInterval = null;
+      _cancelReducedFrameTimer();
       return;
     }
-    final highVolume = widget.events.length >= _highVolumeDanmakuEventThreshold;
-    final reducedFrameInterval = highVolume
-        ? _highVolumeFrameInterval
-        : widget.advancedEvents.isNotEmpty
-        ? _reducedFrameInterval
-        : null;
-    if (reducedFrameInterval != null) {
-      _ticker.stop();
-      if (_reducedFrameTimerInterval != reducedFrameInterval) {
-        _reducedFrameTimer?.cancel();
-        _reducedFrameTimer = Timer.periodic(
-          reducedFrameInterval,
-          (_) => _clock.notifyFrame(),
-        );
-        _reducedFrameTimerInterval = reducedFrameInterval;
+
+    final reducedFrameInterval = _targetReducedFrameInterval;
+    if (reducedFrameInterval == null) {
+      _cancelReducedFrameTimer();
+      if (!_ticker.isActive) {
+        _ticker.start();
       }
       return;
     }
+
+    _ticker.stop();
+    if (_reducedFrameTimerInterval == reducedFrameInterval) {
+      return;
+    }
+    _cancelReducedFrameTimer();
+    _reducedFrameTimer = Timer.periodic(
+      reducedFrameInterval,
+      (_) => _clock.notifyFrame(),
+    );
+    _reducedFrameTimerInterval = reducedFrameInterval;
+  }
+
+  Duration? get _targetReducedFrameInterval {
+    if (widget.events.length >= _highVolumeDanmakuEventThreshold) {
+      return _highVolumeFrameInterval;
+    }
+    if (widget.advancedEvents.isNotEmpty) {
+      return _advancedFrameInterval;
+    }
+    return null;
+  }
+
+  void _cancelReducedFrameTimer() {
     _reducedFrameTimer?.cancel();
     _reducedFrameTimer = null;
     _reducedFrameTimerInterval = null;
-    if (!_ticker.isActive) {
-      _ticker.start();
-    }
   }
 }
 
@@ -391,28 +401,22 @@ class MediaDanmakuPainter extends CustomPainter {
     final positionMs = _clock.currentPositionMs;
     final plans = _plansFor(size, positionMs);
     final firstPlanIndex = _firstVisiblePlanIndex(plans, positionMs);
+    final opacity = _settings.opacity.clamp(0.0, 1.0).toDouble();
     for (var index = firstPlanIndex; index < plans.length; index += 1) {
       final plan = plans[index];
       if (plan.event.timeMs > positionMs) {
         break;
       }
-      if (positionMs - plan.event.timeMs > plan.durationMs) {
+      final offset = _offsetFor(plan, size.width, positionMs);
+      if (offset == null) {
         continue;
       }
-      final offset = _offsetFor(plan, size.width, positionMs);
-      if (offset != null) {
-        _textCache
-            .resolve(
-              event: plan.event,
-              fontSize: plan.fontSize,
-              opacity: _settings.opacity.clamp(0.0, 1.0).toDouble(),
-            )
-            .paint(canvas, offset);
-      }
+      _textCache
+          .resolve(event: plan.event, fontSize: plan.fontSize, opacity: opacity)
+          .paint(canvas, offset);
     }
     final advancedPlans = _advancedLayoutCache.resolve(
       events: _advancedEvents,
-      size: size,
       settings: _settings,
       positionMs: positionMs,
     );
@@ -430,11 +434,11 @@ class MediaDanmakuPainter extends CustomPainter {
       if (plan.event.timeMs > positionMs) {
         break;
       }
-      final elapsedMs = positionMs - plan.event.timeMs;
-      if (elapsedMs < 0 || elapsedMs > plan.event.durationMs) {
+      final offset = _advancedOffset(plan.event, size, positionMs);
+      if (offset == null) {
         continue;
       }
-      _paintAdvancedPlan(canvas, size, plan, positionMs);
+      _paintAdvancedPlan(canvas, plan, positionMs, offset);
       visibleAdvancedCount += 1;
       if (visibleAdvancedCount >= _visibleAdvancedCountLimit) {
         break;
@@ -490,7 +494,6 @@ class MediaDanmakuPainter extends CustomPainter {
     return _visibleAdvancedPlans(
       _advancedLayoutCache.resolve(
         events: _advancedEvents,
-        size: size,
         settings: _settings,
         positionMs: positionMs,
       ),
@@ -506,7 +509,6 @@ class MediaDanmakuPainter extends CustomPainter {
     return _visibleAdvancedPlans(
           _advancedLayoutCache.resolve(
             events: _advancedEvents,
-            size: size,
             settings: _settings,
             positionMs: positionMs,
           ),
@@ -550,7 +552,6 @@ class MediaDanmakuPainter extends CustomPainter {
     for (final plan in _visibleAdvancedPlans(
       _advancedLayoutCache.resolve(
         events: _advancedEvents,
-        size: size,
         settings: _settings,
         positionMs: positionMs,
       ),
@@ -638,15 +639,11 @@ class MediaDanmakuPainter extends CustomPainter {
 
   void _paintAdvancedPlan(
     Canvas canvas,
-    Size size,
     _AdvancedDanmakuRenderPlan plan,
     int positionMs,
+    Offset offset,
   ) {
     final event = plan.event;
-    final offset = _advancedOffset(event, size, positionMs);
-    if (offset == null) {
-      return;
-    }
     final elapsedMs = positionMs - event.timeMs;
     final lifetimeProgress = event.durationMs <= 0
         ? 1.0
@@ -694,11 +691,16 @@ class MediaDanmakuPainter extends CustomPainter {
       return null;
     }
     final motionElapsedMs = elapsedMs - event.motionDelayMs;
-    final motionProgress = motionElapsedMs <= 0
-        ? 0.0
-        : event.motionDurationMs <= 0
-        ? 1.0
-        : (motionElapsedMs / event.motionDurationMs).clamp(0.0, 1.0).toDouble();
+    late final double motionProgress;
+    if (motionElapsedMs <= 0) {
+      motionProgress = 0;
+    } else if (event.motionDurationMs <= 0) {
+      motionProgress = 1;
+    } else {
+      motionProgress = (motionElapsedMs / event.motionDurationMs)
+          .clamp(0.0, 1.0)
+          .toDouble();
+    }
     final point = _pointAlongPath(event.path, motionProgress);
     return Offset(point.x * size.width, point.y * size.height);
   }
@@ -759,6 +761,8 @@ class MediaDanmakuPainter extends CustomPainter {
 }
 
 final class _DanmakuLayoutCache {
+  static const double _minimumScrollingGap = 24;
+
   final _timeline = _DanmakuTimelineIndex<MediaDanmakuEvent>(
     timeOf: (event) => event.timeMs,
     idOf: (event) => event.id,
@@ -818,6 +822,7 @@ final class _DanmakuLayoutCache {
     if (density <= 0) {
       return const <_DanmakuRenderPlan>[];
     }
+    final opacity = settings.opacity.clamp(0.0, 1.0).toDouble();
     final prepared = <MediaDanmakuEvent>[];
     var maximumFontSize = 0.0;
     for (final event in events) {
@@ -873,7 +878,7 @@ final class _DanmakuLayoutCache {
           final textPainter = textCache.resolve(
             event: event,
             fontSize: fontSize,
-            opacity: settings.opacity.clamp(0.0, 1.0).toDouble(),
+            opacity: opacity,
           );
           final speed =
               (size.width + textPainter.width) /
@@ -909,7 +914,7 @@ final class _DanmakuLayoutCache {
           final textPainter = textCache.resolve(
             event: event,
             fontSize: fontSize,
-            opacity: settings.opacity.clamp(0.0, 1.0).toDouble(),
+            opacity: opacity,
           );
           topLanes[laneIndex] =
               event.timeMs + MediaDanmakuPainter._pinnedDurationMs;
@@ -935,7 +940,7 @@ final class _DanmakuLayoutCache {
           final textPainter = textCache.resolve(
             event: event,
             fontSize: fontSize,
-            opacity: settings.opacity.clamp(0.0, 1.0).toDouble(),
+            opacity: opacity,
           );
           bottomLanes[laneIndex] =
               event.timeMs + MediaDanmakuPainter._pinnedDurationMs;
@@ -1006,7 +1011,7 @@ final class _DanmakuLayoutCache {
         _DanmakuRenderKind.top ||
         _DanmakuRenderKind.bottom => double.negativeInfinity,
       };
-      if (entryGap >= 24) {
+      if (entryGap >= _minimumScrollingGap) {
         return true;
       }
     }
@@ -1026,7 +1031,6 @@ final class _DanmakuLayoutCache {
       return false;
     }
 
-    const minimumGap = 24.0;
     final (entryGap, previousExitMs) = switch (previous.kind) {
       _DanmakuRenderKind.scroll => () {
         final trailingEdge =
@@ -1044,7 +1048,7 @@ final class _DanmakuLayoutCache {
     if (previousExitMs <= 0) {
       return true;
     }
-    if (entryGap < minimumGap) {
+    if (entryGap < _minimumScrollingGap) {
       return false;
     }
     if (candidate.speed <= previous.speed) {
@@ -1072,7 +1076,6 @@ final class _AdvancedDanmakuLayoutCache {
     timeOf: (event) => event.timeMs,
     idOf: (event) => event.id,
   );
-  Size? _size;
   MediaDanmakuOverlaySettings? _settings;
   int? _windowAnchorMs;
   List<_AdvancedDanmakuRenderPlan> _plans =
@@ -1080,21 +1083,18 @@ final class _AdvancedDanmakuLayoutCache {
 
   List<_AdvancedDanmakuRenderPlan> resolve({
     required List<MediaAdvancedDanmakuEvent> events,
-    required Size size,
     required MediaDanmakuOverlaySettings settings,
     required int positionMs,
   }) {
     final sourceChanged = _timeline.updateSource(events);
     final windowAnchorMs = _windowAnchorMs;
-    if (_size == size &&
-        !sourceChanged &&
+    if (!sourceChanged &&
         _settings != null &&
         _sameDanmakuRenderSettings(_settings!, settings) &&
         windowAnchorMs != null &&
         _DanmakuTimelineIndex.covers(windowAnchorMs, positionMs)) {
       return _plans;
     }
-    _size = size;
     _settings = settings;
     _windowAnchorMs = positionMs;
     final plans = <_AdvancedDanmakuRenderPlan>[];
@@ -1384,6 +1384,8 @@ class MediaDanmakuLayer extends StatefulWidget {
 }
 
 class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
+  static const Duration _metricsReportInterval = Duration(milliseconds: 500);
+
   MediaDanmakuSession? _session;
   StreamSubscription<MediaDanmakuSnapshot>? _subscription;
   MediaDanmakuSnapshot _snapshot = const MediaDanmakuSnapshot();
@@ -1473,14 +1475,14 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
     );
     final lastSentAt = _lastMetricsSentAt;
     final elapsed = lastSentAt == null
-        ? const Duration(milliseconds: 500)
+        ? _metricsReportInterval
         : DateTime.now().difference(lastSentAt);
-    if (elapsed >= const Duration(milliseconds: 500)) {
+    if (elapsed >= _metricsReportInterval) {
       _emitMetricsReport();
       return;
     }
     _metricsTimer ??= Timer(
-      const Duration(milliseconds: 500) - elapsed,
+      _metricsReportInterval - elapsed,
       _emitMetricsReport,
     );
   }

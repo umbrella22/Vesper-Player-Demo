@@ -78,8 +78,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: "9.4.1"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2

@@ -50,22 +50,40 @@ class BiliHubPage extends StatefulWidget {
 }
 
 class _BiliHubPageState extends State<BiliHubPage> {
-  static const double _homeAppBarHeight = 44;
+  static const double _homeAppBarHeight = 48;
   static const ValueKey<String> _homeTopClearanceKey = ValueKey<String>(
     'bili-home-top-clearance',
   );
 
   late final TextEditingController _queryController;
+  late final FocusNode _searchFocusNode;
   late final ScrollController _homeScrollController;
+  late final ScrollController _mineScrollController;
+  late ScrollController _bottomBarScrollController;
+  late final GlassTabBarMinimizeController _bottomBarMinimizeController;
   late final BiliHubViewModel _viewModel;
+  final _isSearchActive = signal(false);
 
   String get _query => _queryController.text.trim();
+
+  ScrollController _scrollControllerFor(BiliHubTab tab) {
+    return switch (tab) {
+      BiliHubTab.home => _homeScrollController,
+      BiliHubTab.mine => _mineScrollController,
+    };
+  }
 
   @override
   void initState() {
     super.initState();
     _queryController = TextEditingController();
+    _searchFocusNode = FocusNode();
     _homeScrollController = ScrollController()..addListener(_handleHomeScroll);
+    _mineScrollController = ScrollController();
+    _bottomBarScrollController = _homeScrollController;
+    _bottomBarMinimizeController = GlassTabBarMinimizeController(
+      behavior: GlassBarMinimizeBehavior.onScrollDown,
+    );
     _viewModel = BiliHubViewModel(
       client: widget.client,
       historyStore: widget.historyStore,
@@ -77,15 +95,23 @@ class _BiliHubPageState extends State<BiliHubPage> {
 
   @override
   void dispose() {
+    _bottomBarMinimizeController.dispose();
     _homeScrollController
       ..removeListener(_handleHomeScroll)
       ..dispose();
+    _mineScrollController.dispose();
+    _searchFocusNode.dispose();
     _queryController.dispose();
+    _isSearchActive.dispose();
     _viewModel.dispose();
     super.dispose();
   }
 
   Future<void> _runSearch() async {
+    _searchFocusNode.unfocus();
+    if (_query.isEmpty) {
+      return;
+    }
     final directBvid = _viewModel.directBvid.value;
     if (directBvid != null) {
       await _openPlayback(directBvid);
@@ -97,6 +123,75 @@ class _BiliHubPageState extends State<BiliHubPage> {
   void _clearSearch() {
     _queryController.clear();
     _viewModel.clearSearch();
+  }
+
+  void _updateSearchQuery(String value) {
+    _viewModel.updateQuery(value);
+    if (value.trim().isEmpty) {
+      _viewModel.clearSearch();
+    }
+  }
+
+  void _setSearchActive(bool active) {
+    if (active) {
+      _openSearch();
+      return;
+    }
+    _closeSearch();
+  }
+
+  void _openSearch() {
+    if (_viewModel.selectedTab.value != BiliHubTab.home) {
+      _selectTab(BiliHubTab.home);
+    }
+    _bottomBarMinimizeController.expand();
+    _isSearchActive.value = true;
+  }
+
+  void _closeSearch() {
+    _searchFocusNode.unfocus();
+    _clearSearch();
+    _bottomBarMinimizeController.expand();
+    _isSearchActive.value = false;
+  }
+
+  void _selectTab(BiliHubTab tab) {
+    if (_isSearchActive.value) {
+      _closeSearch();
+    } else {
+      _bottomBarMinimizeController.expand();
+    }
+    if (_viewModel.selectedTab.value == tab) {
+      return;
+    }
+    _viewModel.selectTab(tab);
+    _observeBottomBarScrollController(tab);
+  }
+
+  void _observeBottomBarScrollController(BiliHubTab tab) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _viewModel.selectedTab.value != tab) {
+        return;
+      }
+      final nextController = _scrollControllerFor(tab);
+      if (identical(_bottomBarScrollController, nextController)) {
+        return;
+      }
+      setState(() {
+        _bottomBarScrollController = nextController;
+      });
+    });
+  }
+
+  void _handlePopInvoked(bool didPop) {
+    if (didPop || !_isSearchActive.value) {
+      return;
+    }
+    if (_searchFocusNode.hasFocus) {
+      _searchFocusNode.unfocus();
+      return;
+    }
+    _closeSearch();
   }
 
   void _handleHomeScroll() {
@@ -319,11 +414,16 @@ class _BiliHubPageState extends State<BiliHubPage> {
       return;
     }
     await _viewModel.applyLoggedInProfile(profile);
+    if (!mounted) {
+      return;
+    }
+    _bottomBarMinimizeController.expand();
+    _observeBottomBarScrollController(BiliHubTab.mine);
   }
 
   void _handleAccountEntry() {
     if (_viewModel.profile.value.isLoggedIn) {
-      _viewModel.selectMineTab();
+      _selectTab(BiliHubTab.mine);
       return;
     }
     unawaited(_openQrLogin());
@@ -354,61 +454,89 @@ class _BiliHubPageState extends State<BiliHubPage> {
     return SignalBuilder(
       builder: (context) {
         final selectedTab = _viewModel.selectedTab.value;
+        final searchActive = _isSearchActive.value;
         final visualTheme = AppVisualTheme.of(context);
-        return AppGlassScaffold(
-          backgroundColor: visualTheme.background,
-          statusBarStyle: GlassStatusBarStyle.auto,
-          extendBody: true,
-          appBarHeight: _homeAppBarHeight,
-          bottomBarHeight: AppGlassBottomNavigation.extent,
-          appBar: selectedTab == BiliHubTab.home
-              ? AppFrostedScrollAppBar(
-                  scrollController: _homeScrollController,
-                  child: GlassAppBar(
-                    centerTitle: false,
-                    padding: const EdgeInsets.only(left: 2, right: 10),
-                    title: SignalBuilder(
-                      builder: (context) {
-                        return _HomeHeader(
-                          profile: _viewModel.profile.value,
-                          controller: _queryController,
-                          isSearching: _viewModel.isSearching.value,
-                          onAccountTap: _handleAccountEntry,
-                          onRegionTap: _openRegionHub,
-                          onChanged: () => _viewModel.updateQuery(_query),
-                          onSubmit: _runSearch,
-                          onClear: _query.isEmpty ? null : _clearSearch,
-                        );
-                      },
+        return PopScope<void>(
+          canPop: !searchActive,
+          onPopInvokedWithResult: (didPop, _) => _handlePopInvoked(didPop),
+          child: AppGlassScaffold(
+            backgroundColor: visualTheme.background,
+            statusBarStyle: GlassStatusBarStyle.auto,
+            extendBody: true,
+            resizeToAvoidBottomInset: true,
+            appBarHeight: _homeAppBarHeight,
+            bottomBarHeight: AppGlassBottomNavigation.extent,
+            appBar: selectedTab == BiliHubTab.home
+                ? AppFrostedScrollAppBar(
+                    scrollController: _homeScrollController,
+                    child: GlassAppBar(
+                      toolbarHeight: _homeAppBarHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      leading: _RegionMenuButton(
+                        key: const ValueKey<String>('bili-home-region-button'),
+                        onTap: _openRegionHub,
+                      ),
+                      title: Text(
+                        '推荐',
+                        key: const ValueKey<String>('bili-home-title'),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: visualTheme.textPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      actions: [
+                        _AvatarButton(
+                          key: const ValueKey<String>(
+                            'bili-home-avatar-button',
+                          ),
+                          name: _viewModel.profile.value.name,
+                          avatarUrl: _viewModel.profile.value.avatarUrl,
+                          onTap: _handleAccountEntry,
+                        ),
+                      ],
                     ),
-                  ),
-                )
-              : null,
-          body: switch (selectedTab) {
-            BiliHubTab.home => _buildHomeTab(),
-            BiliHubTab.mine => _MineTab(
-              profile: _viewModel.profile.value,
-              profileErrorMessage: _viewModel.profileErrorMessage.value,
-              isRefreshingProfile: _viewModel.isRefreshingProfile.value,
-              historyCount: _viewModel.history.value.length,
-              onLoginTap: _openQrLogin,
-              onLogoutTap: _viewModel.logout,
-              onSpaceTap: () => _showMessage('空间页暂未接入。'),
-              onCacheTap: () => unawaited(_openOfflineCachePage()),
-              onHistoryTap: () async {
-                await _openLibrary(BiliLibrarySection.history);
-              },
-              onFollowingTap: () =>
-                  unawaited(_openLibrary(BiliLibrarySection.following)),
-              onWatchLaterTap: () =>
-                  unawaited(_openLibrary(BiliLibrarySection.watchLater)),
-              onSettingsTap: () => unawaited(_openSettings()),
-              onRefresh: _viewModel.refreshMine,
+                  )
+                : null,
+            body: switch (selectedTab) {
+              BiliHubTab.home => _buildHomeTab(),
+              BiliHubTab.mine => _MineTab(
+                scrollController: _mineScrollController,
+                profile: _viewModel.profile.value,
+                profileErrorMessage: _viewModel.profileErrorMessage.value,
+                isRefreshingProfile: _viewModel.isRefreshingProfile.value,
+                historyCount: _viewModel.history.value.length,
+                onLoginTap: _openQrLogin,
+                onLogoutTap: _viewModel.logout,
+                onSpaceTap: () => _showMessage('空间页暂未接入。'),
+                onCacheTap: () => unawaited(_openOfflineCachePage()),
+                onHistoryTap: () async {
+                  await _openLibrary(BiliLibrarySection.history);
+                },
+                onFollowingTap: () =>
+                    unawaited(_openLibrary(BiliLibrarySection.following)),
+                onWatchLaterTap: () =>
+                    unawaited(_openLibrary(BiliLibrarySection.watchLater)),
+                onSettingsTap: () => unawaited(_openSettings()),
+                onRefresh: _viewModel.refreshMine,
+              ),
+            },
+            bottomBar: _HubNavigationBar(
+              selectedTab: selectedTab,
+              onSelected: _selectTab,
+              minimizeController: _bottomBarMinimizeController,
+              scrollController: _bottomBarScrollController,
+              search: AppGlassNavigationSearchConfig(
+                controller: _queryController,
+                focusNode: _searchFocusNode,
+                isActive: searchActive,
+                isLoading: _viewModel.isSearching.value,
+                onActiveChanged: _setSearchActive,
+                onChanged: _updateSearchQuery,
+                onSubmitted: (_) => unawaited(_runSearch()),
+                onClear: _clearSearch,
+              ),
             ),
-          },
-          bottomBar: _HubNavigationBar(
-            selectedTab: selectedTab,
-            onSelected: _viewModel.selectTab,
           ),
         );
       },
@@ -419,6 +547,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
     return RefreshIndicator(
       onRefresh: _viewModel.refreshAll,
       child: CustomScrollView(
+        key: const PageStorageKey<String>('bili-hub-home-scroll'),
         controller: _homeScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -485,10 +614,9 @@ class _BiliHubPageState extends State<BiliHubPage> {
               ),
             ),
           ),
-        if ((showsSearchResults && _viewModel.isSearching.value) ||
-            (!showsSearchResults &&
-                _viewModel.isRefreshingFeed.value &&
-                itemCount == 0))
+        if (!showsSearchResults &&
+            _viewModel.isRefreshingFeed.value &&
+            itemCount == 0)
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: 32),
@@ -496,6 +624,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
             ),
           )
         else if (showsSearchResults &&
+            !_viewModel.isSearching.value &&
             _viewModel.searchErrorMessage.value == null &&
             itemCount == 0)
           const SliverToBoxAdapter(

@@ -61,9 +61,7 @@ final class BiliHubViewModel {
     searchErrorMessage = _searchErrorMessage.readonly();
     profileErrorMessage = _profileErrorMessage.readonly();
     directBvid = computed(() => biliExtractBvid(_query.value));
-    showsSearchResults = computed(
-      () => _query.value.isNotEmpty || _results.value.isNotEmpty,
-    );
+    showsSearchResults = computed(() => _activeSearchKeyword.value != null);
   }
 
   final BiliClient client;
@@ -95,6 +93,7 @@ final class BiliHubViewModel {
   final _profileErrorMessage = signal<String?>(null);
   final _feedPage = signal(1);
   final _searchPage = signal(1);
+  var _searchRequestGeneration = 0;
 
   late final ReadonlySignal<List<BiliFeedVideo>> feedItems;
   late final ReadonlySignal<List<BiliSearchResult>> results;
@@ -247,7 +246,9 @@ final class BiliHubViewModel {
       return;
     }
 
+    final requestGeneration = ++_searchRequestGeneration;
     _isSearching.value = true;
+    _isLoadingMoreSearch.value = false;
     _searchErrorMessage.value = null;
     _results.value = const <BiliSearchResult>[];
     _searchPage.value = 1;
@@ -256,12 +257,20 @@ final class BiliHubViewModel {
 
     try {
       final nextResults = await client.searchVideos(keyword, page: 1);
+      if (requestGeneration != _searchRequestGeneration) {
+        return;
+      }
       _results.value = nextResults;
       _hasMoreSearch.value = nextResults.isNotEmpty;
     } catch (error) {
+      if (requestGeneration != _searchRequestGeneration) {
+        return;
+      }
       _searchErrorMessage.value = biliErrorMessage(error);
     } finally {
-      _isSearching.value = false;
+      if (requestGeneration == _searchRequestGeneration) {
+        _isSearching.value = false;
+      }
     }
   }
 
@@ -276,10 +285,15 @@ final class BiliHubViewModel {
     }
 
     final nextPage = _searchPage.value + 1;
+    final requestGeneration = _searchRequestGeneration;
     _isLoadingMoreSearch.value = true;
 
     try {
       final nextResults = await client.searchVideos(keyword, page: nextPage);
+      if (requestGeneration != _searchRequestGeneration ||
+          _activeSearchKeyword.value != keyword) {
+        return null;
+      }
       final existingBvids = _results.value.map((item) => item.bvid).toSet();
       final uniqueResults = nextResults
           .where((item) => existingBvids.add(item.bvid))
@@ -289,15 +303,23 @@ final class BiliHubViewModel {
       _hasMoreSearch.value = nextResults.isNotEmpty && uniqueResults.isNotEmpty;
       return null;
     } catch (error) {
+      if (requestGeneration != _searchRequestGeneration) {
+        return null;
+      }
       return '加载更多搜索结果失败：${biliErrorMessage(error)}';
     } finally {
-      _isLoadingMoreSearch.value = false;
+      if (requestGeneration == _searchRequestGeneration) {
+        _isLoadingMoreSearch.value = false;
+      }
     }
   }
 
   void clearSearch() {
+    _searchRequestGeneration += 1;
     _query.value = '';
     _results.value = const <BiliSearchResult>[];
+    _isSearching.value = false;
+    _isLoadingMoreSearch.value = false;
     _searchErrorMessage.value = null;
     _activeSearchKeyword.value = null;
     _searchPage.value = 1;

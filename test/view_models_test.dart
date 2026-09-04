@@ -306,6 +306,7 @@ void main() {
         viewModel.updateQuery('https://www.bilibili.com/video/BV1xx411c7mD');
 
         expect(viewModel.directBvid.value, 'BV1xx411c7mD');
+        expect(viewModel.showsSearchResults.value, isFalse);
 
         final target = await viewModel.resolvePlaybackTarget(
           'BV1xx411c7mD',
@@ -320,6 +321,7 @@ void main() {
         expect(viewModel.query.value, isEmpty);
         expect(viewModel.results.value, isEmpty);
         expect(viewModel.activeSearchKeyword.value, isNull);
+        expect(viewModel.showsSearchResults.value, isFalse);
       },
     );
 
@@ -341,10 +343,13 @@ void main() {
       addTearDown(viewModel.dispose);
 
       viewModel.updateQuery('flutter');
+      expect(viewModel.showsSearchResults.value, isFalse);
+
       final search = viewModel.runSearch();
 
       expect(viewModel.isSearching.value, isTrue);
       expect(viewModel.activeSearchKeyword.value, 'flutter');
+      expect(viewModel.showsSearchResults.value, isTrue);
 
       await search;
 
@@ -357,6 +362,101 @@ void main() {
       expect(viewModel.isRefreshingFeed.value, isFalse);
       expect(viewModel.feedItems.value, hasLength(1));
       expect(viewModel.feedErrorMessage.value, isNull);
+    });
+
+    test('ignores a pending search after search state is cleared', () async {
+      final client = _FakeBiliHubClient();
+      final searchCompleter = Completer<List<BiliSearchResult>>();
+      client.searchCompleter = searchCompleter;
+      final viewModel = BiliHubViewModel(client: client);
+      addTearDown(viewModel.dispose);
+
+      viewModel.updateQuery('flutter');
+      final search = viewModel.runSearch();
+
+      viewModel.clearSearch();
+      searchCompleter.complete(const <BiliSearchResult>[
+        BiliSearchResult(
+          aid: 3,
+          bvid: 'BV1stale000',
+          title: '过期搜索结果',
+          author: '测试UP',
+          coverUrl: '',
+          durationLabel: '03:00',
+          playCountLabel: '1万',
+          danmakuCountLabel: '3',
+        ),
+      ]);
+      await search;
+
+      expect(viewModel.isSearching.value, isFalse);
+      expect(viewModel.showsSearchResults.value, isFalse);
+      expect(viewModel.activeSearchKeyword.value, isNull);
+      expect(viewModel.results.value, isEmpty);
+    });
+
+    test('keeps search errors in submitted state until cleared', () async {
+      final client = _FakeBiliHubClient()
+        ..searchError = const BiliApiException('搜索服务暂不可用');
+      final viewModel = BiliHubViewModel(client: client);
+      addTearDown(viewModel.dispose);
+
+      viewModel.updateQuery('flutter');
+      await viewModel.runSearch();
+
+      expect(viewModel.showsSearchResults.value, isTrue);
+      expect(viewModel.activeSearchKeyword.value, 'flutter');
+      expect(viewModel.searchErrorMessage.value, '搜索服务暂不可用');
+      expect(viewModel.results.value, isEmpty);
+      expect(viewModel.isSearching.value, isFalse);
+
+      viewModel.clearSearch();
+
+      expect(viewModel.showsSearchResults.value, isFalse);
+      expect(viewModel.searchErrorMessage.value, isNull);
+    });
+
+    test('deduplicates search pagination and stops at an empty page', () async {
+      final client = _FakeBiliHubClient();
+      client.searchPages[2] = const <BiliSearchResult>[
+        BiliSearchResult(
+          aid: 2,
+          bvid: 'BV1search0',
+          title: '重复搜索视频',
+          author: '测试UP',
+          coverUrl: '',
+          durationLabel: '03:00',
+          playCountLabel: '1万',
+          danmakuCountLabel: '3',
+        ),
+        BiliSearchResult(
+          aid: 4,
+          bvid: 'BV1search1',
+          title: '第二页视频',
+          author: '测试UP',
+          coverUrl: '',
+          durationLabel: '04:00',
+          playCountLabel: '2万',
+          danmakuCountLabel: '4',
+        ),
+      ];
+      final viewModel = BiliHubViewModel(client: client);
+      addTearDown(viewModel.dispose);
+
+      viewModel.updateQuery('flutter');
+      await viewModel.runSearch();
+      await viewModel.loadMoreSearch();
+
+      expect(viewModel.results.value.map((item) => item.bvid), <String>[
+        'BV1search0',
+        'BV1search1',
+      ]);
+      expect(viewModel.hasMoreSearch.value, isTrue);
+
+      await viewModel.loadMoreSearch();
+
+      expect(viewModel.results.value, hasLength(2));
+      expect(viewModel.hasMoreSearch.value, isFalse);
     });
 
     test('logout clears session and pauses offline cache', () async {
@@ -605,6 +705,10 @@ final class _FakeMediaExporter extends BiliOfflineMediaExporter {
 
 final class _FakeBiliHubClient extends BiliClient {
   int? requestedEpisodeId;
+  Completer<List<BiliSearchResult>>? searchCompleter;
+  Object? searchError;
+  final Map<int, List<BiliSearchResult>> searchPages =
+      <int, List<BiliSearchResult>>{};
 
   @override
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
@@ -629,6 +733,17 @@ final class _FakeBiliHubClient extends BiliClient {
     String keyword, {
     int page = 1,
   }) async {
+    if (searchError case final error?) {
+      throw error;
+    }
+    final completer = searchCompleter;
+    if (page == 1 && completer != null) {
+      searchCompleter = null;
+      return completer.future;
+    }
+    if (searchPages[page] case final results?) {
+      return results;
+    }
     return page == 1
         ? const <BiliSearchResult>[
             BiliSearchResult(

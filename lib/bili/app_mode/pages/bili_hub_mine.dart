@@ -2,6 +2,7 @@ part of 'bili_hub_page.dart';
 
 class _MineTab extends StatelessWidget {
   const _MineTab({
+    required this.scrollController,
     required this.profile,
     required this.profileErrorMessage,
     required this.isRefreshingProfile,
@@ -17,6 +18,7 @@ class _MineTab extends StatelessWidget {
     required this.onRefresh,
   });
 
+  final ScrollController scrollController;
   final BiliUserProfile profile;
   final String? profileErrorMessage;
   final bool isRefreshingProfile;
@@ -38,6 +40,8 @@ class _MineTab extends StatelessWidget {
       child: RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
+          key: const PageStorageKey<String>('bili-hub-mine-scroll'),
+          controller: scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.only(
             bottom: AppGlassBottomNavigation.contentClearance(context),

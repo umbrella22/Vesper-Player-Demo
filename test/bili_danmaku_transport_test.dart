@@ -150,18 +150,26 @@ void main() {
     final client = BiliClient(transport: transport);
     addTearDown(() => transport.httpClient.close(force: true));
 
-    const acceptedUrls = <String>[
-      'https://i0.hdslb.com/bfs/dm/special.bin?token=a%2Fb&part=1&part=2',
-      'https://comment.bilibili.com/special.bin',
-      'https://api.bilibili.com/x/v2/dm/special.bin',
-    ];
-    for (final url in acceptedUrls) {
+    const acceptedUrls = <String, String>{
+      'https://i0.hdslb.com/bfs/dm/special.bin?token=a%2Fb&part=1&part=2':
+          'https://i0.hdslb.com/bfs/dm/special.bin?token=a%2Fb&part=1&part=2',
+      '//i0.hdslb.com/bfs/dm/special.bin?token=network-path':
+          'https://i0.hdslb.com/bfs/dm/special.bin?token=network-path',
+      'http://i0.hdslb.com/bfs/dm/special.bin?token=legacy-http':
+          'https://i0.hdslb.com/bfs/dm/special.bin?token=legacy-http',
+      'https://comment.bilibili.com/special.bin':
+          'https://comment.bilibili.com/special.bin',
+      'https://api.bilibili.com/x/v2/dm/special.bin':
+          'https://api.bilibili.com/x/v2/dm/special.bin',
+    };
+    for (final entry in acceptedUrls.entries) {
+      final url = entry.key;
       final result = await client.fetchDanmakuSpecialResource(
         bvid: 'BV1SPECIAL',
         resourceUrl: url,
       );
       expect(result, <int>[1, 2, 3], reason: url);
-      expect(httpClient.lastUri, Uri.parse(url), reason: url);
+      expect(httpClient.lastUri, Uri.parse(entry.value), reason: url);
     }
     expect(
       httpClient.lastRequest.headers.value(HttpHeaders.refererHeader),
@@ -173,7 +181,7 @@ void main() {
     );
 
     for (final url in <String>[
-      'http://i0.hdslb.com/bfs/dm/special.bin',
+      'http://example.test/special.bin',
       'https://user@i0.hdslb.com/bfs/dm/special.bin',
       'https://hdslb.com.example.test/special.bin',
       'https://bilibili.com.example.test/special.bin',

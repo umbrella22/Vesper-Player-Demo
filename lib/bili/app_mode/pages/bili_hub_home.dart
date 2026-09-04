@@ -15,85 +15,6 @@ int biliHomeCoverCacheWidth({
   return (tileWidth * devicePixelRatio).ceil().clamp(160, 720).toInt();
 }
 
-class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({
-    required this.profile,
-    required this.controller,
-    required this.isSearching,
-    required this.onAccountTap,
-    required this.onRegionTap,
-    required this.onChanged,
-    required this.onSubmit,
-    required this.onClear,
-  });
-
-  final BiliUserProfile profile;
-  final TextEditingController controller;
-  final bool isSearching;
-  final VoidCallback onAccountTap;
-  final VoidCallback onRegionTap;
-  final VoidCallback onChanged;
-  final Future<void> Function() onSubmit;
-  final VoidCallback? onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final visualTheme = AppVisualTheme.of(context);
-    return Row(
-      children: [
-        _AvatarButton(
-          name: profile.name,
-          avatarUrl: profile.avatarUrl,
-          onTap: onAccountTap,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Stack(
-            alignment: Alignment.centerRight,
-            children: [
-              GlassSearchBar(
-                controller: controller,
-                placeholder: '搜索视频、BV 号或链接',
-                onChanged: (value) {
-                  onChanged();
-                  if (value.trim().isEmpty && onClear != null) {
-                    onClear!();
-                  }
-                },
-                onSubmitted: (_) => onSubmit(),
-                height: 36,
-                quality: GlassQuality.standard,
-                textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: visualTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-                placeholderStyle: Theme.of(context).textTheme.bodyMedium
-                    ?.copyWith(
-                      color: visualTheme.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                searchIconColor: visualTheme.textSecondary,
-                clearIconColor: visualTheme.textSecondary,
-              ),
-              if (isSearching)
-                const Padding(
-                  padding: EdgeInsets.only(right: 10),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 4),
-        _RegionMenuButton(onTap: onRegionTap),
-      ],
-    );
-  }
-}
-
 class _HomeVideoGrid extends StatelessWidget {
   const _HomeVideoGrid({
     required this.itemCount,
@@ -364,21 +285,23 @@ class _HomeVideoCard extends StatelessWidget {
 }
 
 class _RegionMenuButton extends StatelessWidget {
-  const _RegionMenuButton({required this.onTap});
+  const _RegionMenuButton({super.key, required this.onTap});
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return SizedBox.square(
-      dimension: AppVisualTokens.minimumTapTarget,
-      child: IconButton(
-        onPressed: onTap,
-        padding: EdgeInsets.zero,
-        icon: const Icon(Icons.menu_rounded, size: 22),
-        color: visualTheme.textPrimary,
-        tooltip: '分区',
+    return AppPressScale(
+      child: SizedBox.square(
+        dimension: AppVisualTokens.minimumTapTarget,
+        child: IconButton(
+          onPressed: onTap,
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.grid_view_rounded, size: 22),
+          color: visualTheme.textPrimary,
+          tooltip: '分区',
+        ),
       ),
     );
   }

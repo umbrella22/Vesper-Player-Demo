@@ -164,6 +164,293 @@ void main() {
     },
   );
 
+  testWidgets(
+    'high contrast navigation supports minimize and two-stage search',
+    (tester) async {
+      final queryController = TextEditingController();
+      final focusNode = FocusNode();
+      final scrollController = ScrollController();
+      final minimizeController = GlassTabBarMinimizeController(
+        behavior: GlassBarMinimizeBehavior.onScrollDown,
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        queryController.dispose();
+        focusNode.dispose();
+        scrollController.dispose();
+        minimizeController.dispose();
+      });
+      var searchActive = false;
+
+      await tester.binding.setSurfaceSize(const Size(320, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppVisualTokens.mobileLightHighContrastTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(highContrast: true),
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                void setSearchActive(bool active) {
+                  setState(() {
+                    searchActive = active;
+                    if (!active) {
+                      queryController.clear();
+                    }
+                  });
+                }
+
+                return Scaffold(
+                  body: Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemExtent: 48,
+                          itemCount: 40,
+                          itemBuilder: (_, index) => Text('项目 $index'),
+                        ),
+                      ),
+                      AppGlassBottomNavigation(
+                        selectedIndex: 0,
+                        onSelected: (_) {},
+                        minimizeController: minimizeController,
+                        scrollController: scrollController,
+                        search: AppGlassNavigationSearchConfig(
+                          controller: queryController,
+                          focusNode: focusNode,
+                          isActive: searchActive,
+                          isLoading: false,
+                          onActiveChanged: setSearchActive,
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) {},
+                          onClear: () {
+                            queryController.clear();
+                            setState(() {});
+                          },
+                        ),
+                        items: const [
+                          AppGlassNavigationItem(
+                            label: '首页',
+                            icon: Icons.home_outlined,
+                            activeIcon: Icons.home_rounded,
+                          ),
+                          AppGlassNavigationItem(
+                            label: '我的',
+                            icon: Icons.person_outline_rounded,
+                            activeIcon: Icons.person_rounded,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      final searchButton = find.byKey(AppGlassBottomNavigation.searchButtonKey);
+      expect(find.byType(GlassTabBar), findsNothing);
+      expect(
+        tester.getSize(searchButton),
+        const Size.square(AppGlassBottomNavigation.barHeight),
+      );
+      for (final label in const ['首页', '我的']) {
+        final tab = find.ancestor(
+          of: find.text(label),
+          matching: find.byType(InkWell),
+        );
+        expect(
+          tester.getSize(tab).width,
+          AppGlassBottomNavigation.tabItemWidth,
+        );
+      }
+
+      await tester.drag(find.byType(ListView), const Offset(0, -100));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(minimizeController.minimized, isTrue);
+      expect(searchButton, findsOneWidget);
+
+      minimizeController.expand();
+      await tester.pump();
+      final searchScale = find.descendant(
+        of: searchButton,
+        matching: find.byType(AnimatedScale),
+      );
+      final searchGesture = await tester.startGesture(
+        tester.getCenter(searchButton),
+      );
+      await tester.pump();
+      expect(tester.widget<AnimatedScale>(searchScale).scale, 0.96);
+      await searchGesture.up();
+      await tester.pump();
+
+      final searchField = find.byKey(AppGlassBottomNavigation.searchFieldKey);
+      expect(searchField, findsOneWidget);
+      expect(focusNode.hasFocus, isFalse);
+      expect(tester.getSize(searchField).height, greaterThanOrEqualTo(44));
+
+      await tester.tap(searchField);
+      await tester.enterText(searchField, 'flutter');
+      await tester.pump();
+
+      final dismissButton = find.byKey(
+        AppGlassBottomNavigation.searchDismissButtonKey,
+      );
+      expect(focusNode.hasFocus, isTrue);
+      expect(dismissButton, findsOneWidget);
+      expect(
+        tester.getSize(dismissButton).shortestSide,
+        greaterThanOrEqualTo(44),
+      );
+      expect(
+        find.byKey(AppGlassBottomNavigation.searchClearButtonKey),
+        findsOneWidget,
+      );
+
+      await tester.tap(dismissButton);
+      await tester.pump();
+
+      expect(searchActive, isTrue);
+      expect(focusNode.hasFocus, isFalse);
+      expect(queryController.text, 'flutter');
+
+      await tester.tap(
+        find.byKey(AppGlassBottomNavigation.searchExitButtonKey),
+      );
+      await tester.pump();
+      expect(searchActive, isFalse);
+      expect(queryController.text, isEmpty);
+    },
+  );
+
+  testWidgets('scroll minimization survives runtime contrast changes', (
+    tester,
+  ) async {
+    final scrollController = ScrollController();
+    final minimizeController = GlassTabBarMinimizeController(
+      behavior: GlassBarMinimizeBehavior.onScrollDown,
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      scrollController.dispose();
+      minimizeController.dispose();
+    });
+    var highContrast = true;
+    late StateSetter updateHost;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileLightTheme(),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            updateHost = setState;
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(highContrast: highContrast),
+              child: Scaffold(
+                body: Column(
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemExtent: 48,
+                        itemCount: 100,
+                        itemBuilder: (_, index) => Text('项目 $index'),
+                      ),
+                    ),
+                    AppGlassBottomNavigation(
+                      selectedIndex: 0,
+                      onSelected: (_) {},
+                      minimizeController: minimizeController,
+                      scrollController: scrollController,
+                      items: const [
+                        AppGlassNavigationItem(
+                          label: '首页',
+                          icon: Icons.home_outlined,
+                        ),
+                        AppGlassNavigationItem(
+                          label: '我的',
+                          icon: Icons.person_outline_rounded,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    Future<void> expectMinimizesAfterDrag() async {
+      await tester.drag(find.byType(ListView), const Offset(0, -100));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(minimizeController.minimized, isTrue);
+      minimizeController.expand();
+      await tester.pump();
+    }
+
+    await expectMinimizesAfterDrag();
+
+    updateHost(() => highContrast = false);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(GlassTabBar), findsOneWidget);
+    await expectMinimizesAfterDrag();
+
+    updateHost(() => highContrast = true);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(GlassTabBar), findsNothing);
+    await expectMinimizesAfterDrag();
+  });
+
+  testWidgets('bottom navigation honors reduced motion', (tester) async {
+    final queryController = TextEditingController();
+    final focusNode = FocusNode();
+    addTearDown(() {
+      queryController.dispose();
+      focusNode.dispose();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileLightTheme(),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Scaffold(
+            body: AppGlassBottomNavigation(
+              selectedIndex: 0,
+              onSelected: (_) {},
+              search: AppGlassNavigationSearchConfig(
+                controller: queryController,
+                focusNode: focusNode,
+                isActive: false,
+                isLoading: false,
+                onActiveChanged: (_) {},
+                onChanged: (_) {},
+                onSubmitted: (_) {},
+                onClear: () {},
+              ),
+              items: const [
+                AppGlassNavigationItem(label: '首页', icon: Icons.home_outlined),
+                AppGlassNavigationItem(
+                  label: '我的',
+                  icon: Icons.person_outline_rounded,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.widget<GlassTabBar>(find.byType(GlassTabBar)).pressScale, 1);
+  });
+
   group('Vesper native branding contracts', () {
     test('Dart, Android, and iOS identifiers stay aligned', () async {
       final pubspec = await File('pubspec.yaml').readAsString();

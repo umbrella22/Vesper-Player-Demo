@@ -749,15 +749,16 @@ class BiliClient {
     required String bvid,
     required String resourceUrl,
   }) {
-    final uri = Uri.tryParse(resourceUrl);
-    if (uri == null ||
-        uri.scheme != 'https' ||
-        uri.userInfo.isNotEmpty ||
-        !_isAllowedBiliDanmakuResourceHost(uri.host)) {
+    final uri = _parseAndNormalizeBiliDanmakuResourceUri(resourceUrl);
+    final rejectionReason = _biliDanmakuResourceRejectionReason(uri);
+    if (uri == null || rejectionReason != null) {
       final rejectedHost = uri == null || uri.host.isEmpty
           ? '<none>'
           : uri.host;
-      debugPrint('[BiliDanmaku] rejected special resource host: $rejectedHost');
+      debugPrint(
+        '[BiliDanmaku] rejected special resource URL '
+        '($rejectionReason), host: $rejectedHost',
+      );
       throw const FormatException('unsupported danmaku resource URL');
     }
     return _transport
@@ -1150,6 +1151,39 @@ class BiliClient {
     }
     return null;
   }
+}
+
+Uri? _parseAndNormalizeBiliDanmakuResourceUri(String resourceUrl) {
+  // dm/web/view may serialize a CDN locator as a network-path reference or an
+  // obsolete HTTP URL. Preserve its host, path, and query while requiring the
+  // actual transport to use HTTPS.
+  final absoluteUrl = resourceUrl.startsWith('//')
+      ? 'https:$resourceUrl'
+      : resourceUrl;
+  final uri = Uri.tryParse(absoluteUrl);
+  if (uri != null &&
+      uri.scheme == 'http' &&
+      uri.userInfo.isEmpty &&
+      _isAllowedBiliDanmakuResourceHost(uri.host)) {
+    return uri.replace(scheme: 'https');
+  }
+  return uri;
+}
+
+String? _biliDanmakuResourceRejectionReason(Uri? uri) {
+  if (uri == null) {
+    return 'malformed';
+  }
+  if (uri.scheme != 'https') {
+    return 'scheme';
+  }
+  if (uri.userInfo.isNotEmpty) {
+    return 'userinfo';
+  }
+  if (!_isAllowedBiliDanmakuResourceHost(uri.host)) {
+    return 'host';
+  }
+  return null;
 }
 
 bool _isAllowedBiliDanmakuResourceHost(String host) {

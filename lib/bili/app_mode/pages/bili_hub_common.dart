@@ -4,16 +4,25 @@ class _HubNavigationBar extends StatelessWidget {
   const _HubNavigationBar({
     required this.selectedTab,
     required this.onSelected,
+    required this.search,
+    required this.minimizeController,
+    required this.scrollController,
   });
 
   final BiliHubTab selectedTab;
   final ValueChanged<BiliHubTab> onSelected;
+  final AppGlassNavigationSearchConfig search;
+  final GlassTabBarMinimizeController minimizeController;
+  final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
     return AppGlassBottomNavigation(
       selectedIndex: selectedTab.index,
       onSelected: (index) => onSelected(BiliHubTab.values[index]),
+      search: search,
+      minimizeController: minimizeController,
+      scrollController: scrollController,
       items: const [
         AppGlassNavigationItem(
           icon: Icons.home_outlined,
@@ -117,6 +126,7 @@ class _EmptyPanel extends StatelessWidget {
 
 class _AvatarButton extends StatelessWidget {
   const _AvatarButton({
+    super.key,
     required this.name,
     required this.avatarUrl,
     required this.onTap,
@@ -128,29 +138,34 @@ class _AvatarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: AppVisualTokens.minimumTapTarget,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Center(
-          child: CircleAvatar(
-            radius: 16,
-            backgroundColor: AppVisualTokens.biliSourcePink.withValues(
-              alpha: Theme.of(context).brightness == Brightness.dark
-                  ? 0.18
-                  : 0.12,
+    return AppPressScale(
+      child: SizedBox.square(
+        dimension: AppVisualTokens.minimumTapTarget,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Center(
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: AppVisualTokens.biliSourcePink.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark
+                    ? 0.18
+                    : 0.12,
+              ),
+              backgroundImage: avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl.isEmpty
+                  ? Text(
+                      (name.isEmpty ? 'B' : name.characters.first)
+                          .toUpperCase(),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppVisualTokens.biliSourcePink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    )
+                  : null,
             ),
-            backgroundImage: avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
-            child: avatarUrl.isEmpty
-                ? Text(
-                    (name.isEmpty ? 'B' : name.characters.first).toUpperCase(),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppVisualTokens.biliSourcePink,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  )
-                : null,
           ),
         ),
       ),

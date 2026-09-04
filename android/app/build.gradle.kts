@@ -92,13 +92,12 @@ flutter {
 }
 
 dependencies {
-    debugImplementation("androidx.core:core-ktx:1.17.0")
-    add("profileImplementation", "androidx.core:core-ktx:1.17.0")
-    debugImplementation(
-        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2",
-    )
-    add(
-        "profileImplementation",
-        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2",
-    )
+    val coreKtx = "androidx.core:core-ktx:1.19.0"
+    val performanceDiagnostics =
+        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2"
+
+    debugImplementation(coreKtx)
+    add("profileImplementation", coreKtx)
+    debugImplementation(performanceDiagnostics)
+    add("profileImplementation", performanceDiagnostics)
 }
