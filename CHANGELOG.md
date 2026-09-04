@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.12.1...vesper_media-v1.12.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **performance:** reduce high-density danmaku jank ([8facbea](https://github.com/umbrella22/Vesper-Player-Demo/commit/8facbea446a26f524cd1781e97dd546b1ac0f4cf))
+
 ## [1.12.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.12.0...vesper_media-v1.12.1) (2026-09-04)
 
 
