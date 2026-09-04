@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.12.0...vesper_media-v1.12.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **performance:** integrate optional diagnostics tooling ([34af094](https://github.com/umbrella22/Vesper-Player-Demo/commit/34af0942db22f494213b342d608465a75c00e9fa))
+
+
+### Performance Improvements
+
+* **danmaku:** bound overlay rendering work ([b67b33b](https://github.com/umbrella22/Vesper-Player-Demo/commit/b67b33ba525361ca0a262b433a22ab36baf51822))
+
 ## [1.12.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.11.0...vesper_media-v1.12.0) (2026-09-02)
 
 
