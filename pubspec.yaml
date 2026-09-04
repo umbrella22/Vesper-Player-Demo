@@ -31,11 +31,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vesper_player: 0.5.2-rc.4
-  vesper_player_ui: 0.5.2-rc.4
-  vesper_player_external_playback: 0.5.2-rc.4
-  vesper_player_source_normalizer_ffmpeg: 0.5.2-rc.4
-  vesper_player_remux_ffmpeg: 0.5.2-rc.4
+  vesper_player: ^0.5.2
+  vesper_player_ui: ^0.5.2
+  vesper_player_external_playback: ^0.5.2
+  vesper_player_source_normalizer_ffmpeg: ^0.5.2
+  vesper_player_remux_ffmpeg: ^0.5.2
   crypto: ^3.0.7
   cupertino_ui: ^1.0.2
   material_ui: ^1.1.1

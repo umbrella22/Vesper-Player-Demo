@@ -397,7 +397,7 @@
 			repositoryURL = "https://github.com/umbrella22/VesperPlayerKit.git";
 			requirement = {
 				kind = exactVersion;
-				version = "0.5.2-rc.4";
+				version = 0.5.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

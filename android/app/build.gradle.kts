@@ -95,10 +95,10 @@ dependencies {
     debugImplementation("androidx.core:core-ktx:1.17.0")
     add("profileImplementation", "androidx.core:core-ktx:1.17.0")
     debugImplementation(
-        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2-rc.4",
+        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2",
     )
     add(
         "profileImplementation",
-        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2-rc.4",
+        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.5.2",
     )
 }
