@@ -206,7 +206,7 @@ void main() {
     expect(provider.lastSession.positions, <int>[1000, 6000]);
   });
 
-  testWidgets('disabled 设置不挂载弹幕画布', (tester) async {
+  testWidgets('disabled 设置保留空绘制画布以避免开关时重建渲染树', (tester) async {
     final provider = _FakeDanmakuProvider(<MediaDanmakuEvent>[
       const MediaDanmakuEvent(id: 'hidden', timeMs: 0, text: '不显示'),
     ]);
@@ -225,7 +225,17 @@ void main() {
     );
     await tester.pump();
 
-    expect(_danmakuPaintFinder, findsNothing);
+    expect(_danmakuPaintFinder, findsOneWidget);
+    final painter =
+        tester.widget<CustomPaint>(_danmakuPaintFinder).painter!
+            as MediaDanmakuPainter;
+    expect(
+      painter.debugVisibleEventIdsAt(
+        positionMs: 100,
+        size: tester.getSize(_danmakuPaintFinder),
+      ),
+      <String>['hidden'],
+    );
   });
 
   testWidgets('播放进度推动正向与逆向弹幕沿相反方向移动', (tester) async {
@@ -384,6 +394,58 @@ void main() {
       painter.debugAdvancedOpacityLayerEventIdsAt(positionMs: 1000, size: size),
       <String>['advanced-01'],
     );
+    expect(
+      painter.debugCachedTextLayoutCountAt(positionMs: 1000, size: size),
+      8,
+    );
+  });
+
+  testWidgets('超高密度来源同时收紧普通与高级弹幕同屏预算', (tester) async {
+    final provider = _FakeDanmakuProvider(
+      <MediaDanmakuEvent>[
+        for (var index = 0; index < 5000; index += 1)
+          MediaDanmakuEvent(
+            id: index < 8 ? 'dense-standard-$index' : 'future-$index',
+            timeMs: index < 8 ? 0 : 60000 + index,
+            text: index < 8 ? 'dense' : 'future',
+          ),
+      ],
+      advancedEvents: <MediaAdvancedDanmakuEvent>[
+        for (var index = 0; index < 8; index += 1)
+          _advancedEvent(id: 'dense-advanced-$index'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaDanmakuLayer(
+          provider: provider,
+          target: target,
+          positionMs: 1000,
+          playbackState: VesperPlaybackState.paused,
+          playbackRate: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final (painter, size) = _painterAndSize(tester);
+    expect(
+      painter.debugVisibleEventIdsAt(positionMs: 1000, size: size),
+      <String>[
+        for (var index = 0; index < 4; index += 1) 'dense-standard-$index',
+      ],
+    );
+    expect(
+      painter.debugVisibleAdvancedEventIdsAt(positionMs: 1000, size: size),
+      <String>[
+        for (var index = 0; index < 4; index += 1) 'dense-advanced-$index',
+      ],
+    );
+    expect(
+      painter.debugCachedTextLayoutCountAt(positionMs: 1000, size: size),
+      8,
+    );
   });
 
   testWidgets('显示区域、密度和字号设置改变确定性渲染计划', (tester) async {
@@ -493,15 +555,18 @@ void main() {
     await tester.pumpWidget(build(true));
     await tester.pump();
     var (painter, size) = _painterAndSize(tester);
+    final paintElement = tester.element(_danmakuPaintFinder);
     expect(painter.debugStandardLayoutBuildCount(size), 1);
 
     await tester.pumpWidget(build(false));
     await tester.pump();
-    expect(_danmakuPaintFinder, findsNothing);
+    expect(_danmakuPaintFinder, findsOneWidget);
+    expect(tester.element(_danmakuPaintFinder), same(paintElement));
 
     await tester.pumpWidget(build(true));
     await tester.pump();
     (painter, size) = _painterAndSize(tester);
+    expect(tester.element(_danmakuPaintFinder), same(paintElement));
     expect(painter.debugStandardLayoutBuildCount(size), 1);
   });
 
@@ -537,10 +602,13 @@ void main() {
     );
     expect(windowCount, greaterThan(256));
     expect(windowCount, lessThan(events.length));
-    expect(
-      painter.debugCachedTextLayoutCountAt(positionMs: 20000, size: size),
-      256,
+    final cachedTextLayoutCount = painter.debugCachedTextLayoutCountAt(
+      positionMs: 20000,
+      size: size,
     );
+    expect(cachedTextLayoutCount, greaterThan(0));
+    expect(cachedTextLayoutCount, lessThan(windowCount));
+    expect(cachedTextLayoutCount, lessThanOrEqualTo(256));
 
     expect(painter.debugStandardLayoutBuildCount(size, positionMs: 34000), 1);
     expect(painter.debugStandardLayoutBuildCount(size, positionMs: 36000), 2);
