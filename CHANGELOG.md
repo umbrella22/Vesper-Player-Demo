@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.14.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.13.0...vesper_media-v1.14.0) (2026-09-04)
+
+
+### Features
+
+* add resilient startup and persistent player settings ([e4319a6](https://github.com/umbrella22/Vesper-Player-Demo/commit/e4319a6a6393ee95c486bb42192fc4cce33d06a8))
+* add segmented advanced danmaku support ([9deb270](https://github.com/umbrella22/Vesper-Player-Demo/commit/9deb270ed44be3a3b1f8f1f23c44b278bd64f37f))
+* Add support for optional audio-only sources in media playback ([2157da5](https://github.com/umbrella22/Vesper-Player-Demo/commit/2157da5a746f049334b9886b5e1a60608576edcf))
+* enhance BiliServices tests with new probe timeout and abort scenarios ([78198a8](https://github.com/umbrella22/Vesper-Player-Demo/commit/78198a877c9acd74c7fd58c14c0f1ea54edce372))
+* enhance media glass sheets with readable surfaces ([1cfa4d9](https://github.com/umbrella22/Vesper-Player-Demo/commit/1cfa4d9593b18be55421591095408566bc279a27))
+* Enhance offline cache management and playback features ([f9e3542](https://github.com/umbrella22/Vesper-Player-Demo/commit/f9e3542d026bf4b5c0d2c79fbb9b92c56a0f35e5))
+* enhance playback view model with comments and related videos functionality ([cda514d](https://github.com/umbrella22/Vesper-Player-Demo/commit/cda514da417c0ecfbf6910a585ccbbe46d6f8aad))
+* Enhance TuningOptionButton with supporting text and accessibility features ([ef1641a](https://github.com/umbrella22/Vesper-Player-Demo/commit/ef1641a55a0f610aadadb81990e3db92424fce51))
+* Enhance TV mode functionality and UI responsiveness ([d9088aa](https://github.com/umbrella22/Vesper-Player-Demo/commit/d9088aa747912e9b1ac43b2b77198e8b0d050f60))
+* Implement playback recovery mechanism and comment replies loading ([c4d0f1f](https://github.com/umbrella22/Vesper-Player-Demo/commit/c4d0f1f314c807ab4b50b2a7e58bf32c243504fc))
+* integrate danmaku with player controls ([6b57d42](https://github.com/umbrella22/Vesper-Player-Demo/commit/6b57d4236da709bef651a0bc802309326c61a51b))
+* integrate liquid glass widgets for enhanced UI effects ([559295d](https://github.com/umbrella22/Vesper-Player-Demo/commit/559295d32b66261360ac8db13378b6b78ea6ea03))
+* media playback architecture and enhance engagement capabilities ([dd0cb9a](https://github.com/umbrella22/Vesper-Player-Demo/commit/dd0cb9a8ac7f6f9a16cd929e47dbdad97e794b73))
+* Refactor Bili UI mode handling and add offline download capabilities ([40e5634](https://github.com/umbrella22/Vesper-Player-Demo/commit/40e563412cbd32fe96fc5ea11abe8ae1dfea68c8))
+* sdk修正 ([ddf9583](https://github.com/umbrella22/Vesper-Player-Demo/commit/ddf958391092f09538e62fdc23e6748f84bb92db))
+* **tv:** enhance layout and caching for TV home page ([b363141](https://github.com/umbrella22/Vesper-Player-Demo/commit/b363141c4f10eac5cbf0c4339ccecff3df7db543))
+* 优化 HTTP 请求头的可变性管理 ([3a1005d](https://github.com/umbrella22/Vesper-Player-Demo/commit/3a1005d264e1782742b9ea899014788fbf58680a))
+* 优化播放上下文标签的布局和间距，增加测试用例 ([f4e1de6](https://github.com/umbrella22/Vesper-Player-Demo/commit/f4e1de6399433fb52964588df6b81068c421faa4))
+* 引入 AppGlassScaffold 以替代 GlassScaffold，增强组件一致性并更新相关测试 ([fadee32](https://github.com/umbrella22/Vesper-Player-Demo/commit/fadee329e8b1a3bf6304e5d5e7cd7dcce3dbd482))
+* 更新 Gradle 版本至 9.6.0，并调整 SDK 包装器分发管理 ([c54ed24](https://github.com/umbrella22/Vesper-Player-Demo/commit/c54ed240acae59eced1f2157dc5a37c12702b8e1))
+* 更新 TV 页面逻辑，优化返回键处理和搜索框聚焦功能 ([762cc07](https://github.com/umbrella22/Vesper-Player-Demo/commit/762cc072a941cf66f488120acc84dd17d4e3fc52))
+* 更新子模块 ([2cd5bc4](https://github.com/umbrella22/Vesper-Player-Demo/commit/2cd5bc4b361cb4a99664c25550e9661b407a3b59))
+* 更新系统 UI 模式，支持边缘到边缘的覆盖恢复 ([17976a9](https://github.com/umbrella22/Vesper-Player-Demo/commit/17976a979a0f19d33426fa90471c932faf644a89))
+* 添加 iOS 发布 IPA 工作流并更新 Android APK 构建逻辑 ([62eff7e](https://github.com/umbrella22/Vesper-Player-Demo/commit/62eff7e4a673707a10e875ba1bd1d7435b7cffac))
+* 添加对 HCPP 平台支持的检测，更新相关逻辑和测试用例 ([10cb2a7](https://github.com/umbrella22/Vesper-Player-Demo/commit/10cb2a7c5459f32c0a257427f993a3cfdfc16edd))
+* 添加对 TextureView 播放的支持，优化 Android 设备的播放兼容性 ([0356811](https://github.com/umbrella22/Vesper-Player-Demo/commit/0356811256b725322af0b8a42646aadd2b30c7f9))
+* 添加对未知下载状态的支持 ([c628171](https://github.com/umbrella22/Vesper-Player-Demo/commit/c628171b0838eecccdb2f92db0c018b826419cec))
+* 添加应用版本号读取功能，更新设置和 TV 页面以显示版本信息 ([0f6a386](https://github.com/umbrella22/Vesper-Player-Demo/commit/0f6a3862ab5ca8d705e947ffc92b358bd4f063ef))
+* 添加源归一化插件支持，更新相关配置和依赖 ([927118e](https://github.com/umbrella22/Vesper-Player-Demo/commit/927118e34e34f37f070da9484db20a1401f16f32))
+* 添加系统展示相关功能，更新 UI 样式和方向设置 ([24c657d](https://github.com/umbrella22/Vesper-Player-Demo/commit/24c657d2f7e880ac765fa20b561625b57baa8f76))
+* 重构代码 ([e0b565f](https://github.com/umbrella22/Vesper-Player-Demo/commit/e0b565f74ed6f870c8595cd4ae90ec6d4ee9246c))
+
+
+### Bug Fixes
+
+* dep upgrade ([2c7386d](https://github.com/umbrella22/Vesper-Player-Demo/commit/2c7386d288918eb8aea1b7314b08b1fae95598dd))
+* **performance:** integrate optional diagnostics tooling ([34af094](https://github.com/umbrella22/Vesper-Player-Demo/commit/34af0942db22f494213b342d608465a75c00e9fa))
+* **performance:** reduce high-density danmaku jank ([8facbea](https://github.com/umbrella22/Vesper-Player-Demo/commit/8facbea446a26f524cd1781e97dd546b1ac0f4cf))
+* unify TV video selection and shared services ([7f983d1](https://github.com/umbrella22/Vesper-Player-Demo/commit/7f983d14e0d2e9626610cd7dac4a703fd7fe2332))
+* update BiliQrLoginController tests to use value property for pollResult and errorMessage ([78198a8](https://github.com/umbrella22/Vesper-Player-Demo/commit/78198a877c9acd74c7fd58c14c0f1ea54edce372))
+* upgrade Vesper SDK and dependencies ([1c75e80](https://github.com/umbrella22/Vesper-Player-Demo/commit/1c75e80e553aff20de761beba531f3b8d62b427c))
+* 修复构建顺序问题 ([90fa00a](https://github.com/umbrella22/Vesper-Player-Demo/commit/90fa00afe293922e36e5a078af7ba4305dbdfb63))
+* 修复样式错误 ([aec64a6](https://github.com/umbrella22/Vesper-Player-Demo/commit/aec64a63ce9f6db6550a1ec0c43968c0e25c7ef9))
+* 更新 SDK 并修复 Android FFmpeg 构建 ([c95a4ed](https://github.com/umbrella22/Vesper-Player-Demo/commit/c95a4ed1a448bc559a8fcb669a5194e5297ed83b))
+* 更新依赖 ([f9b5eb8](https://github.com/umbrella22/Vesper-Player-Demo/commit/f9b5eb871496070e90da1d60706ccd371a89279a))
+* 更新工作流以支持通过 Release Please 创建的标签构建 Android 发布 APK ([58b7e85](https://github.com/umbrella22/Vesper-Player-Demo/commit/58b7e851fdbd2d1d086afa346507985448af7447))
+
+
+### Performance Improvements
+
+* **danmaku:** bound overlay rendering work ([b67b33b](https://github.com/umbrella22/Vesper-Player-Demo/commit/b67b33ba525361ca0a262b433a22ab36baf51822))
+
+
+### Documentation
+
+* describe danmaku runtime and safety boundaries ([8a09400](https://github.com/umbrella22/Vesper-Player-Demo/commit/8a09400edfb8a9ece3b688451df6a0b609014a89))
+
 ## [1.12.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.12.1...vesper_media-v1.12.2) (2026-09-04)
 
 
