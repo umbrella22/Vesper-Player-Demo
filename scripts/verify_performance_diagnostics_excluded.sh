@@ -16,6 +16,8 @@ listing="$temporary_dir/archive-listing.txt"
 forbidden_path_pattern='(^|/)(libvesper_performance_diagnostics[.]so|VesperPlayerPerformanceDiagnosticsPlugin[.]framework(/|$))|(^|/)assets/vesper/plugins/[^/]+/io[.]github[.]umbrella22[.]vesper[.]performance-diagnostics[.]json$'
 android_registrar='io/github/umbrella22/vesper/player/flutter/performance_diagnostics/VesperPlayerPerformanceDiagnosticsPlugin'
 ios_registrar='vesper_player_performance_diagnostics'
+host_share_channel='dev.ikaros.vesper_player/performance_diagnostics_share'
+host_ui_marker='open-performance-diagnostics'
 
 fail() {
   echo "Release diagnostics exclusion failed: $1" >&2
@@ -32,26 +34,48 @@ check_listing() {
 scan_archive_entries() {
   local marker="$1"
   local entry_pattern="$2"
+  local description="$3"
   while IFS= read -r entry; do
     [[ -n "$entry" ]] || continue
     if /usr/bin/unzip -p "$artifact" "$entry" \
       | /usr/bin/strings \
       | LC_ALL=C grep -F "$marker" >/dev/null; then
-      fail "optional diagnostics Flutter registrar is packaged in $entry"
+      fail "$description is packaged in $entry"
     fi
   done < <(LC_ALL=C grep -E "$entry_pattern" "$listing" || true)
+}
+
+scan_file() {
+  local marker="$1"
+  local candidate="$2"
+  local description="$3"
+  [[ -f "$candidate" ]] || return 0
+  if /usr/bin/strings "$candidate" | LC_ALL=C grep -F "$marker" >/dev/null; then
+    fail "$description is packaged in $candidate"
+  fi
 }
 
 case "$artifact" in
   *.apk)
     /usr/bin/unzip -Z1 "$artifact" > "$listing"
     check_listing
-    scan_archive_entries "$android_registrar" '(^|/)classes([0-9]+)?[.]dex$'
+    scan_archive_entries "$android_registrar" '(^|/)classes([0-9]+)?[.]dex$' \
+      "optional diagnostics Flutter registrar"
+    scan_archive_entries "$host_share_channel" '(^|/)classes([0-9]+)?[.]dex$' \
+      "diagnostics host share channel"
+    scan_archive_entries "$host_ui_marker" '(^|/)lib/[^/]+/libapp[.]so$' \
+      "diagnostics host UI"
     ;;
   *.ipa)
     /usr/bin/unzip -Z1 "$artifact" > "$listing"
     check_listing
-    scan_archive_entries "$ios_registrar" '^Payload/[^/]+[.]app/[^/]+$'
+    scan_archive_entries "$ios_registrar" '^Payload/[^/]+[.]app/[^/]+$' \
+      "optional diagnostics Flutter registrar"
+    scan_archive_entries "$host_share_channel" '^Payload/[^/]+[.]app/[^/]+$' \
+      "diagnostics host share channel"
+    scan_archive_entries "$host_ui_marker" \
+      '^Payload/[^/]+[.]app/Frameworks/App[.]framework/App$' \
+      "diagnostics host UI"
     ;;
   *.app)
     if [[ ! -d "$artifact" ]]; then
@@ -61,11 +85,13 @@ case "$artifact" in
     check_listing
     for candidate in "$artifact"/*; do
       [[ -f "$candidate" ]] || continue
-      if /usr/bin/strings "$candidate" \
-        | LC_ALL=C grep -F "$ios_registrar" >/dev/null; then
-        fail "optional diagnostics Flutter registrar is packaged in $(basename "$candidate")"
-      fi
+      scan_file "$ios_registrar" "$candidate" \
+        "optional diagnostics Flutter registrar"
+      scan_file "$host_share_channel" "$candidate" \
+        "diagnostics host share channel"
     done
+    scan_file "$host_ui_marker" "$artifact/Frameworks/App.framework/App" \
+      "diagnostics host UI"
     ;;
   *)
     fail "unsupported artifact type"
