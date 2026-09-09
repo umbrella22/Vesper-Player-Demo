@@ -392,6 +392,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
           ? null
           : GlassTabBarTrailingButton(
               icon: _buildSearchIcon(visualTheme),
+              label: '搜索',
               onTap: () => search.onActiveChanged(true),
             ),
       horizontalPadding: 16,
@@ -560,14 +561,10 @@ class AppGlassBottomNavigation extends StatelessWidget {
   }
 
   Widget _buildSearchIcon(AppVisualTheme visualTheme) {
-    return Semantics(
+    return SizedBox.square(
       key: searchButtonKey,
-      label: '搜索',
-      button: true,
-      child: SizedBox.square(
-        dimension: AppVisualTokens.minimumTapTarget,
-        child: _buildSearchFieldIcon(visualTheme),
-      ),
+      dimension: AppVisualTokens.minimumTapTarget,
+      child: _buildSearchFieldIcon(visualTheme),
     );
   }
 

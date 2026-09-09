@@ -18,9 +18,7 @@ void _registerAppShellWidgetTests() {
           .shortestSide,
       greaterThanOrEqualTo(AppVisualTokens.minimumTapTarget),
     );
-    final searchSemantics = tester.getSemantics(
-      find.byKey(AppGlassBottomNavigation.searchButtonKey),
-    );
+    final searchSemantics = tester.getSemantics(find.bySemanticsLabel('搜索'));
     expect(searchSemantics.attributedLabel.string, '搜索');
     expect(searchSemantics.rect.shortestSide, greaterThanOrEqualTo(44));
     expect(
