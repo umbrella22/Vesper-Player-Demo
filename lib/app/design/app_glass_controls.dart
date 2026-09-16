@@ -252,6 +252,16 @@ class AppGlassBottomNavigation extends StatelessWidget {
   static const TextStyle _unselectedLabelStyle = TextStyle(
     fontWeight: FontWeight.w700,
   );
+  static const TextStyle _searchSelectedLabelStyle = TextStyle(
+    fontSize: 11,
+    height: 1,
+    fontWeight: FontWeight.w700,
+  );
+  static const TextStyle _searchUnselectedLabelStyle = TextStyle(
+    fontSize: 11,
+    height: 1,
+    fontWeight: FontWeight.w600,
+  );
   static const Color _interactionGlowColor = Color(0x1FFFFFFF);
   static const ValueKey<String> navigationKey = ValueKey<String>(
     'app-glass-bottom-navigation',
@@ -277,6 +287,18 @@ class AppGlassBottomNavigation extends StatelessWidget {
 
   static double contentClearance(BuildContext context) {
     return extent + MediaQuery.paddingOf(context).bottom + contentSpacing;
+  }
+
+  static Color _searchSelectionColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF70B8FF)
+        : const Color(0xFF0060C7);
+  }
+
+  static Color _searchIndicatorColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? const Color(0x24FFFFFF)
+        : const Color(0x14000000);
   }
 
   final List<AppGlassNavigationItem> items;
@@ -380,6 +402,9 @@ class AppGlassBottomNavigation extends StatelessWidget {
     required List<GlassTab> tabs,
     required AppGlassNavigationSearchConfig? search,
   }) {
+    final selectedColor = search == null
+        ? visualTheme.textPrimary
+        : _searchSelectionColor(context);
     return GlassTabBar.minimizable(
       key: navigationKey,
       tabs: tabs,
@@ -401,15 +426,25 @@ class AppGlassBottomNavigation extends StatelessWidget {
       minimizedBarHeight: compactBarHeight,
       barBorderRadius: barHeight / 2,
       indicatorBorderRadius: _indicatorBorderRadius,
-      indicatorExpansion: _indicatorExpansion,
+      indicatorExpansion: search == null
+          ? _indicatorExpansion
+          : EdgeInsets.zero,
       settings: _glassSettings(visualTheme),
-      indicatorColor: visualTheme.neutralSelection,
-      selectedIconColor: visualTheme.textPrimary,
-      selectedLabelColor: visualTheme.textPrimary,
+      indicatorColor: search == null
+          ? visualTheme.neutralSelection
+          : _searchIndicatorColor(context),
+      selectedIconColor: selectedColor,
+      selectedLabelColor: selectedColor,
       unselectedIconColor: visualTheme.textSecondary,
       unselectedLabelColor: visualTheme.textSecondary,
-      selectedLabelStyle: _selectedLabelStyle,
-      unselectedLabelStyle: _unselectedLabelStyle,
+      selectedLabelStyle: search == null
+          ? _selectedLabelStyle
+          : _searchSelectedLabelStyle,
+      unselectedLabelStyle: search == null
+          ? _unselectedLabelStyle
+          : _searchUnselectedLabelStyle,
+      iconSize: search == null ? 24 : 22,
+      iconLabelSpacing: search == null ? 4 : 2,
       quality: inheritedQuality,
       maskingQuality: MaskingQuality.high,
       magnification: 1.12,
@@ -469,7 +504,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
             child: ExcludeSemantics(
               child: Icon(
                 items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
-                color: visualTheme.textPrimary,
+                color: _searchSelectionColor(context),
               ),
             ),
           ),
@@ -494,15 +529,17 @@ class AppGlassBottomNavigation extends StatelessWidget {
       searchBarHeight: compactBarHeight,
       barBorderRadius: barHeight / 2,
       indicatorBorderRadius: _indicatorBorderRadius,
-      indicatorExpansion: _indicatorExpansion,
+      indicatorExpansion: EdgeInsets.zero,
       settings: _glassSettings(visualTheme),
-      indicatorColor: visualTheme.neutralSelection,
-      selectedIconColor: visualTheme.textPrimary,
-      selectedLabelColor: visualTheme.textPrimary,
+      indicatorColor: _searchIndicatorColor(context),
+      selectedIconColor: _searchSelectionColor(context),
+      selectedLabelColor: _searchSelectionColor(context),
       unselectedIconColor: visualTheme.textSecondary,
       unselectedLabelColor: visualTheme.textSecondary,
-      selectedLabelStyle: _selectedLabelStyle,
-      unselectedLabelStyle: _unselectedLabelStyle,
+      selectedLabelStyle: _searchSelectedLabelStyle,
+      unselectedLabelStyle: _searchUnselectedLabelStyle,
+      iconSize: 22,
+      iconLabelSpacing: 2,
       textStyle: Theme.of(
         context,
       ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -782,7 +819,9 @@ class _OpaqueBottomNavigation extends StatelessWidget {
           _OpaqueCircleButton(
             label: '展开导航',
             icon: items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
-            foregroundColor: AppVisualTheme.of(context).textPrimary,
+            foregroundColor: search == null
+                ? AppVisualTheme.of(context).textPrimary
+                : AppGlassBottomNavigation._searchSelectionColor(context),
             selected: true,
             onTap: minimizeController!.expand,
           ),
@@ -824,6 +863,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
                 onSelected: onSelected,
                 height: AppGlassBottomNavigation.barHeight,
                 padding: EdgeInsets.zero,
+                emphasized: searchConfig != null,
               ),
             ),
             const Spacer(),
@@ -855,7 +895,9 @@ class _OpaqueBottomNavigation extends StatelessWidget {
           key: AppGlassBottomNavigation.searchExitButtonKey,
           label: '退出搜索',
           icon: items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
-          foregroundColor: visualTheme.textPrimary,
+          foregroundColor: AppGlassBottomNavigation._searchSelectionColor(
+            context,
+          ),
           selected: true,
           onTap: () => search.onActiveChanged(false),
         ),
@@ -1127,6 +1169,7 @@ class _OpaqueNavigationBar extends StatelessWidget {
     required this.onSelected,
     required this.height,
     required this.padding,
+    this.emphasized = false,
   });
 
   final List<AppGlassNavigationItem> items;
@@ -1134,10 +1177,14 @@ class _OpaqueNavigationBar extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final double height;
   final EdgeInsetsGeometry padding;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final selectedColor = emphasized
+        ? AppGlassBottomNavigation._searchSelectionColor(context)
+        : visualTheme.textPrimary;
     return Padding(
       padding: padding,
       child: Material(
@@ -1160,44 +1207,59 @@ class _OpaqueNavigationBar extends StatelessWidget {
                     child: AppPressScale(
                       child: InkWell(
                         onTap: () => onSelected(index),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: index == selectedIndex
-                                ? visualTheme.neutralSelection
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(height / 2 - 4),
-                          ),
-                          child: Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  index == selectedIndex
-                                      ? items[index].activeIcon ??
-                                            items[index].icon
-                                      : items[index].icon,
-                                  size: 20,
-                                  color: index == selectedIndex
-                                      ? visualTheme.textPrimary
-                                      : visualTheme.textSecondary,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    items[index].label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: index == selectedIndex
-                                          ? visualTheme.textPrimary
-                                          : visualTheme.textSecondary,
-                                      fontWeight: index == selectedIndex
-                                          ? FontWeight.w800
-                                          : FontWeight.w700,
+                        child: Padding(
+                          padding: emphasized
+                              ? const EdgeInsets.all(4)
+                              : EdgeInsets.zero,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: index == selectedIndex
+                                  ? visualTheme.neutralSelection
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(
+                                height / 2 - 4,
+                              ),
+                            ),
+                            child: Center(
+                              child: Flex(
+                                direction: emphasized
+                                    ? Axis.vertical
+                                    : Axis.horizontal,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    index == selectedIndex
+                                        ? items[index].activeIcon ??
+                                              items[index].icon
+                                        : items[index].icon,
+                                    size: emphasized ? 22 : 20,
+                                    color: index == selectedIndex
+                                        ? selectedColor
+                                        : visualTheme.textSecondary,
+                                  ),
+                                  SizedBox(
+                                    width: emphasized ? 0 : 6,
+                                    height: emphasized ? 2 : 0,
+                                  ),
+                                  Flexible(
+                                    child: Text(
+                                      items[index].label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: index == selectedIndex
+                                            ? selectedColor
+                                            : visualTheme.textSecondary,
+                                        fontSize: emphasized ? 11 : null,
+                                        height: emphasized ? 1 : null,
+                                        fontWeight: index == selectedIndex
+                                            ? FontWeight.w800
+                                            : FontWeight.w700,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),

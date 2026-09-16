@@ -197,13 +197,33 @@ final class OfflineCacheViewModel {
     _openingAssetIds.value = <String>{..._openingAssetIds.value, assetId};
     try {
       final metadata = entry.metadata;
+      if (entry.isCompleted) {
+        final cachePath = await controller.resolvePlayableCachePath(entry);
+        if (cachePath == null) {
+          throw const BiliInvalidOfflineCacheException('缓存文件已丢失或不完整，无法播放。');
+        }
+        final detail = metadata.toVideoDetail();
+        final page = detail.pages.single;
+        return OfflineCacheOpenResult(
+          detail: detail,
+          page: page,
+          initialResolvedPlayback: _resolvedOfflinePlayback(
+            detail: detail,
+            page: page,
+            entry: entry,
+            outputPath: cachePath,
+          ),
+        );
+      }
+
       final detail = await client.fetchVideoDetail(metadata.bvid);
       if (detail.pages.isEmpty) {
         throw const BiliOfflineDownloadException('这个视频没有可播放分 P。');
       }
       BiliVideoPageEntry? page;
       for (final candidate in detail.pages) {
-        if (candidate.cid == metadata.cid) {
+        if (candidate.cid == metadata.cid &&
+            (candidate.bvid ?? detail.bvid) == metadata.bvid) {
           page = candidate;
           break;
         }
@@ -214,30 +234,12 @@ final class OfflineCacheViewModel {
         );
       }
 
-      BiliResolvedPlayback? initialResolvedPlayback;
-      String? message;
-      if (entry.isCompleted) {
-        final cachePath = await controller.resolvePlayableCachePath(entry);
-        if (cachePath != null) {
-          initialResolvedPlayback = _resolvedOfflinePlayback(
-            detail: detail,
-            page: page,
-            entry: entry,
-            outputPath: cachePath,
-          );
-        } else {
-          throw const BiliInvalidOfflineCacheException('缓存文件已丢失或不完整，无法播放。');
-        }
-      } else {
-        unawaited(_continueCaching(entry: entry, detail: detail, page: page));
-        message = '正在边播边缓存';
-      }
+      unawaited(_continueCaching(entry: entry, detail: detail, page: page));
 
       return OfflineCacheOpenResult(
         detail: detail,
         page: page,
-        initialResolvedPlayback: initialResolvedPlayback,
-        message: message,
+        message: '正在边播边缓存',
       );
     } finally {
       _openingAssetIds.value = <String>{..._openingAssetIds.value}

@@ -93,6 +93,7 @@ final class BiliHubViewModel {
   final _profileErrorMessage = signal<String?>(null);
   final _feedPage = signal(1);
   final _searchPage = signal(1);
+  var _feedRequestGeneration = 0;
   var _searchRequestGeneration = 0;
 
   late final ReadonlySignal<List<BiliFeedVideo>> feedItems;
@@ -156,19 +157,25 @@ final class BiliHubViewModel {
   }
 
   Future<void> loadFeed() async {
+    final generation = ++_feedRequestGeneration;
     _isRefreshingFeed.value = true;
+    _isLoadingMoreFeed.value = false;
     _feedErrorMessage.value = null;
     _hasMoreFeed.value = true;
 
     try {
       final items = await client.fetchRecommendedFeed(page: 1);
+      if (generation != _feedRequestGeneration) return;
       _feedItems.value = items;
       _feedPage.value = 1;
       _hasMoreFeed.value = items.isNotEmpty;
     } catch (error) {
+      if (generation != _feedRequestGeneration) return;
       _feedErrorMessage.value = biliErrorMessage(error);
     } finally {
-      _isRefreshingFeed.value = false;
+      if (generation == _feedRequestGeneration) {
+        _isRefreshingFeed.value = false;
+      }
     }
   }
 
@@ -180,10 +187,12 @@ final class BiliHubViewModel {
     }
 
     final nextPage = _feedPage.value + 1;
+    final generation = _feedRequestGeneration;
     _isLoadingMoreFeed.value = true;
 
     try {
       final items = await client.fetchRecommendedFeed(page: nextPage);
+      if (generation != _feedRequestGeneration) return null;
       final existingBvids = _feedItems.value.map((item) => item.bvid).toSet();
       final nextItems = items
           .where((item) => existingBvids.add(item.bvid))
@@ -193,9 +202,12 @@ final class BiliHubViewModel {
       _hasMoreFeed.value = items.isNotEmpty && nextItems.isNotEmpty;
       return null;
     } catch (error) {
+      if (generation != _feedRequestGeneration) return null;
       return '加载更多推荐失败：${biliErrorMessage(error)}';
     } finally {
-      _isLoadingMoreFeed.value = false;
+      if (generation == _feedRequestGeneration) {
+        _isLoadingMoreFeed.value = false;
+      }
     }
   }
 
@@ -277,7 +289,6 @@ final class BiliHubViewModel {
   Future<String?> loadMoreSearch() async {
     final keyword = _activeSearchKeyword.value;
     if (keyword == null ||
-        keyword != _query.value ||
         _isSearching.value ||
         _isLoadingMoreSearch.value ||
         !_hasMoreSearch.value) {
@@ -409,6 +420,7 @@ final class BiliHubViewModel {
   }
 
   void dispose() {
+    _feedRequestGeneration += 1;
     directBvid.dispose();
     showsSearchResults.dispose();
     _feedItems.dispose();

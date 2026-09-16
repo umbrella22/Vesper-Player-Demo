@@ -1390,7 +1390,15 @@ class _TvFollowingSpaceProfileHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'UID ${profile.mid}  ·  ${biliFormatCount(profile.archiveCount)} 投稿  ·  ${biliFormatCount(profile.followerCount)} 粉丝',
+                  [
+                    'UID ${profile.mid}',
+                    if (profile.archiveCount case final int count)
+                      '${biliFormatCount(count)} 投稿',
+                    if (profile.followerCount case final int count)
+                      '${biliFormatCount(count)} 粉丝',
+                    if (profile.followingCount case final int count)
+                      '${biliFormatCount(count)} 关注',
+                  ].join('  ·  '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

@@ -23,6 +23,7 @@ class BiliUserSpacePage extends StatefulWidget {
     super.key,
     required this.client,
     required this.user,
+    this.isSelf = false,
     this.historyStore,
     this.offlineController,
     this.onLoginTap,
@@ -30,6 +31,7 @@ class BiliUserSpacePage extends StatefulWidget {
 
   final BiliClient client;
   final BiliFollowingUser user;
+  final bool isSelf;
   final BiliHistoryStore? historyStore;
   final BiliOfflineDownloadController? offlineController;
   final Future<void> Function()? onLoginTap;
@@ -69,12 +71,14 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
   }
 
   Future<void> _loadInitial({bool forceProfile = false}) async {
+    final generation = ++_requestGeneration;
     if (!widget.client.hasAuthenticatedSession) {
       if (mounted) {
         setState(() {
           _authenticationRequired = true;
           _loaded = true;
           _loading = false;
+          _loadingMore = false;
           _videos = const <BiliUserSpaceVideo>[];
           _hasMore = false;
           _error = '请先登录 Bilibili 后查看 UP 主空间。';
@@ -83,7 +87,6 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
       return;
     }
 
-    final generation = ++_requestGeneration;
     setState(() {
       _loading = true;
       _loadingMore = false;
@@ -141,7 +144,10 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
     if (bvid != null) {
       final local = _videos.where((item) => item.bvid == bvid).firstOrNull;
       if (local != null) {
+        _requestGeneration += 1;
         setState(() {
+          _loading = false;
+          _loadingMore = false;
           _videos = <BiliUserSpaceVideo>[local];
           _activeKeyword = query;
           _hasMore = false;
@@ -213,6 +219,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
     final generation = ++_requestGeneration;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _error = null;
       _authenticationRequired = false;
     });
@@ -376,7 +383,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
           onPressed: () => Navigator.of(context).maybePop(),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
-        title: const Text('UP 主空间'),
+        title: Text(widget.isSelf ? '我的空间' : 'UP 主空间'),
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadInitial(forceProfile: true),
@@ -554,6 +561,26 @@ class _BiliUserSpaceProfileHeader extends StatelessWidget {
                     'UID ${profile.mid}',
                     style: TextStyle(color: visualTheme.textSecondary),
                   ),
+                  if (profile.officialLabel != null ||
+                      profile.vipLabel != null) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (profile.officialLabel case final String label)
+                          _BiliUserSpaceBadge(
+                            label: label,
+                            icon: Icons.verified_outlined,
+                          ),
+                        if (profile.vipLabel case final String label)
+                          _BiliUserSpaceBadge(
+                            label: label,
+                            icon: Icons.workspace_premium_outlined,
+                          ),
+                      ],
+                    ),
+                  ],
                   if (profile.sign.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -568,18 +595,12 @@ class _BiliUserSpaceProfileHeader extends StatelessWidget {
                     spacing: 14,
                     runSpacing: 6,
                     children: [
-                      _BiliUserSpaceStat(
-                        label: '投稿',
-                        value: profile.archiveCount,
-                      ),
-                      _BiliUserSpaceStat(
-                        label: '粉丝',
-                        value: profile.followerCount,
-                      ),
-                      _BiliUserSpaceStat(
-                        label: '关注',
-                        value: profile.followingCount,
-                      ),
+                      if (profile.archiveCount case final int count)
+                        _BiliUserSpaceStat(label: '投稿', value: count),
+                      if (profile.followerCount case final int count)
+                        _BiliUserSpaceStat(label: '粉丝', value: count),
+                      if (profile.followingCount case final int count)
+                        _BiliUserSpaceStat(label: '关注', value: count),
                     ],
                   ),
                 ],
@@ -587,6 +608,41 @@ class _BiliUserSpaceProfileHeader extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BiliUserSpaceBadge extends StatelessWidget {
+  const _BiliUserSpaceBadge({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: visualTheme.surfaceRaised,
+        borderRadius: BorderRadius.circular(AppVisualTokens.controlRadius),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: visualTheme.textSecondary),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: visualTheme.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

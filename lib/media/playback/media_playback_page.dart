@@ -111,6 +111,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   late final MediaPlaybackContentHost _contentHost;
   void Function()? _messageEffect;
   void Function()? _diagnosticsTargetEffect;
+  void Function()? _controllerEffect;
 
   /// 内容 tab 控制器；平台未声明内容面板时为 null（不渲染 tab 区）。
   /// build 中按能力同步（评论面板可用性依赖 context，initState 无法判定）。
@@ -216,22 +217,13 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     // effect that tracks the VM's pending-message signals.
     _messageEffect = effect(_handleViewModelMessage);
     _diagnosticsTargetEffect = effect(_trackDiagnosticsPlaybackTarget);
+    _controllerEffect = effect(_trackPlaybackController);
     WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
     widget.danmakuSettingsListenable?.addListener(
       _handleDanmakuSettingsChanged,
     );
     unawaited(_enterPlaybackPresentation());
-    unawaited(
-      _viewModel.controllerFuture.then(
-        (controller) async {
-          _performanceDiagnosticsController.attach(controller);
-          await _attachPictureInPicture(controller);
-        },
-        // 解析失败的会话没有可附加的 PiP 配置；错误由页面错误态呈现。
-        onError: (Object _) {},
-      ),
-    );
   }
 
   @override
@@ -281,6 +273,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     }
     _messageEffect?.call();
     _diagnosticsTargetEffect?.call();
+    _controllerEffect?.call();
     unawaited(_performanceDiagnosticsController.dispose());
     _diagnosticsDanmakuEnabledOverride.dispose();
     _danmakuSettingsSignal.dispose();
@@ -346,23 +339,39 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     }
   }
 
-  Future<void> _attachPictureInPicture(
-    VesperPlayerController controller,
-  ) async {
-    if (!mounted) {
-      return;
-    }
-    _pictureInPictureController = controller;
-    _pictureInPictureEvents = controller.pictureInPictureEvents.listen(
-      _handlePictureInPictureEvent,
+  void _trackPlaybackController() {
+    final future = _viewModel.controllerFuture;
+    _detachPictureInPicture();
+    untracked(() => unawaited(_performanceDiagnosticsController.interrupt()));
+    unawaited(
+      future.then<void>((controller) {
+        if (!mounted ||
+            !identical(future, _viewModel.controllerFuture) ||
+            !identical(controller, _viewModel.controller)) {
+          return;
+        }
+        _performanceDiagnosticsController.attach(controller);
+        _pictureInPictureController = controller;
+        _pictureInPictureEvents = controller.pictureInPictureEvents.listen((
+          event,
+        ) {
+          if (mounted && identical(_pictureInPictureController, controller)) {
+            _handlePictureInPictureEvent(event);
+          }
+        });
+        _syncPictureInPictureConfiguration();
+        _maybePollPictureInPictureAvailability(controller.snapshot);
+      }, onError: (Object _) {}),
     );
-    _syncPictureInPictureConfiguration();
   }
 
   void _detachPictureInPicture() {
     _pictureInPictureEvents?.cancel();
     _pictureInPictureEvents = null;
     _pictureInPictureController = null;
+    _pictureInPictureActive = false;
+    _pictureInPictureSupported = false;
+    _pictureInPictureAvailabilityPolled = false;
   }
 
   /// TV 没有系统 PiP；听视频模式视频面不活跃，自动小窗只会得到黑窗，
@@ -392,11 +401,11 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
         snapshot.playbackState != VesperPlaybackState.playing) {
       return;
     }
-    _pictureInPictureAvailabilityPolled = true;
     final controller = _pictureInPictureController;
     if (controller == null) {
       return;
     }
+    _pictureInPictureAvailabilityPolled = true;
     unawaited(
       controller.isPictureInPictureAvailable().then((availability) {
         if (!mounted || _pictureInPictureController != controller) {
@@ -456,7 +465,8 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                   onRetry: _reloadCurrentPage,
                 );
               }
-              if (!asyncSnapshot.hasData) {
+              if (asyncSnapshot.connectionState != ConnectionState.done ||
+                  !asyncSnapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 

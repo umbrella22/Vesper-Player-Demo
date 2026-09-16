@@ -10,6 +10,7 @@ class _MineTab extends StatelessWidget {
     required this.onLoginTap,
     required this.onLogoutTap,
     required this.onSpaceTap,
+    required this.onFavoritesTap,
     required this.onCacheTap,
     required this.onHistoryTap,
     required this.onFollowingTap,
@@ -26,6 +27,7 @@ class _MineTab extends StatelessWidget {
   final Future<void> Function() onLoginTap;
   final Future<void> Function() onLogoutTap;
   final VoidCallback onSpaceTap;
+  final VoidCallback onFavoritesTap;
   final VoidCallback onCacheTap;
   final Future<void> Function() onHistoryTap;
   final VoidCallback onFollowingTap;
@@ -113,6 +115,13 @@ class _MineTab extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                      AppSettingsRow(
+                        key: const ValueKey<String>('bili-mine-favorites'),
+                        icon: Icons.star_outline_rounded,
+                        title: '我的收藏',
+                        subtitle: '收藏夹与收藏的视频',
+                        onTap: onFavoritesTap,
                       ),
                     ],
                   ),
@@ -414,30 +423,39 @@ class _MineSpaceAction extends StatelessWidget {
       );
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onSpaceTap,
-      onLongPress: () {
-        onLogoutTap();
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '空间',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: visualTheme.textSecondary,
-                fontWeight: FontWeight.w800,
-              ),
+    return AppPressScale(
+      child: Semantics(
+        button: true,
+        label: '我的空间',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onSpaceTap,
+          onLongPress: () {
+            onLogoutTap();
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minWidth: AppVisualTokens.minimumTapTarget,
+              minHeight: AppVisualTokens.minimumTapTarget,
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: visualTheme.textTertiary,
-              size: 17,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '空间',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: visualTheme.textSecondary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: visualTheme.textTertiary,
+                  size: 17,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

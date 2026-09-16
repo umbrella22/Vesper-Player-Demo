@@ -3,11 +3,105 @@ import 'dart:io';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/download/view_models/offline_cache_view_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 void main() {
+  test(
+    'completed legacy cache opens without requesting online detail',
+    () async {
+      final entry = BiliOfflineDownloadEntry(
+        metadata: _metadata(outputPath: '/cache/offline-video.mp4'),
+      );
+      final controller = _IntegrityTestController(
+        entry,
+        playablePath: '/cache/offline-video.mp4',
+      );
+      final client = _UnavailableDetailClient();
+      final viewModel = OfflineCacheViewModel(
+        controller: controller,
+        client: client,
+      );
+      addTearDown(viewModel.dispose);
+
+      final result = await viewModel.openEntry(entry);
+
+      expect(client.detailRequests, 0);
+      expect(result?.page.cid, entry.metadata.cid);
+      expect(result?.detail.bvid, entry.metadata.bvid);
+      expect(result?.initialResolvedPlayback?.isLocalFile, isTrue);
+      expect(
+        result?.initialResolvedPlayback?.uri,
+        'file:///cache/offline-video.mp4',
+      );
+    },
+  );
+
+  test('completed cache opens from persisted playback metadata offline', () {
+    const metadata = BiliOfflineDownloadMetadata(
+      assetId: 'asset-1',
+      bvid: 'BV1offline',
+      cid: 99,
+      videoTitle: '本地视频',
+      pageTitle: 'P2 · 第二集',
+      coverUrl: 'https://example.com/cover.jpg',
+      qualityLabel: '1080P',
+      createdAtMs: 1,
+      playbackMetadata: BiliOfflinePlaybackMetadata(
+        aid: 123,
+        pageNumber: 2,
+        pageTitle: '第二集',
+        durationSeconds: 42,
+        ownerMid: 7,
+        ownerName: '作者',
+        ownerAvatarUrl: '',
+        description: '本地描述',
+      ),
+    );
+
+    final detail = metadata.toVideoDetail();
+
+    expect(detail.bvid, 'BV1offline');
+    expect(detail.pages.single.cid, 99);
+    expect(detail.pages.single.pageNumber, 2);
+    expect(detail.pages.single.durationSeconds, 42);
+    expect(detail.ownerName, '作者');
+  });
+
+  test('playback metadata survives the offline store round trip', () async {
+    final root = await Directory.systemTemp.createTemp('bili-offline-meta-');
+    addTearDown(() => root.delete(recursive: true));
+    const metadata = BiliOfflineDownloadMetadata(
+      assetId: 'asset-round-trip',
+      bvid: 'BV1offline',
+      cid: 99,
+      videoTitle: '本地视频',
+      pageTitle: 'P1 · 正片',
+      coverUrl: '',
+      qualityLabel: '1080P',
+      createdAtMs: 1,
+      playbackMetadata: BiliOfflinePlaybackMetadata(
+        aid: 123,
+        pageNumber: 1,
+        pageTitle: '正片',
+        durationSeconds: 42,
+        ownerMid: 7,
+        ownerName: '作者',
+        ownerAvatarUrl: '',
+        description: '',
+      ),
+    );
+    final store = BiliOfflineDownloadStore(baseDirectory: root);
+    await store.saveEntries(const <BiliOfflineDownloadMetadata>[metadata]);
+
+    final restored = await store.loadEntries();
+
+    expect(restored.single.playbackMetadata?.durationSeconds, 42);
+    expect(restored.single.toVideoDetail().pages.single.cid, 99);
+  });
+
   test('asset ID mismatch remains one entry and is explicitly unplayable', () {
     final task = _downloadTask(assetId: 'task-asset');
     final metadata = _metadata(assetId: 'metadata-asset', taskId: task.taskId);
@@ -125,9 +219,11 @@ VesperDownloadTaskSnapshot _downloadTask({required String assetId}) {
 }
 
 final class _IntegrityTestController extends BiliOfflineDownloadController {
-  _IntegrityTestController(this.entry) : super(client: BiliClient());
+  _IntegrityTestController(this.entry, {this.playablePath})
+    : super(client: BiliClient());
 
   final BiliOfflineDownloadEntry entry;
+  final String? playablePath;
 
   @override
   bool get isInitialized => true;
@@ -146,7 +242,7 @@ final class _IntegrityTestController extends BiliOfflineDownloadController {
   @override
   Future<String?> resolvePlayableCachePath(
     BiliOfflineDownloadEntry entry,
-  ) async => null;
+  ) async => playablePath;
 
   @override
   Future<BiliOfflineStorageUsage> resolveStorageUsage() async {
@@ -155,6 +251,16 @@ final class _IntegrityTestController extends BiliOfflineDownloadController {
       freeBytes: 1,
       totalBytes: 2,
     );
+  }
+}
+
+final class _UnavailableDetailClient extends BiliClient {
+  int detailRequests = 0;
+
+  @override
+  Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
+    detailRequests += 1;
+    throw const SocketException('offline');
   }
 }
 

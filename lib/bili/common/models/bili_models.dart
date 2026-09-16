@@ -131,11 +131,17 @@ final class BiliFavoriteFolder {
     required this.id,
     required this.title,
     required this.containsCurrentVideo,
+    this.mediaCount,
+    this.coverUrl = '',
+    this.isPrivate,
   });
 
   final int id;
   final String title;
   final bool containsCurrentVideo;
+  final int? mediaCount;
+  final String coverUrl;
+  final bool? isPrivate;
 }
 
 /// A user returned by the authenticated following-list endpoint.
@@ -167,9 +173,9 @@ final class BiliUserSpaceProfile {
     required this.name,
     required this.avatarUrl,
     this.sign = '',
-    this.followerCount = 0,
-    this.followingCount = 0,
-    this.archiveCount = 0,
+    this.followerCount,
+    this.followingCount,
+    this.archiveCount,
     this.officialLabel,
     this.vipLabel,
   });
@@ -189,9 +195,9 @@ final class BiliUserSpaceProfile {
   final String name;
   final String avatarUrl;
   final String sign;
-  final int followerCount;
-  final int followingCount;
-  final int archiveCount;
+  final int? followerCount;
+  final int? followingCount;
+  final int? archiveCount;
   final String? officialLabel;
   final String? vipLabel;
 }
@@ -537,12 +543,14 @@ final class BiliQrLoginPollResult {
     required this.message,
     this.timestampMs,
     this.refreshToken,
+    this.cookieUpdates = const <String, String?>{},
   });
 
   final BiliQrLoginStatus status;
   final String message;
   final int? timestampMs;
   final String? refreshToken;
+  final Map<String, String?> cookieUpdates;
 }
 
 final class BiliPlaybackHistoryEntry {

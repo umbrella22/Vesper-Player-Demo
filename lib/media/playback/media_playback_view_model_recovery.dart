@@ -37,7 +37,9 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
       _suppressedPlaybackCommandError.value = null;
     }
     _reconcileRuntimeTrackFallback(snapshot);
-    if (snapshot.lastError != null) {
+    if (snapshot.lastError != null ||
+        snapshot.isBuffering ||
+        snapshot.playbackState != VesperPlaybackState.playing) {
       _playbackRecoverySuccessTimer?.cancel();
       return;
     }
@@ -364,9 +366,18 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     int controllerGeneration, [
     int? expectedRecoveryGeneration,
   ]) {
+    if (_playbackRecoverySuccessTimer?.isActive ?? false) {
+      return;
+    }
+    final snapshot = _controller?.snapshot;
+    if (snapshot == null ||
+        snapshot.lastError != null ||
+        snapshot.isBuffering ||
+        snapshot.playbackState != VesperPlaybackState.playing) {
+      return;
+    }
     final recoveryGeneration =
         expectedRecoveryGeneration ?? _playbackRecoveryGeneration;
-    _playbackRecoverySuccessTimer?.cancel();
     _playbackRecoverySuccessTimer = Timer(
       MediaPlaybackViewModel._playbackRecoverySuccessWindow,
       () {

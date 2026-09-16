@@ -9,6 +9,8 @@ import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_hub_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_favorites_page.dart';
+import 'package:vesper_media/bili/app_mode/pages/bili_user_space_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';

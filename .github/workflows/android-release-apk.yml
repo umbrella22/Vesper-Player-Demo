@@ -66,6 +66,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |
@@ -73,7 +75,7 @@ jobs:
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-37.0" \
-            "build-tools;36.0.0" \
+            "build-tools;37.0.0" \
             "ndk;${ANDROID_NDK_VERSION}"
 
       - name: Set up Gradle
@@ -82,7 +84,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.0"
+          flutter-version: "3.47.4"
           channel: stable
           cache: true
 

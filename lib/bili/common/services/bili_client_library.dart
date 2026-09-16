@@ -67,9 +67,7 @@ extension _BiliClientLibraryImplementation on BiliClient {
     final vipLabel = readObjectMap(vip['label']);
     final officialLabel = readString(official['desc']);
     final resolvedVipLabel =
-        readString(vipLabel['text']) ??
-        readString(vip['label']) ??
-        readString(vip['nickname_color']);
+        readString(vipLabel['text']) ?? readString(vip['label']);
 
     return BiliUserSpaceProfile(
       mid: readInt(source['mid']) ?? mid,
@@ -79,15 +77,12 @@ extension _BiliClientLibraryImplementation on BiliClient {
       followerCount:
           readInt(data['follower']) ??
           readInt(source['fans']) ??
-          readInt(source['follower']) ??
-          0,
-      followingCount:
-          readInt(source['friend']) ?? readInt(source['following']) ?? 0,
+          readInt(source['follower']),
+      followingCount: readInt(source['friend']) ?? readInt(source['following']),
       archiveCount:
           readInt(data['archive_count']) ??
           readInt(source['archive_count']) ??
-          readInt(source['archiveCount']) ??
-          0,
+          readInt(source['archiveCount']),
       officialLabel: officialLabel == null || officialLabel.isEmpty
           ? null
           : officialLabel,
@@ -647,7 +642,8 @@ extension _BiliClientLibraryImplementation on BiliClient {
     final vip = readObjectMap(value['vip']);
     final officialLabel = readString(official['desc']);
     final vipLabel =
-        readString(vip['label']) ?? readString(vip['nickname_color']);
+        readString(readObjectMap(vip['label'])['text']) ??
+        readString(vip['label']);
     return BiliFollowingUser(
       mid: mid,
       name: name,

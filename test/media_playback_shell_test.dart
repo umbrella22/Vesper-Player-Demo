@@ -2277,6 +2277,159 @@ void main() {
   });
 
   group('设备控制与历史接缝', () {
+    testWidgets(
+      'a late DLNA resolution cannot replace the newly selected entry',
+      (tester) async {
+        final adapter = _ShellAdapter();
+        final harness = await pumpShell(tester, adapter: adapter);
+        final gate = Completer<void>();
+        adapter.resolveGate = gate;
+        final load = harness.viewModel.loadCurrentEntryToDlna();
+        await tester.pump();
+        adapter.resolveGate = null;
+        const entry = MediaPlaybackEntry(
+          entryId: '22',
+          pageNumber: 2,
+          title: 'P2',
+          durationSeconds: 60,
+        );
+        await harness.viewModel.switchEntry(entry);
+        final selected = harness.viewModel.resolvedPlayback;
+        gate.complete();
+        await load;
+        expect(harness.viewModel.selectedEntry, same(entry));
+        expect(harness.viewModel.resolvedPlayback, same(selected));
+      },
+    );
+
+    testWidgets(
+      'diagnostics state changes do not reattach or interrupt the controller',
+      (tester) async {
+        final harness = await pumpShell(tester);
+        await tester.tap(
+          find.byKey(const ValueKey<String>('open-performance-diagnostics')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('start-performance-diagnostics')),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(harness.platform.performanceDiagnosticsStarts, 1);
+        expect(harness.platform.pictureInPictureConfigurations, hasLength(1));
+        expect(find.text('artifactUnavailable'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('paused time does not reset the playback recovery budget', (
+      tester,
+    ) async {
+      final adapter = _ShellAdapter();
+      final harness = await pumpShell(
+        tester,
+        adapter: adapter,
+        initialSnapshot: _shellSnapshot.copyWith(
+          playbackState: VesperPlaybackState.playing,
+        ),
+      );
+      for (var failure = 0; failure < 3; failure += 1) {
+        harness.platform.emitRecoverableSourceError();
+        for (var round = 0; round < 12; round += 1) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        harness.platform.emitSnapshot(
+          _shellSnapshot.copyWith(playbackState: VesperPlaybackState.paused),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 6));
+        harness.platform.emitSnapshot(
+          _shellSnapshot.copyWith(playbackState: VesperPlaybackState.playing),
+        );
+        await tester.pump();
+      }
+      harness.platform.emitRecoverableSourceError();
+      await tester.pump();
+      await tester.pump();
+      expect(adapter.resolveCallCount, 4);
+      expect(find.text('播放地址刷新失败'), findsOneWidget);
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(playbackState: VesperPlaybackState.paused),
+      );
+      await tester.pump();
+    });
+
+    testWidgets(
+      'reload reattaches picture in picture and resets availability polling',
+      (tester) async {
+        final harness = await pumpShell(
+          tester,
+          initialSnapshot: _shellSnapshot.copyWith(
+            playbackState: VesperPlaybackState.playing,
+          ),
+        );
+        expect(harness.platform.pictureInPictureConfigurations, hasLength(1));
+        expect(harness.platform.pictureInPictureAvailabilityCalls, 1);
+        final previous = harness.viewModel.controller;
+        await tester.runAsync(() async {
+          await harness.viewModel.reloadCurrentPage();
+          await harness.viewModel.controllerFuture;
+        });
+        await tester.pump();
+        expect(harness.viewModel.controller, isNot(same(previous)));
+        expect(harness.platform.pictureInPictureConfigurations, hasLength(2));
+        expect(harness.platform.pictureInPictureAvailabilityCalls, 2);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'retry after initial resolve failure attaches picture in picture',
+      (tester) async {
+        final adapter = _ShellAdapter()..failResolveCallsRemaining = 1;
+        final harness = await pumpShell(tester, adapter: adapter);
+        expect(harness.platform.pictureInPictureConfigurations, isEmpty);
+        await tester.runAsync(() async {
+          await harness.viewModel.reloadCurrentPage();
+          await harness.viewModel.controllerFuture;
+        });
+        await tester.pump();
+        expect(harness.platform.pictureInPictureConfigurations, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'healthy snapshots reset the recovery budget despite continuous progress events',
+      (tester) async {
+        final adapter = _ShellAdapter();
+        final harness = await pumpShell(
+          tester,
+          adapter: adapter,
+          initialSnapshot: _shellSnapshot.copyWith(
+            playbackState: VesperPlaybackState.playing,
+          ),
+        );
+        for (var failure = 0; failure < 4; failure += 1) {
+          harness.platform.emitRecoverableSourceError();
+          for (var round = 0; round < 12; round += 1) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+          expect(adapter.resolveCallCount, failure + 2);
+          for (var second = 0; second < 6; second += 1) {
+            harness.platform.emitPosition((failure * 6 + second) * 1000);
+            await tester.pump(const Duration(seconds: 1));
+          }
+        }
+        expect(find.text('播放地址刷新失败'), findsNothing);
+        expect(tester.takeException(), isNull);
+        harness.platform.emitSnapshot(
+          _shellSnapshot.copyWith(playbackState: VesperPlaybackState.paused),
+        );
+        await tester.pump();
+      },
+    );
+
     testWidgets('注入的设备控制传递到播放器 stage', (tester) async {
       final controls = _ShellDeviceControls();
       await pumpShell(tester, deviceControls: controls);
@@ -2705,6 +2858,7 @@ final class _ShellAdapter extends MediaPlatformAdapter {
   /// 非空时 resolvePlayback 挂起，由测试手动完成（模拟慢解析/过时代际）。
   Completer<void>? resolveGate;
   int resolveCallCount = 0;
+  int failResolveCallsRemaining = 0;
 
   @override
   Future<ResolvedMediaPlayback> resolvePlayback({
@@ -2712,6 +2866,10 @@ final class _ShellAdapter extends MediaPlatformAdapter {
     required MediaPlaybackEntry entry,
   }) async {
     resolveCallCount += 1;
+    if (failResolveCallsRemaining > 0) {
+      failResolveCallsRemaining -= 1;
+      throw StateError('temporary resolution failure');
+    }
     final gate = resolveGate;
     if (gate != null) {
       await gate.future;
@@ -2905,6 +3063,10 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   int refreshCalls = 0;
   int selectSourceCalls = 0;
   int pauseCalls = 0;
+  final pictureInPictureConfigurations =
+      <VesperPictureInPictureConfiguration>[];
+  int pictureInPictureAvailabilityCalls = 0;
+  int performanceDiagnosticsStarts = 0;
   int failSelectSourceCallsRemaining = 0;
   int failPlayCallsRemaining = 0;
   final Map<int, Completer<void>> _disposeWaiters = <int, Completer<void>>{};
@@ -3104,7 +3266,26 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   Future<void> setPictureInPictureConfiguration(
     String playerId,
     VesperPictureInPictureConfiguration configuration,
-  ) async {}
+  ) async {
+    pictureInPictureConfigurations.add(configuration);
+  }
+
+  @override
+  Future<String> startPerformanceDiagnostics(
+    String playerId,
+    VesperPerformanceDiagnosticsConfiguration configuration,
+  ) async {
+    performanceDiagnosticsStarts += 1;
+    return super.startPerformanceDiagnostics(playerId, configuration);
+  }
+
+  @override
+  Future<VesperPictureInPictureAvailability> isPictureInPictureAvailable(
+    String playerId,
+  ) async {
+    pictureInPictureAvailabilityCalls += 1;
+    return const VesperPictureInPictureAvailability(isAvailable: true);
+  }
 
   @override
   Future<void> requestPictureInPicture(

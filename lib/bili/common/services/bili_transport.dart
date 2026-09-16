@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -61,6 +62,17 @@ class BiliTransport {
 
   void setCookie(String name, String value) {
     _cookies[name] = value;
+  }
+
+  void applyCookieUpdates(Map<String, String?> updates) {
+    for (final entry in updates.entries) {
+      final value = entry.value;
+      if (value == null) {
+        _cookies.remove(entry.key);
+      } else {
+        _cookies[entry.key] = value;
+      }
+    }
   }
 
   Future<void> ensureReady() async {
@@ -298,77 +310,95 @@ class BiliTransport {
     String? requestBody,
     String acceptHeader = 'application/json, */*',
     bool includeCookies = true,
+    bool storeResponseCookies = true,
   }) async {
-    return _sendRequest(
-      uri,
-      referer: referer,
-      method: method,
-      requestBody: requestBody,
-      acceptHeader: acceptHeader,
-      includeCookies: includeCookies,
-    ).timeout(
+    HttpClientRequest? activeRequest;
+    StreamIterator<List<int>>? responseBody;
+    var timedOut = false;
+    final timeoutError = BiliApiException(
+      'Bilibili request timed out after ${_requestTimeout.inSeconds}s.',
+    );
+
+    Future<BiliHttpResponse> send() async {
+      final request = activeRequest = method == 'POST'
+          ? await _httpClient.postUrl(uri)
+          : await _httpClient.getUrl(uri);
+      if (timedOut) {
+        // Opening a connection can finish after the caller has timed out.
+        // Observe the abort error without ever sending this late request.
+        final done = request.done;
+        request.abort(timeoutError);
+        await done;
+        throw timeoutError;
+      }
+      // Headers flow through the single helper shared with media requests so
+      // the two paths cannot drift. API requests always carry Sec-Fetch-* and
+      // rely on the HttpClient's global User-Agent; a Cookie header is emitted
+      // only when includeCookies is true and a session is present.
+      final headers = _buildBiliHeaders(
+        referer: referer,
+        acceptHeader: acceptHeader,
+        includeCookies: includeCookies,
+        includeSecFetch: true,
+        includeUserAgent: false,
+      );
+      headers.forEach((name, value) => request.headers.set(name, value));
+      List<int>? payload;
+      if (requestBody != null) {
+        request.headers.contentType = ContentType(
+          'application',
+          'x-www-form-urlencoded',
+          charset: 'utf-8',
+        );
+        payload = utf8.encode(requestBody);
+        request.contentLength = payload.length;
+      }
+      if (payload != null) {
+        request.add(payload);
+      }
+
+      final response = await request.close();
+      if (timedOut) {
+        await response.listen(null).cancel();
+        throw timeoutError;
+      }
+      final body = responseBody = StreamIterator(response);
+      final builder = BytesBuilder(copy: false);
+      while (await body.moveNext()) {
+        builder.add(body.current);
+      }
+      // StreamIterator cancels automatically on done/error. Only unfinished
+      // bodies need explicit cancellation from the timeout handler.
+      responseBody = null;
+      if (timedOut) {
+        throw timeoutError;
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw BiliApiException(
+          'HTTP ${response.statusCode} from Bilibili.',
+          code: response.statusCode,
+        );
+      }
+
+      final cookieUpdates = _responseCookieUpdates(uri, response.cookies);
+      if (storeResponseCookies) {
+        applyCookieUpdates(cookieUpdates);
+      }
+      return BiliHttpResponse(
+        statusCode: response.statusCode,
+        bodyBytes: builder.takeBytes(),
+        cookieUpdates: cookieUpdates,
+      );
+    }
+
+    return send().timeout(
       _requestTimeout,
-      onTimeout: () => throw BiliApiException(
-        'Bilibili request timed out after ${_requestTimeout.inSeconds}s.',
-      ),
-    );
-  }
-
-  Future<BiliHttpResponse> _sendRequest(
-    Uri uri, {
-    required String referer,
-    required String method,
-    required String? requestBody,
-    required String acceptHeader,
-    required bool includeCookies,
-  }) async {
-    final request = method == 'POST'
-        ? await _httpClient.postUrl(uri)
-        : await _httpClient.getUrl(uri);
-    // Headers flow through the single helper shared with media requests so
-    // the two paths cannot drift. API requests always carry Sec-Fetch-* and
-    // rely on the HttpClient's global User-Agent; a Cookie header is emitted
-    // only when includeCookies is true and a session is present.
-    final headers = _buildBiliHeaders(
-      referer: referer,
-      acceptHeader: acceptHeader,
-      includeCookies: includeCookies,
-      includeSecFetch: true,
-      includeUserAgent: false,
-    );
-    headers.forEach((name, value) => request.headers.set(name, value));
-    List<int>? payload;
-    if (requestBody != null) {
-      request.headers.contentType = ContentType(
-        'application',
-        'x-www-form-urlencoded',
-        charset: 'utf-8',
-      );
-      payload = utf8.encode(requestBody);
-      request.contentLength = payload.length;
-    }
-    if (payload != null) {
-      request.add(payload);
-    }
-
-    final response = await request.close();
-    _storeResponseCookies(uri, response.cookies);
-
-    final builder = BytesBuilder(copy: false);
-    await for (final chunk in response) {
-      builder.add(chunk);
-    }
-    final bodyBytes = builder.takeBytes();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw BiliApiException(
-        'HTTP ${response.statusCode} from Bilibili.',
-        code: response.statusCode,
-      );
-    }
-
-    return BiliHttpResponse(
-      statusCode: response.statusCode,
-      bodyBytes: bodyBytes,
+      onTimeout: () {
+        timedOut = true;
+        activeRequest?.abort(timeoutError);
+        unawaited(responseBody?.cancel());
+        throw timeoutError;
+      },
     );
   }
 
@@ -384,17 +414,15 @@ class BiliTransport {
     }
   }
 
-  void _storeResponseCookies(Uri uri, List<Cookie> cookies) {
+  Map<String, String?> _responseCookieUpdates(Uri uri, List<Cookie> cookies) {
+    final updates = <String, String?>{};
     for (final cookie in cookies) {
       if (!_shouldStoreCookie(uri, cookie)) {
         continue;
       }
-      if (_isExpiredCookie(cookie)) {
-        _cookies.remove(cookie.name);
-      } else {
-        _cookies[cookie.name] = cookie.value;
-      }
+      updates[cookie.name] = _isExpiredCookie(cookie) ? null : cookie.value;
     }
+    return Map.unmodifiable(updates);
   }
 
   bool _shouldStoreCookie(Uri uri, Cookie cookie) {
@@ -665,10 +693,15 @@ class BiliTransport {
 }
 
 final class BiliHttpResponse {
-  const BiliHttpResponse({required this.statusCode, required this.bodyBytes});
+  const BiliHttpResponse({
+    required this.statusCode,
+    required this.bodyBytes,
+    this.cookieUpdates = const <String, String?>{},
+  });
 
   final int statusCode;
   final List<int> bodyBytes;
+  final Map<String, String?> cookieUpdates;
 
   String get body => utf8.decode(bodyBytes);
 }

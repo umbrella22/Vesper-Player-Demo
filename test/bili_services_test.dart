@@ -2584,13 +2584,20 @@ final class _NeverCompletingHttpClient implements HttpClient {
 
 final class _NeverCompletingHttpClientRequest implements HttpClientRequest {
   final _FakeRegionHttpHeaders _headers = _FakeRegionHttpHeaders();
+  final Completer<HttpClientResponse> _response =
+      Completer<HttpClientResponse>();
 
   @override
   HttpHeaders get headers => _headers;
 
   @override
   Future<HttpClientResponse> close() {
-    return Completer<HttpClientResponse>().future;
+    return _response.future;
+  }
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {
+    _response.completeError(exception ?? const HttpException('aborted'));
   }
 
   @override

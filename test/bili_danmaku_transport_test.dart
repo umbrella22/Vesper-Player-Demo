@@ -342,6 +342,7 @@ final class _SpecialPackageTransport extends BiliTransport {
     String? requestBody,
     String acceptHeader = 'application/json, */*',
     bool includeCookies = true,
+    bool storeResponseCookies = true,
   }) async {
     requestedPaths.add(uri.path);
     requestedIncludeCookies.add(includeCookies);

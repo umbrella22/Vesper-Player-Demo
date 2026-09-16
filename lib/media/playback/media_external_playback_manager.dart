@@ -51,7 +51,13 @@ class MediaExternalPlaybackManager {
   String? _retryableLoadDiagnosticMessage;
   String? _retryableLoadDiagnosticCode;
   bool _loadingMedia = false;
-  bool _pausedLocalPlayback = false;
+  bool _resumeLocalOnDisconnect = false;
+  VesperPlayerController? _localPlaybackController;
+  bool Function()? _isCurrentLocalPlayback;
+  Future<void>? _localPauseFuture;
+  Future<void>? _localRestoreFuture;
+  int? _externalPositionMs;
+  int _connectionGeneration = 0;
   bool _disposed = false;
 
   StreamSubscription<List<VesperExternalPlaybackRoute>>? _routesSubscription;
@@ -83,6 +89,8 @@ class MediaExternalPlaybackManager {
 
   void dispose() {
     _disposed = true;
+    _localPlaybackController = null;
+    _isCurrentLocalPlayback = null;
     _routesSubscription?.cancel();
     _routesSubscription = null;
     _sessionSubscription?.cancel();
@@ -135,6 +143,7 @@ class MediaExternalPlaybackManager {
       return '设备列表已过期，请重新刷新。';
     }
     try {
+      _connectionGeneration += 1;
       _setState(MediaDlnaState.connecting);
       await _dlnaController.stopDiscovery();
       _routesSubscription?.cancel();
@@ -160,23 +169,49 @@ class MediaExternalPlaybackManager {
 
   Future<String?> loadMedia({
     required ResolvedMediaPlayback resolved,
+    VesperPlayerController? controller,
+    bool Function()? isCurrentPlayback,
     MediaPlaybackEntry? selectedPage,
     ResolvedMediaPlaybackRefresh? refreshResolved,
   }) async {
     if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
       return '请先连接 DLNA 设备。';
     }
+    if (_loadingMedia) return '正在加载投屏资源，请稍候。';
     _loadingMedia = true;
+    final connectionGeneration = _connectionGeneration;
+    final continuingSession =
+        controller != null &&
+        identical(controller, _localPlaybackController) &&
+        (_isCurrentLocalPlayback?.call() ?? true);
+    final wasPlaying = continuingSession
+        ? _resumeLocalOnDisconnect
+        : controller?.snapshot.playbackState == VesperPlaybackState.playing;
+    final startPositionMs = continuingSession
+        ? _externalPositionMs ?? controller.snapshot.timeline.positionMs
+        : controller?.snapshot.timeline.positionMs ?? 0;
+    _externalPositionMs = startPositionMs;
+    bool isCurrent() =>
+        !_disposed &&
+        connectionGeneration == _connectionGeneration &&
+        (isCurrentPlayback?.call() ?? true);
     _retryableLoadDiagnosticMessage = null;
     _retryableLoadDiagnosticCode = null;
     try {
       var result = await _loadResolvedMedia(
         resolved: resolved,
         selectedPage: selectedPage,
+        startPositionMs: startPositionMs,
+        autoplay: controller == null || wasPlaying,
       );
-      if (_disposed) return null;
+      if (!isCurrent()) return null;
       if (result.isSuccess) {
-        return _completeLoadSuccess();
+        return await _completeLoadSuccess(
+          controller,
+          wasPlaying,
+          isCurrent,
+          isCurrentPlayback,
+        );
       }
 
       if (refreshResolved != null && _shouldRetryLoadFailure(result.message)) {
@@ -186,11 +221,11 @@ class MediaExternalPlaybackManager {
         try {
           refreshed = await refreshResolved();
         } catch (error) {
-          if (_disposed) return null;
+          if (!isCurrent()) return null;
           await _failConnection('播放地址刷新失败：${mediaErrorMessage(error)}');
           return _message;
         }
-        if (_disposed) return null;
+        if (!isCurrent()) return null;
         if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
           return _message ?? 'DLNA 连接已断开。';
         }
@@ -199,10 +234,17 @@ class MediaExternalPlaybackManager {
         result = await _loadResolvedMedia(
           resolved: refreshed,
           selectedPage: selectedPage,
+          startPositionMs: startPositionMs,
+          autoplay: controller == null || wasPlaying,
         );
-        if (_disposed) return null;
+        if (!isCurrent()) return null;
         if (result.isSuccess) {
-          return _completeLoadSuccess();
+          return await _completeLoadSuccess(
+            controller,
+            wasPlaying,
+            isCurrent,
+            isCurrentPlayback,
+          );
         }
       }
       await _failConnection(
@@ -210,7 +252,7 @@ class MediaExternalPlaybackManager {
       );
       return _message;
     } catch (error) {
-      if (_disposed) return null;
+      if (!isCurrent()) return null;
       await _failConnection('投屏播放失败：${mediaErrorMessage(error)}');
       return _message;
     } finally {
@@ -223,6 +265,8 @@ class MediaExternalPlaybackManager {
   Future<VesperExternalPlaybackResult> _loadResolvedMedia({
     required ResolvedMediaPlayback resolved,
     MediaPlaybackEntry? selectedPage,
+    required int startPositionMs,
+    required bool autoplay,
   }) {
     final formatAdaptation = _formatAdaptation;
     if (formatAdaptation == null) {
@@ -242,14 +286,36 @@ class MediaExternalPlaybackManager {
       proxyPolicy: VesperExternalProxyPolicy.auto,
       formatAdaptation: formatAdaptation,
     );
-    return _dlnaController.load(item);
+    return _dlnaController.load(
+      item,
+      startPositionMs: startPositionMs,
+      autoplay: autoplay,
+    );
   }
 
-  String? _completeLoadSuccess() {
+  Future<String?> _completeLoadSuccess(
+    VesperPlayerController? controller,
+    bool wasPlaying,
+    bool Function() isCurrent,
+    bool Function()? isCurrentPlayback,
+  ) async {
     if (_state != MediaDlnaState.connected || _connectedRouteId == null) {
       return _message ?? 'DLNA 连接已断开。';
     }
-    _pausedLocalPlayback = true;
+    if (controller != null) {
+      _localPlaybackController = controller;
+      _isCurrentLocalPlayback = isCurrentPlayback;
+      _resumeLocalOnDisconnect = wasPlaying;
+      if (controller.snapshot.playbackState == VesperPlaybackState.playing) {
+        final pause = controller.pause();
+        _localPauseFuture = pause;
+        await pause;
+        if (identical(_localPauseFuture, pause)) {
+          _localPauseFuture = null;
+        }
+      }
+      if (!isCurrent()) return null;
+    }
     _message = '已投放到 ${_connectedRouteName ?? 'DLNA 设备'}';
     _notify();
     return null;
@@ -261,27 +327,65 @@ class MediaExternalPlaybackManager {
     }
     _disconnectFailureMessage = null;
     _disconnectFailureRouteId = null;
+    _connectionGeneration += 1;
     try {
       await _dlnaController.disconnect();
     } catch (_) {}
     _clearConnection();
+    final generation = _connectionGeneration;
+    await _restoreLocalPlayback();
+    if (_disposed || generation != _connectionGeneration) return null;
     _message = null;
     _setState(MediaDlnaState.idle);
     return null;
   }
 
-  Future<void> resumeLocalPlayback({
-    required VesperPlayerController controller,
-    int? externalPositionMs,
-  }) async {
-    if (!_pausedLocalPlayback) return;
-    _pausedLocalPlayback = false;
-    if (externalPositionMs != null) {
-      final deltaMs =
-          externalPositionMs - controller.snapshot.timeline.positionMs;
-      await controller.seekBy(deltaMs);
+  Future<void> _restoreLocalPlayback() {
+    if (_localPlaybackController == null) {
+      return _localRestoreFuture ?? Future<void>.value();
     }
-    await controller.play();
+    late final Future<void> restore;
+    restore = _restoreLocalPlaybackOnce().whenComplete(() {
+      if (identical(_localRestoreFuture, restore)) {
+        _localRestoreFuture = null;
+      }
+    });
+    return _localRestoreFuture = restore;
+  }
+
+  Future<void> _restoreLocalPlaybackOnce() async {
+    final controller = _localPlaybackController;
+    if (controller == null) return;
+    final shouldResume = _resumeLocalOnDisconnect;
+    final generation = _connectionGeneration;
+    final positionMs = _externalPositionMs;
+    final pause = _localPauseFuture;
+    final isCurrentPlayback = _isCurrentLocalPlayback;
+    _resumeLocalOnDisconnect = false;
+    _localPlaybackController = null;
+    _isCurrentLocalPlayback = null;
+    _externalPositionMs = null;
+    bool isCurrent() =>
+        !_disposed &&
+        generation == _connectionGeneration &&
+        (isCurrentPlayback?.call() ?? true);
+    try {
+      await pause;
+      if (!isCurrent()) return;
+      if (positionMs != null) {
+        await controller.seekBy(
+          positionMs - controller.snapshot.timeline.positionMs,
+        );
+      }
+      if (isCurrent() && shouldResume) {
+        await controller.play();
+      }
+    } catch (error) {
+      if (!_disposed) {
+        _message = '恢复本地播放失败：${mediaErrorMessage(error)}';
+        _notify();
+      }
+    }
   }
 
   VesperSystemPlaybackMetadata buildSystemPlaybackMetadata(
@@ -313,8 +417,20 @@ class MediaExternalPlaybackManager {
   Future<void> _handleSessionEvent(
     VesperExternalPlaybackSessionEvent event,
   ) async {
+    if (_disposed) return;
+    if (event.routeId != null &&
+        _connectedRouteId != null &&
+        event.routeId != _connectedRouteId) {
+      return;
+    }
+    if (event.positionMs != null) {
+      _externalPositionMs = event.positionMs;
+    }
     switch (event.kind) {
       case VesperExternalPlaybackSessionEventKind.routeConnected:
+        if (event.routeId != _connectedRouteId) {
+          _connectionGeneration += 1;
+        }
         _connectedRouteId = event.routeId;
         _connectedRouteName = event.routeName ?? event.routeId;
         _disconnectFailureMessage = null;
@@ -324,6 +440,9 @@ class MediaExternalPlaybackManager {
       case VesperExternalPlaybackSessionEventKind.routeDisconnected:
         final failureMessage = _disconnectFailureMessage;
         _clearConnection();
+        final generation = _connectionGeneration;
+        await _restoreLocalPlayback();
+        if (_disposed || generation != _connectionGeneration) return;
         if (failureMessage != null &&
             (_disconnectFailureRouteId == null ||
                 event.routeId == null ||
@@ -335,10 +454,14 @@ class MediaExternalPlaybackManager {
         _message = 'DLNA 连接已断开。';
         _setState(MediaDlnaState.idle);
       case VesperExternalPlaybackSessionEventKind.playing:
-        _pausedLocalPlayback = true;
+        if (_localPlaybackController != null) {
+          _resumeLocalOnDisconnect = true;
+        }
         _notify();
       case VesperExternalPlaybackSessionEventKind.paused:
       case VesperExternalPlaybackSessionEventKind.stopped:
+        _resumeLocalOnDisconnect = false;
+        _notify();
       case VesperExternalPlaybackSessionEventKind.suspended:
         _notify();
       case VesperExternalPlaybackSessionEventKind.loaded:
@@ -397,14 +520,19 @@ class MediaExternalPlaybackManager {
       return;
     }
     _clearConnection();
+    final generation = _connectionGeneration;
+    await _restoreLocalPlayback();
+    if (_disposed || generation != _connectionGeneration) return;
     _message = message;
     _setState(MediaDlnaState.error);
   }
 
   void _clearConnection() {
+    if (_connectedRouteId != null) {
+      _connectionGeneration += 1;
+    }
     _connectedRouteId = null;
     _connectedRouteName = null;
-    _pausedLocalPlayback = false;
   }
 
   void _setState(MediaDlnaState newState) {

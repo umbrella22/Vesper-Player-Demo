@@ -21,7 +21,9 @@ import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'bili_region_hub_page.dart';
 import 'bili_library_page.dart';
+import 'bili_favorites_page.dart';
 import 'bili_settings_page.dart';
+import 'bili_user_space_page.dart';
 
 part 'bili_hub_common.dart';
 part 'bili_hub_home.dart';
@@ -449,6 +451,45 @@ class _BiliHubPageState extends State<BiliHubPage> {
     );
   }
 
+  Future<void> _openFavorites() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliFavoritesPage(
+          client: _viewModel.client,
+          historyStore: _viewModel.historyStore,
+          offlineController: _viewModel.offlineController,
+          onLoginTap: _openQrLogin,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openOwnSpace() async {
+    final profile = _viewModel.profile.value;
+    final mid = profile.mid;
+    if (!profile.isLoggedIn || mid == null || mid <= 0) {
+      await _openQrLogin();
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BiliUserSpacePage(
+          client: _viewModel.client,
+          user: BiliFollowingUser(
+            mid: mid,
+            name: profile.name,
+            avatarUrl: profile.avatarUrl,
+            vipLabel: profile.vipLabel,
+          ),
+          isSelf: true,
+          historyStore: _viewModel.historyStore,
+          offlineController: _viewModel.offlineController,
+          onLoginTap: _openQrLogin,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SignalBuilder(
@@ -508,7 +549,8 @@ class _BiliHubPageState extends State<BiliHubPage> {
                 historyCount: _viewModel.history.value.length,
                 onLoginTap: _openQrLogin,
                 onLogoutTap: _viewModel.logout,
-                onSpaceTap: () => _showMessage('空间页暂未接入。'),
+                onSpaceTap: () => unawaited(_openOwnSpace()),
+                onFavoritesTap: () => unawaited(_openFavorites()),
                 onCacheTap: () => unawaited(_openOfflineCachePage()),
                 onHistoryTap: () async {
                   await _openLibrary(BiliLibrarySection.history);

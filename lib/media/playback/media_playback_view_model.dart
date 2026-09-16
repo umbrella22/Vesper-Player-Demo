@@ -427,14 +427,23 @@ final class MediaPlaybackViewModel {
     if (_isDisposed) {
       return null;
     }
+    final controller = _userController;
+    final transitionGeneration = _sourceTransitionGeneration;
+    bool isCurrentPlayback() =>
+        !_isDisposed &&
+        identical(controller, _userController) &&
+        transitionGeneration == _sourceTransitionGeneration;
+    if (controller == null) return '播放器尚未就绪。';
     try {
       final resolved = await _refreshCurrentResolvedPlayback();
-      if (_isDisposed) {
+      if (!isCurrentPlayback()) {
         return null;
       }
       return await _dlnaManager.loadMedia(
         resolved: resolved,
         selectedPage: _selectedEntry.value,
+        controller: controller,
+        isCurrentPlayback: isCurrentPlayback,
         refreshResolved: _refreshCurrentResolvedPlayback,
       );
     } catch (error) {

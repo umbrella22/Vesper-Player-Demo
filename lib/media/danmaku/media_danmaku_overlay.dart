@@ -242,17 +242,20 @@ class MediaDanmakuOverlay extends StatefulWidget {
 
 class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
     with SingleTickerProviderStateMixin {
-  static const Duration _advancedFrameInterval = Duration(milliseconds: 33);
-  static const Duration _highVolumeFrameInterval = Duration(milliseconds: 50);
-
   late final _MediaDanmakuClock _clock;
   late final Ticker _ticker;
   final _DanmakuTextCache _textCache = _DanmakuTextCache();
   final _DanmakuLayoutCache _layoutCache = _DanmakuLayoutCache();
   final _AdvancedDanmakuLayoutCache _advancedLayoutCache =
       _AdvancedDanmakuLayoutCache();
-  Timer? _reducedFrameTimer;
-  Duration? _reducedFrameTimerInterval;
+  int _visibleItemCount = 0;
+  int _frameStride = 1;
+  int _frameIndex = 0;
+  int _sampleCount = 0;
+  int _overBudgetCount = 0;
+  int _headroomCount = 0;
+  double _refreshRate = 60;
+  bool _observingTimings = false;
 
   @override
   void initState() {
@@ -262,8 +265,20 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
       playbackState: widget.playbackState,
       playbackRate: widget.playbackRate,
     );
-    _ticker = createTicker((_) => _clock.notifyFrame());
+    _ticker = createTicker((_) {
+      if (_frameIndex++ % _frameStride == 0) _clock.notifyFrame();
+    });
     _syncAnimationDriver();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final refreshRate = View.of(context).display.refreshRate;
+    if (refreshRate > 0 && refreshRate != _refreshRate) {
+      _refreshRate = refreshRate;
+      _resetFramePacing();
+    }
   }
 
   @override
@@ -285,7 +300,9 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
   @override
   void dispose() {
     _ticker.dispose();
-    _cancelReducedFrameTimer();
+    if (_observingTimings) {
+      SchedulerBinding.instance.removeTimingsCallback(_observeFrameTimings);
+    }
     _clock.dispose();
     _textCache.dispose();
     super.dispose();
@@ -305,6 +322,7 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
               textCache: _textCache,
               layoutCache: _layoutCache,
               advancedLayoutCache: _advancedLayoutCache,
+              onVisibleItemCountChanged: (count) => _visibleItemCount = count,
             ),
           ),
         ),
@@ -316,48 +334,82 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
     final shouldAnimate =
         widget.playbackState == VesperPlaybackState.playing &&
         widget.settings.enabled &&
-        (widget.events.isNotEmpty || widget.advancedEvents.isNotEmpty);
+        (widget.events.isNotEmpty ||
+            (widget.settings.showAdvanced && widget.advancedEvents.isNotEmpty));
     if (!shouldAnimate) {
       _ticker.stop();
-      _cancelReducedFrameTimer();
-      return;
-    }
-
-    final reducedFrameInterval = _targetReducedFrameInterval;
-    if (reducedFrameInterval == null) {
-      _cancelReducedFrameTimer();
-      if (!_ticker.isActive) {
-        _ticker.start();
+      if (_observingTimings) {
+        SchedulerBinding.instance.removeTimingsCallback(_observeFrameTimings);
+        _observingTimings = false;
       }
+      _resetFramePacing();
       return;
     }
+    if (!_observingTimings) {
+      SchedulerBinding.instance.addTimingsCallback(_observeFrameTimings);
+      _observingTimings = true;
+    }
+    if (!_ticker.isActive) _ticker.start();
+  }
 
-    _ticker.stop();
-    if (_reducedFrameTimerInterval == reducedFrameInterval) {
+  void _observeFrameTimings(List<FrameTiming> timings) {
+    if (!_ticker.isActive || _ticker.muted || _visibleItemCount == 0) {
+      _resetFramePacing();
       return;
     }
-    _cancelReducedFrameTimer();
-    _reducedFrameTimer = Timer.periodic(
-      reducedFrameInterval,
-      (_) => _clock.notifyFrame(),
-    );
-    _reducedFrameTimerInterval = reducedFrameInterval;
+    final refreshRate = View.of(context).display.refreshRate;
+    if (refreshRate > 0 && refreshRate != _refreshRate) {
+      _refreshRate = refreshRate;
+      _resetFramePacing();
+    }
+    final frameBudgetUs = 1000000 / _refreshRate;
+    final maximumStride = (_refreshRate / 30).floor().clamp(1, 4);
+    for (final timing in timings) {
+      final workUs = math.max(
+        timing.buildDuration.inMicroseconds,
+        timing.rasterDuration.inMicroseconds,
+      );
+      _sampleCount++;
+      if (workUs > frameBudgetUs * _frameStride * 1.1) {
+        _overBudgetCount++;
+      }
+      // Recovery needs sustained room for the next faster cadence, preventing
+      // oscillation after a single cheap frame. Loaded but invisible items do
+      // not determine the cadence; every repaint remains aligned with vsync.
+      if (_frameStride > 1 &&
+          workUs < frameBudgetUs * (_frameStride - 1) * .7) {
+        _headroomCount++;
+      } else {
+        _headroomCount = 0;
+      }
+      if (_headroomCount >= 120) {
+        _frameStride--;
+        _resetFrameSamples();
+        return;
+      }
+      if (_sampleCount >= 30) {
+        final overloaded = _overBudgetCount >= 10;
+        _sampleCount = 0;
+        _overBudgetCount = 0;
+        if (overloaded && _frameStride < maximumStride) {
+          _frameStride++;
+          _resetFrameSamples();
+          return;
+        }
+      }
+    }
   }
 
-  Duration? get _targetReducedFrameInterval {
-    if (widget.events.length >= _highVolumeDanmakuEventThreshold) {
-      return _highVolumeFrameInterval;
-    }
-    if (widget.advancedEvents.isNotEmpty) {
-      return _advancedFrameInterval;
-    }
-    return null;
+  void _resetFramePacing() {
+    _frameStride = 1;
+    _resetFrameSamples();
   }
 
-  void _cancelReducedFrameTimer() {
-    _reducedFrameTimer?.cancel();
-    _reducedFrameTimer = null;
-    _reducedFrameTimerInterval = null;
+  void _resetFrameSamples() {
+    _frameIndex = 0;
+    _sampleCount = 0;
+    _overBudgetCount = 0;
+    _headroomCount = 0;
   }
 }
 
@@ -372,6 +424,7 @@ class MediaDanmakuPainter extends CustomPainter {
     required this._textCache,
     required this._layoutCache,
     required this._advancedLayoutCache,
+    required this._onVisibleItemCountChanged,
   }) : _clock = clock,
        super(repaint: clock);
 
@@ -388,12 +441,14 @@ class MediaDanmakuPainter extends CustomPainter {
   final _DanmakuTextCache _textCache;
   final _DanmakuLayoutCache _layoutCache;
   final _AdvancedDanmakuLayoutCache _advancedLayoutCache;
+  final ValueChanged<int> _onVisibleItemCountChanged;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty ||
         (_events.isEmpty && _advancedEvents.isEmpty) ||
         !_settings.enabled) {
+      _onVisibleItemCountChanged(0);
       return;
     }
     canvas.save();
@@ -402,6 +457,7 @@ class MediaDanmakuPainter extends CustomPainter {
     final plans = _plansFor(size, positionMs);
     final firstPlanIndex = _firstVisiblePlanIndex(plans, positionMs);
     final opacity = _settings.opacity.clamp(0.0, 1.0).toDouble();
+    var visibleCount = 0;
     for (var index = firstPlanIndex; index < plans.length; index += 1) {
       final plan = plans[index];
       if (plan.event.timeMs > positionMs) {
@@ -414,6 +470,7 @@ class MediaDanmakuPainter extends CustomPainter {
       _textCache
           .resolve(event: plan.event, fontSize: plan.fontSize, opacity: opacity)
           .paint(canvas, offset);
+      visibleCount++;
     }
     final advancedPlans = _advancedLayoutCache.resolve(
       events: _advancedEvents,
@@ -445,6 +502,7 @@ class MediaDanmakuPainter extends CustomPainter {
       }
     }
     canvas.restore();
+    _onVisibleItemCountChanged(visibleCount + visibleAdvancedCount);
   }
 
   int _firstVisiblePlanIndex(List<_DanmakuRenderPlan> plans, int positionMs) {

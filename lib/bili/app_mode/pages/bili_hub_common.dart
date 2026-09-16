@@ -30,8 +30,8 @@ class _HubNavigationBar extends StatelessWidget {
           label: '首页',
         ),
         AppGlassNavigationItem(
-          icon: Icons.live_tv_outlined,
-          activeIcon: Icons.live_tv_rounded,
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
           label: '我的',
         ),
       ],

@@ -8,6 +8,7 @@ import 'package:vesper_media/common/storage/generated_file_cleanup.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../models/bili_models.dart';
+import '../models/bili_favorites_models.dart';
 import '../models/bili_region_models.dart';
 import 'bili_api_core.dart';
 import 'bili_dash_api.dart';
@@ -22,6 +23,7 @@ import 'bili_wbi.dart';
 export 'bili_dash_api.dart' show biliDashRequestVariants;
 
 part 'bili_client_download.dart';
+part 'bili_client_favorites.dart';
 part 'bili_client_library.dart';
 part 'bili_client_playback.dart';
 part 'bili_client_region.dart';
@@ -51,12 +53,14 @@ class BiliClient {
   // shared with concurrent callers and must not be evicted underneath them.
   final Set<String> _completedSubtitleRequests = <String>{};
   int? _currentUserMid;
+  int _sessionRevision = 0;
 
   BiliTransport get transport => _transport;
 
   Map<String, String> snapshotCookies() => _transport.snapshotCookies();
 
   void restoreCookies(Map<String, String> cookies) {
+    _sessionRevision++;
     _transport.restoreCookies(cookies);
     _currentUserMid = readInt(cookies['DedeUserID']);
     _subtitleRequests.clear();
@@ -64,6 +68,7 @@ class BiliClient {
   }
 
   void clearSession() {
+    _sessionRevision++;
     _transport.clearSession();
     _currentUserMid = null;
     _subtitleRequests.clear();
@@ -71,6 +76,9 @@ class BiliClient {
   }
 
   bool get hasAuthenticatedSession => _transport.hasAuthenticatedSession;
+
+  /// Changes when the app restores, replaces or clears its account session.
+  int get sessionRevision => _sessionRevision;
 
   @visibleForTesting
   BiliDashManifestData? parseDashManifestForTesting(Map<String, Object?> data) {
@@ -134,6 +142,26 @@ class BiliClient {
     return _BiliClientLibraryImplementation(
       this,
     ).fetchFollowingUsers(mid: mid, page: page, pageSize: pageSize);
+  }
+
+  Future<List<BiliFavoriteFolder>> fetchFavoriteFolders() {
+    return _BiliClientFavoritesImplementation(this).fetchFavoriteFolders();
+  }
+
+  Future<BiliFavoritePage> fetchFavoriteItems({
+    required int folderId,
+    int page = 1,
+    int pageSize = 20,
+    String keyword = '',
+    BiliFavoriteOrder order = BiliFavoriteOrder.recent,
+  }) {
+    return _BiliClientFavoritesImplementation(this).fetchFavoriteItems(
+      folderId: folderId,
+      page: page,
+      pageSize: pageSize,
+      keyword: keyword,
+      order: order,
+    );
   }
 
   Future<List<BiliFollowingUser>> fetchFollowing({
@@ -466,6 +494,7 @@ class BiliClient {
         'qrcode_key': qrcodeKey,
       }),
       referer: biliDefaultReferer,
+      storeResponseCookies: false,
     );
     final decoded = jsonDecode(response.body);
     if (decoded is! Map) {
@@ -482,10 +511,6 @@ class BiliClient {
     }
 
     final data = readObjectMap(map['data']);
-    _transport.restoreCookies({
-      ..._transport.cookies,
-      ...parseBiliLoginCookiesFromUrl(readString(data['url'])),
-    });
     final statusCode = readInt(data['code']) ?? -1;
     final status = BiliQrLoginStatus.fromCode(statusCode);
     return BiliQrLoginPollResult(
@@ -495,7 +520,20 @@ class BiliClient {
           ? readInt(data['timestamp'])! * 1000
           : null,
       refreshToken: readString(data['refresh_token']),
+      cookieUpdates: Map.unmodifiable({
+        ...response.cookieUpdates,
+        ...parseBiliLoginCookiesFromUrl(readString(data['url'])),
+      }),
     );
+  }
+
+  /// Commits credentials only after the owner accepts the active QR attempt.
+  void acceptQrLogin(BiliQrLoginPollResult result) {
+    if (result.status != BiliQrLoginStatus.confirmed) {
+      return;
+    }
+    _transport.applyCookieUpdates(result.cookieUpdates);
+    restoreCookies(_transport.snapshotCookies());
   }
 
   Future<List<BiliFeedVideo>> fetchRecommendedFeed({int page = 1}) async {
@@ -1106,11 +1144,15 @@ class BiliClient {
       return null;
     }
 
+    final attr = readInt(value['attr']);
     return BiliFavoriteFolder(
       id: id,
       title: readString(value['title']) ?? '默认收藏夹',
       containsCurrentVideo:
           (readInt(value['fav_state']) ?? readInt(value['favState']) ?? 0) > 0,
+      mediaCount: readInt(value['media_count']),
+      coverUrl: biliNormalizeImageUrl(readString(value['cover']) ?? ''),
+      isPrivate: attr == null ? null : attr & 1 != 0,
     );
   }
 

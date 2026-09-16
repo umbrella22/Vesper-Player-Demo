@@ -266,7 +266,19 @@ void main() {
           tester.getSize(tab).width,
           AppGlassBottomNavigation.tabItemWidth,
         );
+        expect(tester.getSize(tab).height, AppGlassBottomNavigation.barHeight);
       }
+      final selectedLabel = tester.widget<Text>(find.text('首页'));
+      expect(selectedLabel.style?.color, const Color(0xFF0060C7));
+      final selectedIcon = find.byIcon(Icons.home_rounded);
+      expect(
+        tester.widget<Icon>(selectedIcon).color,
+        selectedLabel.style?.color,
+      );
+      expect(
+        tester.getRect(selectedIcon).bottom,
+        lessThan(tester.getRect(find.text('首页')).top),
+      );
 
       await tester.drag(find.byType(ListView), const Offset(0, -100));
       await tester.pump(const Duration(milliseconds: 200));

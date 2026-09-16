@@ -131,6 +131,9 @@ final class BiliQrLoginController {
       if (!_isCurrent(generation)) {
         return;
       }
+      if (result.status == BiliQrLoginStatus.confirmed) {
+        client.acceptQrLogin(result);
+      }
       _pollResult.value = result;
       _errorMessage.value = null;
       _notify();

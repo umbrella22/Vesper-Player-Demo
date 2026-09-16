@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +58,227 @@ void main() {
     test('initializes with null message', () {
       expect(manager.message, isNull);
     });
+
+    test(
+      'transfers position and resumes from the remote position on disconnect',
+      () async {
+        final player = _LocalPlayer();
+        await _connectToRoute(manager, externalPlayback);
+        expect(
+          await manager.loadMedia(
+            resolved: _resolvedPlayback,
+            controller: player,
+          ),
+          isNull,
+        );
+
+        final load = externalPlayback.calls.singleWhere(
+          (call) => call.method == 'load',
+        );
+        expect((load.arguments as Map)['startPositionMs'], 45000);
+        expect((load.arguments as Map)['autoplay'], isTrue);
+        expect(player.pauseCalls, 1);
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'playing',
+          'routeId': 'uuid:tv',
+          'positionMs': 72000,
+        });
+        await Future<void>.delayed(Duration.zero);
+        await manager.disconnect();
+        expect(player.seekDeltas, <int>[27000]);
+        expect(player.playCalls, 1);
+      },
+    );
+
+    test('paused playback remains paused on both devices', () async {
+      final player = _LocalPlayer(playing: false);
+      await _connectToRoute(manager, externalPlayback);
+      await manager.loadMedia(resolved: _resolvedPlayback, controller: player);
+      final load = externalPlayback.calls.singleWhere(
+        (call) => call.method == 'load',
+      );
+      expect((load.arguments as Map)['autoplay'], isFalse);
+      await manager.disconnect();
+      expect(player.pauseCalls, 0);
+      expect(player.playCalls, 0);
+    });
+
+    test(
+      'reloading the same cast retains remote position and resume intent',
+      () async {
+        final player = _LocalPlayer();
+        await _connectToRoute(manager, externalPlayback);
+        await manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        );
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'playing',
+          'routeId': 'uuid:tv',
+          'positionMs': 72000,
+        });
+        await Future<void>.delayed(Duration.zero);
+        await manager.loadMedia(
+          resolved: _refreshedPlayback,
+          controller: player,
+        );
+        final load = externalPlayback.calls.lastWhere(
+          (call) => call.method == 'load',
+        );
+        expect((load.arguments as Map)['startPositionMs'], 72000);
+        expect((load.arguments as Map)['autoplay'], isTrue);
+        expect(player.pauseCalls, 1);
+        await manager.disconnect();
+        expect(player.playCalls, 1);
+      },
+    );
+
+    test(
+      'remote pause is preserved when returning to local playback',
+      () async {
+        final player = _LocalPlayer();
+        await _connectToRoute(manager, externalPlayback);
+        await manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        );
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'paused',
+          'routeId': 'uuid:tv',
+          'positionMs': 72000,
+        });
+        await Future<void>.delayed(Duration.zero);
+        await manager.disconnect();
+        expect(player.seekDeltas, <int>[27000]);
+        expect(player.playCalls, 0);
+      },
+    );
+
+    test(
+      'route disconnect during explicit disconnect restores local playback once',
+      () async {
+        final player = _LocalPlayer();
+        await _connectToRoute(manager, externalPlayback);
+        await manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        );
+        externalPlayback.disconnectHandler = () async {
+          externalPlayback.emitEvent(<String, Object?>{
+            'kind': 'routeDisconnected',
+            'routeId': 'uuid:tv',
+            'positionMs': 72000,
+          });
+          await Future<void>.delayed(Duration.zero);
+        };
+        await manager.disconnect();
+        expect(player.seekDeltas, <int>[27000]);
+        expect(player.playCalls, 1);
+      },
+    );
+
+    test(
+      'a new route invalidates restoration waiting for an old local pause',
+      () async {
+        final player = _LocalPlayer()..pauseGate = Completer<void>();
+        await _connectToRoute(manager, externalPlayback);
+        final load = manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        );
+        await Future<void>.delayed(Duration.zero);
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'routeDisconnected',
+          'routeId': 'uuid:tv',
+        });
+        await Future<void>.delayed(Duration.zero);
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'routeConnected',
+          'routeId': 'uuid:new-tv',
+        });
+        await Future<void>.delayed(Duration.zero);
+        player.pauseGate!.complete();
+        await load;
+        await Future<void>.delayed(Duration.zero);
+        expect(player.playCalls, 0);
+        expect(manager.state, MediaDlnaState.connected);
+      },
+    );
+
+    test('failed remote load leaves local playback running', () async {
+      final player = _LocalPlayer();
+      externalPlayback.loadResult = <String, Object?>{'status': 'failed'};
+      await _connectToRoute(manager, externalPlayback);
+      expect(
+        await manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        ),
+        isNotNull,
+      );
+      expect(player.pauseCalls, 0);
+      expect(player.playCalls, 0);
+    });
+
+    test(
+      'late load completion after disconnect does not pause local playback',
+      () async {
+        final player = _LocalPlayer();
+        final gate = Completer<Map<String, Object?>>();
+        externalPlayback.loadHandler = () => gate.future;
+        await _connectToRoute(manager, externalPlayback);
+        final load = manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+        );
+        await Future<void>.delayed(Duration.zero);
+        await manager.disconnect();
+        gate.complete(<String, Object?>{'status': 'success'});
+        await load;
+        expect(player.pauseCalls, 0);
+        expect(manager.state, MediaDlnaState.idle);
+      },
+    );
+
+    test('disconnect waits for the local pause before resuming', () async {
+      final player = _LocalPlayer()..pauseGate = Completer<void>();
+      await _connectToRoute(manager, externalPlayback);
+      final load = manager.loadMedia(
+        resolved: _resolvedPlayback,
+        controller: player,
+      );
+      await Future<void>.delayed(Duration.zero);
+      final disconnect = manager.disconnect();
+      await Future<void>.delayed(Duration.zero);
+      expect(player.playCalls, 0);
+      player.pauseGate!.complete();
+      await load;
+      await disconnect;
+      expect(player.playCalls, 1);
+    });
+
+    test(
+      'disconnect does not resume a replaced source or controller',
+      () async {
+        final player = _LocalPlayer();
+        var current = true;
+        await _connectToRoute(manager, externalPlayback);
+        await manager.loadMedia(
+          resolved: _resolvedPlayback,
+          controller: player,
+          isCurrentPlayback: () => current,
+        );
+        current = false;
+        externalPlayback.emitEvent(<String, Object?>{
+          'kind': 'routeDisconnected',
+          'routeId': 'uuid:tv',
+          'positionMs': 72000,
+        });
+        await Future<void>.delayed(Duration.zero);
+        expect(player.seekDeltas, isEmpty);
+        expect(player.playCalls, 0);
+      },
+    );
 
     test('builds system playback metadata with resolved data', () {
       final resolved = ResolvedMediaPlayback(
@@ -374,6 +597,50 @@ Future<void> _connectToRoute(
   expect(manager.state, MediaDlnaState.connected);
 }
 
+final class _LocalPlayer implements VesperPlayerController {
+  _LocalPlayer({bool playing = true})
+    : snapshot = const VesperPlayerSnapshot.initial().copyWith(
+        playbackState: playing
+            ? VesperPlaybackState.playing
+            : VesperPlaybackState.paused,
+        timeline: VesperTimeline(
+          kind: VesperTimelineKind.vod,
+          isSeekable: true,
+          seekableRange: null,
+          liveEdgeMs: null,
+          positionMs: 45000,
+          durationMs: 120000,
+        ),
+      );
+
+  @override
+  VesperPlayerSnapshot snapshot;
+  int pauseCalls = 0;
+  int playCalls = 0;
+  final seekDeltas = <int>[];
+  Completer<void>? pauseGate;
+
+  @override
+  Future<void> pause() async {
+    pauseCalls += 1;
+    await pauseGate?.future;
+    snapshot = snapshot.copyWith(playbackState: VesperPlaybackState.paused);
+  }
+
+  @override
+  Future<void> play() async {
+    playCalls += 1;
+  }
+
+  @override
+  Future<void> seekBy(int deltaMs) async {
+    seekDeltas.add(deltaMs);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final class _ExternalPlaybackHarness {
   _ExternalPlaybackHarness({
     required this.methodChannel,
@@ -395,6 +662,7 @@ final class _ExternalPlaybackHarness {
   };
   List<Map<String, Object?>>? loadResults;
   Future<Map<String, Object?>> Function()? loadHandler;
+  Future<void> Function()? disconnectHandler;
   int loadCallCount = 0;
 
   void install() {
@@ -423,6 +691,7 @@ final class _ExternalPlaybackHarness {
               }
               return loadResult;
             case 'disconnect':
+              await disconnectHandler?.call();
               return <String, Object?>{'status': 'success'};
           }
           return <String, Object?>{

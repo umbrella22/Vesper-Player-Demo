@@ -179,11 +179,13 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
   }
 
   Future<ResolvedMediaPlayback> _refreshCurrentResolvedPlayback() async {
+    final generation = _sourceTransitionGeneration;
+    final entry = _selectedEntry.value;
     final resolved = await adapter.resolvePlayback(
       detail: detail,
-      entry: _selectedEntry.value,
+      entry: entry,
     );
-    if (!_isDisposed) {
+    if (!_isDisposed && generation == _sourceTransitionGeneration) {
       _resolvedPlayback.value = resolved;
     }
     return resolved;

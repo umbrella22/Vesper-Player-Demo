@@ -20,7 +20,7 @@ version: 1.13.1
 
 environment:
   sdk: ^3.12.0
-  flutter: ">=3.44.0"
+  flutter: ">=3.47.2"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -31,21 +31,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vesper_player: ^0.5.4
-  vesper_player_ui: ^0.5.4
-  vesper_player_external_playback: ^0.5.4
-  vesper_player_source_normalizer_ffmpeg: ^0.5.4
-  vesper_player_remux_ffmpeg: ^0.5.4
+  vesper_player: ^0.5.6
+  vesper_player_ui: ^0.5.6
+  vesper_player_external_playback: ^0.5.6
+  vesper_player_source_normalizer_ffmpeg: ^0.5.6
+  vesper_player_remux_ffmpeg: ^0.5.6
   crypto: ^3.0.7
-  cupertino_ui: ^1.0.2
-  material_ui: ^1.2.0
+  cupertino_ui: ^1.1.0
+  material_ui: ^1.3.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
   signals: ^7.1.0
 
   cupertino_icons: ^1.0.9
-  flutter_secure_storage: ^11.0.0
-  liquid_glass_widgets: ^1.4.2
+  flutter_secure_storage: ^11.1.1
+  liquid_glass_widgets: ^1.6.1
   package_info_plus: ^10.2.1
 
 dev_dependencies:

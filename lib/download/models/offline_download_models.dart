@@ -1,5 +1,7 @@
 import 'package:vesper_player/vesper_player.dart';
 
+import '../../bili/common/models/bili_models.dart';
+
 final class BiliOfflineDownloadMetadata {
   const BiliOfflineDownloadMetadata({
     required this.assetId,
@@ -13,6 +15,7 @@ final class BiliOfflineDownloadMetadata {
     this.taskId,
     this.outputPath,
     this.errorMessage,
+    this.playbackMetadata,
   });
 
   factory BiliOfflineDownloadMetadata.fromJson(Map<String, Object?> json) {
@@ -28,6 +31,13 @@ final class BiliOfflineDownloadMetadata {
       outputPath: json['outputPath'] as String?,
       createdAtMs: json['createdAtMs'] as int? ?? 0,
       errorMessage: json['errorMessage'] as String?,
+      playbackMetadata: switch (json['playbackMetadata']) {
+        final Map<Object?, Object?> value =>
+          BiliOfflinePlaybackMetadata.fromJson(
+            Map<String, Object?>.from(value),
+          ),
+        _ => null,
+      },
     );
   }
 
@@ -42,6 +52,46 @@ final class BiliOfflineDownloadMetadata {
   final String? outputPath;
   final int createdAtMs;
   final String? errorMessage;
+  final BiliOfflinePlaybackMetadata? playbackMetadata;
+
+  /// Old cache records already contain the content identity and display titles.
+  /// Unknown duration/owner fields remain unknown instead of requiring a fetch.
+  BiliVideoDetail toVideoDetail() {
+    final playback = playbackMetadata;
+    final legacyTitle = RegExp(r'^P(\d+) · (.*)$').firstMatch(pageTitle);
+    final page = BiliVideoPageEntry(
+      cid: cid,
+      bvid: bvid,
+      aid: playback?.aid,
+      pageNumber:
+          playback?.pageNumber ??
+          int.tryParse(legacyTitle?.group(1) ?? '') ??
+          1,
+      title: playback?.pageTitle ?? legacyTitle?.group(2) ?? pageTitle,
+      durationSeconds: playback?.durationSeconds ?? 0,
+      coverUrl: coverUrl,
+      episodeId: playback?.episodeId,
+    );
+    return BiliVideoDetail(
+      aid: playback?.aid ?? 0,
+      bvid: bvid,
+      title: videoTitle,
+      ownerMid: playback?.ownerMid ?? 0,
+      ownerName: playback?.ownerName ?? '',
+      ownerAvatarUrl: playback?.ownerAvatarUrl ?? '',
+      coverUrl: coverUrl,
+      description: playback?.description ?? '',
+      publishedAtLabel: null,
+      playCountLabel: '—',
+      danmakuCountLabel: '—',
+      replyCountLabel: '—',
+      likeCountLabel: '—',
+      coinCountLabel: '—',
+      favoriteCountLabel: '—',
+      shareCountLabel: '—',
+      pages: <BiliVideoPageEntry>[page],
+    );
+  }
 
   BiliOfflineDownloadMetadata copyWith({
     int? taskId,
@@ -63,6 +113,7 @@ final class BiliOfflineDownloadMetadata {
       outputPath: clearOutputPath ? null : outputPath ?? this.outputPath,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+      playbackMetadata: playbackMetadata,
     );
   }
 
@@ -79,8 +130,76 @@ final class BiliOfflineDownloadMetadata {
       'outputPath': outputPath,
       'createdAtMs': createdAtMs,
       'errorMessage': errorMessage,
+      if (playbackMetadata case final playback?)
+        'playbackMetadata': playback.toJson(),
     };
   }
+}
+
+/// Playback fields captured with the downloaded page, separate from mutable
+/// download progress. The containing record owns the canonical bvid/cid pair.
+final class BiliOfflinePlaybackMetadata {
+  const BiliOfflinePlaybackMetadata({
+    required this.aid,
+    required this.pageNumber,
+    required this.pageTitle,
+    required this.durationSeconds,
+    required this.ownerMid,
+    required this.ownerName,
+    required this.ownerAvatarUrl,
+    required this.description,
+    this.episodeId,
+  });
+
+  factory BiliOfflinePlaybackMetadata.fromVideo({
+    required BiliVideoDetail detail,
+    required BiliVideoPageEntry page,
+  }) => BiliOfflinePlaybackMetadata(
+    aid: page.aid ?? detail.aid,
+    pageNumber: page.pageNumber,
+    pageTitle: page.title,
+    durationSeconds: page.durationSeconds,
+    ownerMid: detail.ownerMid,
+    ownerName: detail.ownerName,
+    ownerAvatarUrl: detail.ownerAvatarUrl,
+    description: detail.description,
+    episodeId: page.episodeId,
+  );
+
+  factory BiliOfflinePlaybackMetadata.fromJson(Map<String, Object?> json) =>
+      BiliOfflinePlaybackMetadata(
+        aid: json['aid'] as int? ?? 0,
+        pageNumber: json['pageNumber'] as int? ?? 1,
+        pageTitle: json['pageTitle'] as String? ?? '',
+        durationSeconds: json['durationSeconds'] as int? ?? 0,
+        ownerMid: json['ownerMid'] as int? ?? 0,
+        ownerName: json['ownerName'] as String? ?? '',
+        ownerAvatarUrl: json['ownerAvatarUrl'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        episodeId: json['episodeId'] as int?,
+      );
+
+  final int aid;
+  final int pageNumber;
+  final String pageTitle;
+  final int durationSeconds;
+  final int ownerMid;
+  final String ownerName;
+  final String ownerAvatarUrl;
+  final String description;
+  final int? episodeId;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'aid': aid,
+    'pageNumber': pageNumber,
+    'pageTitle': pageTitle,
+    'durationSeconds': durationSeconds,
+    'ownerMid': ownerMid,
+    'ownerName': ownerName,
+    'ownerAvatarUrl': ownerAvatarUrl,
+    'description': description,
+    'episodeId': episodeId,
+  };
 }
 
 final class BiliOfflineDownloadEntry {

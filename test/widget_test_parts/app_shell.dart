@@ -66,6 +66,16 @@ void _registerAppShellWidgetTests() {
     expect(bottomBar.barHeight, AppGlassBottomNavigation.compactBarHeight);
     expect(bottomBar.searchBarHeight, AppGlassBottomNavigation.barHeight);
     expect(bottomBar.tabWidth, AppGlassBottomNavigation.tabItemWidth);
+    expect(
+      bottomBar.tabs.last.icon,
+      isA<Icon>().having(
+        (icon) => icon.icon,
+        'icon',
+        Icons.person_outline_rounded,
+      ),
+    );
+    expect(bottomBar.iconSize, 22);
+    expect(bottomBar.iconLabelSpacing, 2);
     semantics.dispose();
   });
 
@@ -500,9 +510,11 @@ void _registerAppShellWidgetTests() {
     expect(bottomBar.settings!.thickness, 14);
     expect(bottomBar.settings!.glassColor, AppVisualTheme.light.glassTint);
     expect(bottomBar.indicatorSettings, isNull);
-    expect(bottomBar.indicatorColor, AppVisualTokens.neutralSelection);
-    expect(bottomBar.selectedIconColor, AppVisualTokens.textPrimary);
-    expect(bottomBar.selectedLabelColor, AppVisualTokens.textPrimary);
+    expect(bottomBar.indicatorColor, const Color(0x14000000));
+    expect(bottomBar.indicatorExpansion, EdgeInsets.zero);
+    expect(bottomBar.indicatorBorderRadius, 21);
+    expect(bottomBar.selectedIconColor, const Color(0xFF0060C7));
+    expect(bottomBar.selectedLabelColor, const Color(0xFF0060C7));
     expect(bottomBar.interactionGlowColor, const Color(0x1FFFFFFF));
     expect(bottomBarRect.height, AppGlassBottomNavigation.extent);
     expect(bottomBarRect.bottom, lessThanOrEqualTo(844 - 24));
@@ -540,16 +552,63 @@ void _registerAppShellWidgetTests() {
       find.byKey(const ValueKey<String>('bili-mine-settings-surface')),
       findsOneWidget,
     );
+    final shortcutTiles = find.descendant(
+      of: shortcuts,
+      matching: find.byType(AppIconTile),
+    );
+    expect(shortcutTiles, findsNWidgets(5));
+    expect(find.text('我的收藏'), findsOneWidget);
     final shortcutIcons = tester
         .widgetList<Icon>(
-          find.descendant(of: shortcuts, matching: find.byType(Icon)),
+          find.descendant(of: shortcutTiles, matching: find.byType(Icon)),
         )
         .toList(growable: false);
-    expect(shortcutIcons, hasLength(4));
     expect(
       shortcutIcons.every((icon) => icon.color == AppVisualTokens.textPrimary),
       isTrue,
     );
+  });
+
+  testWidgets('mine opens favorites with the injected signed-in client', (
+    tester,
+  ) async {
+    final client = _FakeMobileMineClient();
+    await _pumpMobileHub(tester, client: client);
+    await tester.tapAt(tester.getCenter(find.text('我的').last));
+    await _pumpBottomBarMorph(tester);
+
+    await tester.tap(find.byKey(const ValueKey<String>('bili-mine-favorites')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final page = tester.widget<BiliFavoritesPage>(
+      find.byType(BiliFavoritesPage),
+    );
+    expect(page.client, same(client));
+    expect(client.favoriteFolderRequests, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mine opens the signed-in users own space', (tester) async {
+    final client = _FakeMobileMineClient();
+    await _pumpMobileHub(tester, client: client);
+    await tester.tapAt(tester.getCenter(find.text('我的').last));
+    await _pumpBottomBarMorph(tester);
+
+    await tester.tap(find.text('空间'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final page = tester.widget<BiliUserSpacePage>(
+      find.byType(BiliUserSpacePage),
+    );
+    expect(page.client, same(client));
+    expect(page.isSelf, isTrue);
+    expect(page.user.mid, 42);
+    expect(page.user.name, '测试用户');
+    expect(client.requestedProfileMids, [42]);
+    expect(client.requestedVideoMids, [42]);
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -558,11 +617,12 @@ Future<_FakeTvHomeClient> _pumpMobileHub(
   Size surfaceSize = const Size(390, 844),
   List<BiliFeedVideo>? feedItems,
   List<BiliSearchResult> searchResults = const <BiliSearchResult>[],
+  _FakeTvHomeClient? client,
 }) async {
   final root = Directory(
     '${Directory.systemTemp.path}/bili-mobile-hub-widget-test-${DateTime.now().microsecondsSinceEpoch}',
   );
-  final client = _FakeTvHomeClient(
+  client ??= _FakeTvHomeClient(
     feedItems: feedItems,
     searchResults: searchResults,
   );
@@ -618,4 +678,48 @@ Future<void> _pumpBottomBarMorph(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pump(const Duration(milliseconds: 400));
+}
+
+final class _FakeMobileMineClient extends _FakeTvHomeClient {
+  _FakeMobileMineClient() : super._(_FakeTvHomeLibraryHttpClient()) {
+    loggedIn = true;
+  }
+
+  var favoriteFolderRequests = 0;
+  final requestedProfileMids = <int>[];
+  final requestedVideoMids = <int>[];
+
+  @override
+  bool get hasAuthenticatedSession => true;
+
+  @override
+  Future<List<BiliFavoriteFolder>> fetchFavoriteFolders() async {
+    favoriteFolderRequests += 1;
+    return const [];
+  }
+
+  @override
+  Future<BiliUserSpaceProfile> fetchUserSpaceProfile(int mid) async {
+    requestedProfileMids.add(mid);
+    return BiliUserSpaceProfile(mid: mid, name: '测试用户', avatarUrl: '');
+  }
+
+  @override
+  Future<BiliUserSpaceVideoPage> fetchUserSpaceVideos({
+    required int mid,
+    int page = 1,
+    int pageSize = 30,
+    String keyword = '',
+  }) async {
+    requestedVideoMids.add(mid);
+    return BiliUserSpaceVideoPage(
+      mid: mid,
+      page: page,
+      pageSize: pageSize,
+      total: 0,
+      videos: const [],
+      hasMore: false,
+      keyword: keyword,
+    );
+  }
 }

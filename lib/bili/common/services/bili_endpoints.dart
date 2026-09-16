@@ -91,6 +91,7 @@ abstract final class BiliApiPaths {
   // ---- 收藏 ----
   static const favResourceDeal = '/x/v3/fav/resource/deal';
   static const favFolderListAll = '/x/v3/fav/folder/created/list-all';
+  static const favResourceList = '/x/v3/fav/resource/list';
 
   // ---- 关注 ----
   static const relationModify = '/x/relation/modify';

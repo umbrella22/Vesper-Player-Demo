@@ -81,6 +81,7 @@ void main() {
     ) async {
       final pollCompleter = Completer<BiliQrLoginPollResult>();
       final client = _FakeQrLoginClient()
+        ..restoreCookies(const <String, String>{'SESSDATA': 'existing-session'})
         ..pollSteps.add(() => pollCompleter.future);
       var confirmedCalls = 0;
       final controller = _buildController(
@@ -97,12 +98,49 @@ void main() {
         const BiliQrLoginPollResult(
           status: BiliQrLoginStatus.confirmed,
           message: '登录成功',
+          cookieUpdates: <String, String?>{'SESSDATA': 'cancelled-session'},
         ),
       );
       await tester.pump();
 
       expect(client.fetchProfileCalls, 0);
       expect(confirmedCalls, 0);
+      expect(client.transport.cookieValue('SESSDATA'), 'existing-session');
+    });
+
+    testWidgets('refresh rejects credentials from the previous QR attempt', (
+      WidgetTester tester,
+    ) async {
+      final oldPoll = Completer<BiliQrLoginPollResult>();
+      final newPoll = Completer<BiliQrLoginPollResult>();
+      final client = _FakeQrLoginClient()
+        ..pollSteps.addAll([() => oldPoll.future, () => newPoll.future]);
+      final controller = _buildController(client);
+      addTearDown(controller.dispose);
+
+      await controller.start();
+      await controller.refresh();
+      newPoll.complete(
+        const BiliQrLoginPollResult(
+          status: BiliQrLoginStatus.confirmed,
+          message: '登录成功',
+          cookieUpdates: <String, String?>{'SESSDATA': 'current-session'},
+        ),
+      );
+      await tester.pump();
+      expect(client.fetchProfileCalls, 1);
+      expect(client.transport.cookieValue('SESSDATA'), 'current-session');
+
+      oldPoll.complete(
+        const BiliQrLoginPollResult(
+          status: BiliQrLoginStatus.confirmed,
+          message: '登录成功',
+          cookieUpdates: <String, String?>{'SESSDATA': 'old-session'},
+        ),
+      );
+      await tester.pump();
+      expect(client.fetchProfileCalls, 1);
+      expect(client.transport.cookieValue('SESSDATA'), 'current-session');
     });
   });
 }

@@ -32,6 +32,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     this._store = const BiliOfflineDownloadStore(),
     this._pluginResolver = const BiliDownloadPluginResolver(),
     this._manager,
+    this._cachePathResolver = resolveBiliOfflineCachePathWithinRoot,
   });
 
   static final BiliOfflineDownloadController instance =
@@ -40,6 +41,11 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   final BiliClient _client;
   final BiliOfflineDownloadStore _store;
   final BiliDownloadPluginResolver _pluginResolver;
+  final Future<String?> Function({
+    required Directory cacheRoot,
+    required Iterable<String> candidates,
+  })
+  _cachePathResolver;
   final Map<String, BiliOfflineDownloadMetadata> _metadataByAssetId =
       <String, BiliOfflineDownloadMetadata>{};
   // Cache directories and SDK tasks can outlive the app-owned metadata file.
@@ -210,6 +216,10 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       coverUrl: page.coverUrl ?? detail.coverUrl,
       qualityLabel: prepared.qualityLabel,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      playbackMetadata: BiliOfflinePlaybackMetadata.fromVideo(
+        detail: detail,
+        page: page,
+      ),
     );
     _metadataByAssetId[metadata.assetId] = metadata;
     _metadataIntegrityErrors.remove(metadata.assetId);
@@ -296,7 +306,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     if (cacheRoot == null) {
       return null;
     }
-    return resolveBiliOfflineCachePathWithinRoot(
+    return _cachePathResolver(
       cacheRoot: cacheRoot,
       candidates: <String>{
         ?entry.metadata.outputPath,
@@ -525,7 +535,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
           restoreTasksOnStartup: true,
           resumePartialDownloads: true,
         ),
-        staleResourceRecovery: _recoverStaleDownloadPlan,
+        staleResourceRecovery: recoverStaleDownloadPlan,
       ),
     );
   }
@@ -770,7 +780,10 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     final activeTasks = _snapshot.tasks
         .where((task) => task.state != VesperDownloadState.removed)
         .toList(growable: false);
-    for (final metadata in _metadataByAssetId.values) {
+    final metadataSnapshot = Map<String, BiliOfflineDownloadMetadata>.of(
+      _metadataByAssetId,
+    );
+    for (final metadata in metadataSnapshot.values) {
       final task = _taskForMetadata(metadata, activeTasks);
       if (task != null &&
           task.assetId.isNotEmpty &&
@@ -783,7 +796,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       if (task != null && task.state != VesperDownloadState.completed) {
         continue;
       }
-      final playablePath = await resolveBiliOfflineCachePathWithinRoot(
+      final playablePath = await _cachePathResolver(
         cacheRoot: cacheRoot,
         candidates: <String>{
           ?metadata.outputPath,
@@ -795,15 +808,30 @@ class BiliOfflineDownloadController extends ChangeNotifier {
             '${cacheRoot.path}/assets/$taskAssetId',
         },
       );
+      if (_disposed || generation != _integrityRefreshGeneration) {
+        return;
+      }
+      if (!identical(_metadataByAssetId[metadata.assetId], metadata) ||
+          !identical(_taskForMetadata(metadata, _snapshot.tasks), task)) {
+        continue;
+      }
       if (playablePath == null) {
         next[metadata.assetId] = task == null
             ? '缓存任务和文件均已丢失，无法播放。请清理这条失效缓存。'
             : '缓存文件已丢失或不完整，无法播放。请清理这条失效缓存。';
       }
     }
-    if (generation != _integrityRefreshGeneration) {
+    if (_disposed || generation != _integrityRefreshGeneration) {
       return;
     }
+    next.removeWhere((assetId, _) {
+      final metadata = metadataSnapshot[assetId]!;
+      return !identical(_metadataByAssetId[assetId], metadata) ||
+          !identical(
+            _taskForMetadata(metadata, _snapshot.tasks),
+            _taskForMetadata(metadata, activeTasks),
+          );
+    });
     _metadataIntegrityErrors
       ..clear()
       ..addAll(next);
@@ -1000,14 +1028,16 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     }
   }
 
-  Future<VesperDownloadRecoveredTaskPlan?> _recoverStaleDownloadPlan(
+  @visibleForTesting
+  Future<VesperDownloadRecoveredTaskPlan?> recoverStaleDownloadPlan(
     VesperDownloadTaskSnapshot task,
     VesperDownloadStaleResource staleResource,
   ) async {
     try {
       final assetId = task.assetId;
       final metadata = _metadataByAssetId[assetId];
-      if (metadata == null) {
+      final cacheRoot = _cacheRoot;
+      if (metadata == null || cacheRoot == null || !_isSafeAssetId(assetId)) {
         debugPrint(
           '[BiliOffline] stale recovery: no metadata for assetId=$assetId',
         );
@@ -1024,22 +1054,40 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       }
 
       final detail = await _client.fetchVideoDetail(metadata.bvid);
-      final page = detail.pages.firstWhere(
-        (page) => page.cid == metadata.cid,
-        orElse: () => detail.pages.first,
-      );
+      BiliVideoPageEntry? page;
+      for (final candidate in detail.pages) {
+        if (candidate.cid == metadata.cid &&
+            (candidate.bvid ?? detail.bvid) == metadata.bvid) {
+          page = candidate;
+          break;
+        }
+      }
+      if (page == null) {
+        debugPrint(
+          '[BiliOffline] stale recovery: original page is unavailable',
+        );
+        return null;
+      }
 
       final options = await _client.resolveDownloadOptions(
         detail: detail,
         page: page,
       );
+      if (options.bvid != metadata.bvid || options.cid != metadata.cid) {
+        return null;
+      }
 
       final prepared = await _client.prepareVerifiedDownloadAsset(
         options: options,
         qualityId: selection.qualityId,
         codecPreference: selection.codecPreference,
-        targetDirectory: '${_cacheRoot?.path ?? ''}/assets/$assetId',
+        targetDirectory: '${cacheRoot.path}/assets/$assetId',
       );
+      if (prepared.assetId != assetId ||
+          _disposed ||
+          !identical(_metadataByAssetId[assetId], metadata)) {
+        return null;
+      }
 
       debugPrint(
         '[BiliOffline] stale recovery: refreshed assetId=$assetId '
