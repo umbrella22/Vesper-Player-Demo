@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.14.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.13.1...vesper_media-v1.14.0) (2026-09-20)
+
+### Features
+
+* Add portrait-aware playback layouts, content-based fullscreen orientation, and video-only Android picture-in-picture presentation.
+* Add mobile favorite-folder cards using each folder's first video cover, folder selection, and single-item and batch favorite management.
+* Add a compact danmaku entry with a keyboard input sheet, danmaku selection and local blocking, and shared comment-like state.
+* Display HDR and Dolby Vision source metadata, playback capability, and output confirmation separately.
+
+### Bug Fixes
+
+* Return from nested comment threads to the comment list before leaving playback.
+* Align danmaku rendering, clipping, and hit testing with the SDK's actual video content rectangle.
+* Add vertical spacing around the danmaku entry and remove exposed gray backgrounds behind the playback panel's rounded corners.
+
+### Dependencies
+
+* Upgrade Vesper Flutter packages and native dependency pins to 0.6.2.
+* Update flutter_secure_storage to 11.2.0, liquid_glass_widgets to 1.6.2, and resolved transitive dependencies.
+
+### Documentation
+
+* Document Bilibili interaction contracts, favorites and HDR behavior, and portrait playback integration with Vesper 0.6.2.
+
 ## [1.12.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.12.1...vesper_media-v1.12.2) (2026-09-04)
 
 
