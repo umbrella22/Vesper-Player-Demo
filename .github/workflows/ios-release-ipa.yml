@@ -70,6 +70,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Run quality gates
+        run: |
+          bash scripts/prepare_flutter_workspace.sh
+          flutter analyze
+          flutter test
+
       - name: Build unsigned iOS app
         run: |
           flutter --version

@@ -93,6 +93,12 @@ jobs:
           flutter --version
           bash scripts/prepare_flutter_workspace.sh
 
+      - name: Analyze Dart sources
+        run: flutter analyze
+
+      - name: Run Dart and widget tests
+        run: flutter test
+
       - name: Build release APK
         run: flutter build apk --release --target-platform android-arm64
 
