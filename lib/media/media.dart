@@ -6,6 +6,7 @@ export 'diagnostics/media_playback_performance_diagnostics.dart';
 export 'capabilities/media_engagement.dart';
 export 'capabilities/media_history.dart';
 export 'models/media_detail.dart';
+export 'models/media_video_layout.dart';
 export 'models/media_playback_notice.dart';
 export 'models/media_playback_target.dart';
 export 'models/resolved_media.dart';

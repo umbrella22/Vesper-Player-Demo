@@ -30,11 +30,96 @@ abstract interface class BiliSpecialDanmakuRepository {
   });
 }
 
+/// 可选的弹幕发送能力。会话通过它把普通弹幕写到服务端；
+/// 未实现该接口的仓库不提供发送入口。
+abstract interface class BiliDanmakuSendRepository {
+  /// 成功时返回服务端分配的 dmid，失败时抛出异常。
+  Future<String> postDanmaku({
+    required String bvid,
+    required int cid,
+    required int aid,
+    required String text,
+    required int progressMs,
+    required int mode,
+    required int fontSize,
+    required int color,
+  });
+}
+
+abstract interface class BiliDanmakuInteractionRepository {
+  int get sessionRevision;
+  bool get hasAuthenticatedSession;
+  Future<void> setDanmakuLike({
+    required String bvid,
+    required int cid,
+    required String dmid,
+    required bool liked,
+  });
+  Future<void> retractDanmaku({
+    required String bvid,
+    required int cid,
+    required String dmid,
+  });
+}
+
 final class BiliNetworkDanmakuRepository
-    implements BiliDanmakuRepository, BiliSpecialDanmakuRepository {
+    implements
+        BiliDanmakuRepository,
+        BiliSpecialDanmakuRepository,
+        BiliDanmakuSendRepository,
+        BiliDanmakuInteractionRepository {
   BiliNetworkDanmakuRepository(this._client);
 
   final BiliClient _client;
+
+  @override
+  int get sessionRevision => _client.sessionRevision;
+
+  @override
+  bool get hasAuthenticatedSession => _client.hasAuthenticatedSession;
+
+  @override
+  Future<void> setDanmakuLike({
+    required String bvid,
+    required int cid,
+    required String dmid,
+    required bool liked,
+  }) => _client.setVideoDanmakuLike(
+    bvid: bvid,
+    cid: cid,
+    dmid: dmid,
+    liked: liked,
+  );
+
+  @override
+  Future<void> retractDanmaku({
+    required String bvid,
+    required int cid,
+    required String dmid,
+  }) => _client.retractVideoDanmaku(bvid: bvid, cid: cid, dmid: dmid);
+
+  @override
+  Future<String> postDanmaku({
+    required String bvid,
+    required int cid,
+    required int aid,
+    required String text,
+    required int progressMs,
+    required int mode,
+    required int fontSize,
+    required int color,
+  }) {
+    return _client.postVideoDanmaku(
+      bvid: bvid,
+      cid: cid,
+      aid: aid,
+      message: text,
+      progressMs: progressMs,
+      mode: mode,
+      fontSize: fontSize,
+      color: color,
+    );
+  }
 
   @override
   Future<List<BiliDanmakuEntry>> loadSegment({

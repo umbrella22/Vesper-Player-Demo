@@ -37,6 +37,10 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
       _suppressedPlaybackCommandError.value = null;
     }
     _reconcileRuntimeTrackFallback(snapshot);
+    // 自动换轨、运行时降级与手动定轨都通过生效轨道变化体现，HDR 状态随之
+    // 重建；同一轨道重复上报不产生额外工作。
+    _syncHdrCapability(snapshot);
+    _syncVideoAspectRatio(snapshot);
     if (snapshot.lastError != null ||
         snapshot.isBuffering ||
         snapshot.playbackState != VesperPlaybackState.playing) {
@@ -60,6 +64,10 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
       return;
     }
     final diagnostics = capability.diagnostics;
+    if (mediaCapabilityWarningIsHdrRelated(capability)) {
+      _handleHdrCapabilityWarning(capability);
+      return;
+    }
     final code = '${diagnostics['code'] ?? capability.reasonRawValue ?? ''}';
     final trackId = diagnostics['trackId'];
     if (code != 'runtimeTrackRejected' ||
@@ -131,7 +139,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     if (_isDisposed || generation != _controllerGeneration) {
       return;
     }
-    if (_playbackSourceTransitionInFlight) {
+    if (_playbackSourceTransitionInFlight.value) {
       return;
     }
     if (!_shouldAutoRecoverPlaybackSource(error)) {
@@ -197,7 +205,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     if (_isDisposed ||
         controllerGeneration != _controllerGeneration ||
         recoveryGeneration != _playbackRecoveryGeneration ||
-        _playbackSourceTransitionInFlight ||
+        _playbackSourceTransitionInFlight.value ||
         _playbackRecoveryInFlight) {
       return;
     }
@@ -208,13 +216,14 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     }
 
     _playbackRecoveryInFlight = true;
+    _resetHdrStatus();
     _playbackRecoverySuccessTimer?.cancel();
     var lastFailureMessage = triggerError.message;
     try {
       while (!_isDisposed &&
           controllerGeneration == _controllerGeneration &&
           recoveryGeneration == _playbackRecoveryGeneration &&
-          !_playbackSourceTransitionInFlight &&
+          !_playbackSourceTransitionInFlight.value &&
           _playbackRecoveryAttempts <
               MediaPlaybackViewModel._maxPlaybackRecoveryAttempts) {
         final attempt = _playbackRecoveryAttempts + 1;
@@ -227,7 +236,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
           if (_isDisposed ||
               controllerGeneration != _controllerGeneration ||
               recoveryGeneration != _playbackRecoveryGeneration ||
-              _playbackSourceTransitionInFlight) {
+              _playbackSourceTransitionInFlight.value) {
             return;
           }
         }
@@ -249,7 +258,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
           if (_isDisposed ||
               controllerGeneration != _controllerGeneration ||
               recoveryGeneration != _playbackRecoveryGeneration ||
-              _playbackSourceTransitionInFlight ||
+              _playbackSourceTransitionInFlight.value ||
               recoveryEntry.entryId != _selectedEntry.value.entryId) {
             return;
           }
@@ -336,6 +345,10 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     } finally {
       if (recoveryGeneration == _playbackRecoveryGeneration) {
         _playbackRecoveryInFlight = false;
+        if (!_isDisposed && controllerGeneration == _controllerGeneration) {
+          _syncHdrCapability(controller.snapshot);
+          _syncVideoAspectRatio(controller.snapshot);
+        }
       }
     }
 
@@ -358,7 +371,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
         identical(controller, _controller) &&
         controllerGeneration == _controllerGeneration &&
         recoveryGeneration == _playbackRecoveryGeneration &&
-        !_playbackSourceTransitionInFlight &&
+        !_playbackSourceTransitionInFlight.value &&
         recoveryEntry.entryId == _selectedEntry.value.entryId;
   }
 

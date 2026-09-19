@@ -1,121 +1,138 @@
 part of 'media_playback_page.dart';
 
+enum _PlaybackMenuAction { listen, projection, diagnostics }
+
 extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
   Widget _buildStage({
     required VesperPlayerController controller,
     required VesperPlayerSnapshot snapshot,
     required bool isFullscreen,
+    required bool usesCompactControls,
   }) {
     _maybePollPictureInPictureAvailability(snapshot);
-    final usesPortraitChrome = !isFullscreen;
     final danmakuProvider = _viewModel.adapter.danmaku;
-    final danmakuOverlay = danmakuProvider == null
-        ? null
-        : SignalBuilder(
-            builder: (context) => MediaDanmakuLayer(
-              provider: danmakuProvider,
-              target: MediaPlaybackTarget(
-                detail: _viewModel.detail,
-                entry: _viewModel.selectedEntry,
-              ),
-              positionMs: snapshot.timeline.positionMs,
-              playbackState: snapshot.playbackState,
-              playbackRate: snapshot.playbackRate,
-              settings: _danmakuSettings,
-              onMetricsChanged:
-                  _performanceDiagnosticsController.overlayReportingActive.value
-                  ? _performanceDiagnosticsController.updateOverlayMetrics
-                  : null,
-            ),
-          );
-    return vesper_ui.VesperPlayerStage(
-      controller: controller,
-      snapshot: snapshot,
-      isPortrait: usesPortraitChrome,
-      sheetOpen: _playbackModalRouteOpen,
-      deviceControls: widget.deviceControls,
-      contentOverlay: danmakuOverlay,
-      landscapeControlBarLeading: usesPortraitChrome
+    return MediaVideoContent(
+      key: ObjectKey(controller),
+      active:
+          !_viewModel.isSourceTransitioning &&
+          !_viewModel.isAudioOnlyPlaybackActive &&
+          !_pictureInPicturePresentation.value,
+      overlayBuilder: danmakuProvider == null
           ? null
-          : _buildLandscapeControlBarLeading(controller, snapshot),
-      onNavigateBack: () {
-        if (isFullscreen) {
-          unawaited(_exitFullscreen());
-        } else {
-          unawaited(Navigator.of(context).maybePop());
-        }
-      },
-      navigateBackSemanticLabel: isFullscreen ? '退出全屏' : '返回上一页',
-      keepControlsVisible: _playbackModalRouteOpen,
-      pictureInPicturePresentation: _pictureInPictureActive,
-      topBarPrimaryAction: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (usesPortraitChrome && danmakuProvider != null) ...[
-            SignalBuilder(
-              builder: (context) => vesper_ui.VesperStageIconButton(
-                key: const ValueKey<String>('toggle-danmaku'),
-                icon: _danmakuEnabled
-                    ? Icons.chat_bubble_rounded
-                    : Icons.chat_bubble_outline_rounded,
-                label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
-                size: 40,
-                iconSize: 22,
-                containerAlpha: 0,
-                onPressed: _toggleDanmaku,
+          : (interaction, visible) => SignalBuilder(
+              builder: (context) => MediaDanmakuLayer(
+                provider: danmakuProvider,
+                target: MediaPlaybackTarget(
+                  detail: _viewModel.detail,
+                  entry: _viewModel.selectedEntry,
+                ),
+                positionMs: snapshot.timeline.positionMs,
+                playbackState: snapshot.playbackState,
+                playbackRate: snapshot.playbackRate,
+                settings: visible
+                    ? _danmakuSettings
+                    : _danmakuSettings.copyWith(enabled: false),
+                interactionController: interaction,
+                sendController: widget.danmakuSendController,
+                onEventSelected: widget.onDanmakuEventSelected,
+                onMetricsChanged:
+                    _performanceDiagnosticsController
+                        .overlayReportingActive
+                        .value
+                    ? _performanceDiagnosticsController.updateOverlayMetrics
+                    : null,
               ),
             ),
-            const SizedBox(width: 4),
-          ],
-          if (mediaPerformanceDiagnosticsAvailable) ...[
-            vesper_ui.VesperStageIconButton(
-              key: const ValueKey<String>('open-performance-diagnostics'),
-              icon: Icons.monitor_heart_outlined,
-              label: '性能诊断',
-              size: 38,
-              iconSize: 22,
-              containerAlpha: 0,
-              onPressed: () => unawaited(_openPerformanceDiagnosticsSurface()),
+      builder: (onGeometryChanged, contentOverlay, onContentTap) =>
+          vesper_ui.VesperPlayerStage(
+            controller: controller,
+            snapshot: snapshot,
+            controlLayout: usesCompactControls
+                ? vesper_ui.VesperStageControlLayout.compact
+                : vesper_ui.VesperStageControlLayout.expanded,
+            isFullscreen: isFullscreen,
+            sheetOpen: _playbackModalRouteOpen,
+            deviceControls: widget.deviceControls,
+            contentOverlay: contentOverlay,
+            onGeometryChanged: onGeometryChanged,
+            onContentTap: onContentTap,
+            expandedControlBarLeading: usesCompactControls
+                ? null
+                : _buildExpandedControlBarLeading(controller, snapshot),
+            onNavigateBack: () {
+              if (isFullscreen) {
+                unawaited(_exitFullscreen());
+              } else {
+                unawaited(Navigator.of(context).maybePop());
+              }
+            },
+            navigateBackSemanticLabel: isFullscreen ? '退出全屏' : '返回上一页',
+            keepControlsVisible: _playbackModalRouteOpen,
+            pictureInPicturePresentation: _pictureInPicturePresentation.value,
+            topBarPrimaryAction: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (usesCompactControls && danmakuProvider != null) ...[
+                  SignalBuilder(
+                    builder: (context) => vesper_ui.VesperStageIconButton(
+                      key: const ValueKey<String>('toggle-danmaku'),
+                      icon: _danmakuEnabled
+                          ? Icons.chat_bubble_rounded
+                          : Icons.chat_bubble_outline_rounded,
+                      label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
+                      size: 40,
+                      iconSize: 22,
+                      containerAlpha: 0,
+                      onPressed: _toggleDanmaku,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                if (!usesCompactControls &&
+                    mediaPerformanceDiagnosticsAvailable) ...[
+                  vesper_ui.VesperStageIconButton(
+                    key: const ValueKey<String>('open-performance-diagnostics'),
+                    icon: Icons.monitor_heart_outlined,
+                    label: '性能诊断',
+                    size: 38,
+                    iconSize: 22,
+                    containerAlpha: 0,
+                    onPressed: () =>
+                        unawaited(_openPerformanceDiagnosticsSurface()),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                if (!usesCompactControls) ...[
+                  if (_buildStageProjectionAction(controller)
+                      case final projectionAction?) ...[
+                    const SizedBox(width: 4),
+                    projectionAction,
+                  ],
+                ],
+                if (_pictureInPictureSupported) ...[
+                  const SizedBox(width: 4),
+                  vesper_ui.VesperStageIconButton(
+                    key: const ValueKey<String>('enter-picture-in-picture'),
+                    icon: Icons.picture_in_picture_alt_rounded,
+                    label: '小窗',
+                    size: 38,
+                    iconSize: 23,
+                    containerAlpha: 0,
+                    onPressed: () => unawaited(_requestPictureInPicture()),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(width: 4),
-          ],
-          if (usesPortraitChrome)
-            vesper_ui.VesperStageIconButton(
-              key: const ValueKey<String>('enter-listen-mode'),
-              icon: Icons.headphones_rounded,
-              label: '听视频',
-              size: 38,
-              iconSize: 23,
-              containerAlpha: 0,
-              onPressed: _enterListenMode,
+            strings: const vesper_ui.VesperPlayerStageStrings.zhHans(),
+            onOpenSheet: (sheet) => unawaited(
+              _openStageSheet(controller, sheet, usesCompactControls),
             ),
-          if (_buildStageProjectionAction(controller)
-              case final projectionAction?) ...[
-            const SizedBox(width: 4),
-            projectionAction,
-          ],
-          if (_pictureInPictureSupported) ...[
-            const SizedBox(width: 4),
-            vesper_ui.VesperStageIconButton(
-              key: const ValueKey<String>('enter-picture-in-picture'),
-              icon: Icons.picture_in_picture_alt_rounded,
-              label: '小窗',
-              size: 38,
-              iconSize: 23,
-              containerAlpha: 0,
-              onPressed: () => unawaited(_requestPictureInPicture()),
-            ),
-          ],
-        ],
-      ),
-      strings: const vesper_ui.VesperPlayerStageStrings.zhHans(),
-      onOpenSheet: (sheet) =>
-          unawaited(_openStageSheet(controller, sheet, usesPortraitChrome)),
-      onToggleFullscreen: () => unawaited(_toggleFullscreen()),
+            onToggleFullscreen: () => unawaited(_toggleFullscreen()),
+          ),
     );
   }
 
-  Widget? _buildLandscapeControlBarLeading(
+  Widget? _buildExpandedControlBarLeading(
     VesperPlayerController controller,
     VesperPlayerSnapshot snapshot,
   ) {
@@ -190,12 +207,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       color: Colors.black,
       child: SafeArea(
         bottom: safeBottom,
-        child: Padding(
-          padding: padding,
-          child: Center(
-            child: AspectRatio(aspectRatio: 16 / 9, child: stage),
-          ),
-        ),
+        child: Padding(padding: padding, child: stage),
       ),
     );
   }
@@ -284,7 +296,17 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
                         controller: _infoTabController!,
                         introLabel: _contentSurfaces?.introTabLabel ?? '简介',
                         commentsLabel: _commentsTabLabel(context),
-                        trailing: widget.contentTabsTrailing,
+                        trailing:
+                            widget.danmakuComposer?.call(
+                              () =>
+                                  _viewModel
+                                      .controller
+                                      ?.snapshot
+                                      .timeline
+                                      .positionMs ??
+                                  snapshot.timeline.positionMs,
+                            ) ??
+                            widget.contentTabsTrailing,
                       ),
                       Expanded(
                         child: SizedBox(
@@ -363,14 +385,30 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     _mutate(() {
       _settingsSurfaceOpen = true;
     });
+    _PlaybackMenuAction? action;
     try {
-      await _showSettingsSurface(controller, isPortrait: isPortrait);
+      await _showSettingsSurface(
+        controller,
+        isPortrait: isPortrait,
+        onActionSelected: (value) => action = value,
+      );
     } finally {
       if (mounted) {
         _mutate(() {
           _settingsSurfaceOpen = false;
         });
       }
+    }
+    if (!mounted) return;
+    switch (action) {
+      case _PlaybackMenuAction.listen:
+        await _enterListenMode();
+      case _PlaybackMenuAction.projection:
+        await _openStageProjectionPicker();
+      case _PlaybackMenuAction.diagnostics:
+        await _openPerformanceDiagnosticsSurface();
+      case null:
+        break;
     }
   }
 
@@ -513,21 +551,32 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
   Future<void> _showSettingsSurface(
     VesperPlayerController controller, {
     required bool isPortrait,
+    ValueChanged<_PlaybackMenuAction>? onActionSelected,
   }) {
     return showMediaPlaybackSettingsSurface(
       context,
       isPortrait: isPortrait,
       controller: controller,
-      contentBuilder: (context, snapshot) =>
-          _buildTuningPanel(context, controller, snapshot),
+      contentBuilder: (context, snapshot) => _buildTuningPanel(
+        context,
+        controller,
+        snapshot,
+        onMenuAction: onActionSelected == null
+            ? null
+            : (action) {
+                onActionSelected(action);
+                Navigator.of(context).pop();
+              },
+      ),
     );
   }
 
   Widget _buildTuningPanel(
     BuildContext context,
     VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-  ) {
+    VesperPlayerSnapshot snapshot, {
+    ValueChanged<_PlaybackMenuAction>? onMenuAction,
+  }) {
     final timeline = snapshot.timeline;
     final declaredQualityOptions = _viewModel.availableQualityOptions();
     final qualityOptions = _viewModel.qualitySelectionOptions(snapshot);
@@ -588,10 +637,15 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
         snapshot.subtitleState.catalogState ==
         VesperSubtitleCatalogState.loading;
     return MediaPlaybackTuningPanel(
+      quickActions: onMenuAction == null
+          ? null
+          : _buildPlaybackMenuActions(context, controller, onMenuAction),
       snapshot: snapshot,
       qualityOptions: qualityOptions,
       qualitySupportingTextFor: _viewModel.qualitySelectionSupportingText,
       selectedQualityOptionId: selectedId,
+      qualityHdrBadgeFor: _viewModel.tuningHdrBadgeFor,
+      hdrLabel: _viewModel.hdrDiagnosticsLabel,
       codecOptions: codecOptions,
       selectedCodecIdentity: selectedCodec,
       playbackRates: _viewModel.playbackRates(snapshot),
@@ -620,6 +674,59 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       },
       onSetRate: (rate) => unawaited(_setPlaybackRate(rate)),
       onSelectSubtitle: (selection) => unawaited(_selectSubtitle(selection)),
+    );
+  }
+
+  Widget _buildPlaybackMenuActions(
+    BuildContext context,
+    VesperPlayerController controller,
+    ValueChanged<_PlaybackMenuAction> onSelected,
+  ) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (!_viewModel.isFullscreen)
+          OutlinedButton.icon(
+            key: const ValueKey<String>('enter-listen-mode'),
+            onPressed: () => onSelected(_PlaybackMenuAction.listen),
+            icon: const Icon(Icons.headphones_rounded),
+            label: const Text('听视频'),
+          ),
+        if (!kIsWeb &&
+            defaultTargetPlatform == TargetPlatform.android &&
+            _viewModel.adapter.dlnaConfig != null)
+          OutlinedButton.icon(
+            key: const ValueKey<String>('settings-projection'),
+            onPressed: () => onSelected(_PlaybackMenuAction.projection),
+            icon: const Icon(Icons.cast_rounded),
+            label: const Text('投屏'),
+          ),
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+          Semantics(
+            label: 'AirPlay 投屏',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                vesper_ui.VesperAirPlayRouteIconButton(
+                  controller: controller,
+                  tintColor: AppVisualTheme.of(context).textPrimary,
+                  activeTintColor: AppVisualTokens.primaryBlue,
+                  size: 48,
+                ),
+                const Text('AirPlay'),
+              ],
+            ),
+          ),
+        if (mediaPerformanceDiagnosticsAvailable)
+          OutlinedButton.icon(
+            key: const ValueKey<String>('settings-performance-diagnostics'),
+            onPressed: () => onSelected(_PlaybackMenuAction.diagnostics),
+            icon: const Icon(Icons.monitor_heart_outlined),
+            label: const Text('性能诊断'),
+          ),
+      ],
     );
   }
 }

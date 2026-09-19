@@ -217,6 +217,14 @@ bool _sameDanmakuRenderSettings(
       _sameStringList(left.blockedKeywords, right.blockedKeywords);
 }
 
+/// Forwards confirmed Stage taps to the mounted canvas without competing with
+/// the SDK's seek, double-tap, or long-press gesture recognizers.
+final class MediaDanmakuInteractionController {
+  bool Function(Offset)? _selectAt;
+
+  bool selectAt(Offset position) => _selectAt?.call(position) ?? false;
+}
+
 /// 通用弹幕画布。Ticker 只通知 painter 重绘，不重建 widget 树。
 class MediaDanmakuOverlay extends StatefulWidget {
   const MediaDanmakuOverlay({
@@ -227,6 +235,8 @@ class MediaDanmakuOverlay extends StatefulWidget {
     required this.playbackState,
     required this.playbackRate,
     required this.settings,
+    this.onEventSelected,
+    this.interactionController,
   });
 
   final List<MediaDanmakuEvent> events;
@@ -235,6 +245,11 @@ class MediaDanmakuOverlay extends StatefulWidget {
   final VesperPlaybackState playbackState;
   final double playbackRate;
   final MediaDanmakuOverlaySettings settings;
+
+  /// 点选一条可见弹幕。提供后，暂停时画布开始接收触摸；播放中仍然完全
+  /// 忽略触摸，不抢占播放器手势。为空表示不可点选。
+  final ValueChanged<MediaDanmakuEvent>? onEventSelected;
+  final MediaDanmakuInteractionController? interactionController;
 
   @override
   State<MediaDanmakuOverlay> createState() => _MediaDanmakuOverlayState();
@@ -260,6 +275,7 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
   @override
   void initState() {
     super.initState();
+    widget.interactionController?._selectAt = _selectAt;
     _clock = _MediaDanmakuClock(
       positionMs: widget.positionMs,
       playbackState: widget.playbackState,
@@ -284,6 +300,12 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
   @override
   void didUpdateWidget(covariant MediaDanmakuOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.interactionController != widget.interactionController) {
+      if (oldWidget.interactionController?._selectAt == _selectAt) {
+        oldWidget.interactionController?._selectAt = null;
+      }
+      widget.interactionController?._selectAt = _selectAt;
+    }
     if (oldWidget.positionMs != widget.positionMs ||
         oldWidget.playbackState != widget.playbackState ||
         (oldWidget.playbackRate - widget.playbackRate).abs() > 0.001) {
@@ -299,6 +321,9 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
 
   @override
   void dispose() {
+    if (widget.interactionController?._selectAt == _selectAt) {
+      widget.interactionController?._selectAt = null;
+    }
     _ticker.dispose();
     if (_observingTimings) {
       SchedulerBinding.instance.removeTimingsCallback(_observeFrameTimings);
@@ -310,24 +335,94 @@ class _MediaDanmakuOverlayState extends State<MediaDanmakuOverlay>
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: IgnorePointer(
-        child: SizedBox.expand(
-          child: CustomPaint(
-            painter: MediaDanmakuPainter._(
-              events: widget.events,
-              advancedEvents: widget.advancedEvents,
-              settings: widget.settings,
-              clock: _clock,
-              textCache: _textCache,
-              layoutCache: _layoutCache,
-              advancedLayoutCache: _advancedLayoutCache,
-              onVisibleItemCountChanged: (count) => _visibleItemCount = count,
-            ),
+    final canvas = RepaintBoundary(
+      child: SizedBox.expand(
+        child: CustomPaint(
+          painter: MediaDanmakuPainter._(
+            events: widget.events,
+            advancedEvents: widget.advancedEvents,
+            settings: widget.settings,
+            clock: _clock,
+            textCache: _textCache,
+            layoutCache: _layoutCache,
+            advancedLayoutCache: _advancedLayoutCache,
+            onVisibleItemCountChanged: (count) => _visibleItemCount = count,
           ),
         ),
       ),
     );
+    final onSelect = widget.onEventSelected;
+    if (onSelect == null || widget.interactionController != null) {
+      return RepaintBoundary(child: IgnorePointer(child: canvas));
+    }
+    // 选择入口只在暂停时接收指针事件：播放中保持完全忽略触摸，不抢占
+    // 播放器已有的手势（拖动进度、双击暂停、缩放手势）。
+    final selectable = widget.playbackState != VesperPlaybackState.playing;
+    return RepaintBoundary(
+      child: selectable
+          ? GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapUp: (details) => _selectAt(details.localPosition),
+              child: canvas,
+            )
+          : IgnorePointer(child: canvas),
+    );
+  }
+
+  bool _selectAt(Offset point) {
+    final onSelect = widget.onEventSelected;
+    if (!mounted ||
+        onSelect == null ||
+        !widget.settings.enabled ||
+        widget.playbackState == VesperPlaybackState.playing) {
+      return false;
+    }
+    final size = context.size;
+    if (size == null || size.isEmpty || !(Offset.zero & size).contains(point)) {
+      return false;
+    }
+    final event = _hitTestEvent(point: point, size: size);
+    if (event != null) {
+      onSelect(event);
+      return true;
+    }
+    return false;
+  }
+
+  /// 命中测试：从后往前遍历当前可见弹幕，后绘制者在上层优先命中。
+  MediaDanmakuEvent? _hitTestEvent({
+    required Offset point,
+    required Size size,
+  }) {
+    final plans = _layoutCache.resolve(
+      events: widget.events,
+      size: size,
+      settings: widget.settings,
+      textCache: _textCache,
+      positionMs: widget.positionMs,
+    );
+    for (var index = plans.length - 1; index >= 0; index -= 1) {
+      final plan = plans[index];
+      final offset = _offsetForPlan(
+        plan: plan,
+        canvasWidth: size.width,
+        positionMs: widget.positionMs,
+      );
+      if (offset == null) {
+        continue;
+      }
+      final rect = Rect.fromLTWH(
+        offset.dx,
+        offset.dy,
+        plan.textWidth,
+        plan.fontSize * 1.25,
+      );
+      // 触摸目标比文字本身略大，避免小字号弹幕难以点中。
+      if (rect.inflate(4).contains(point)) {
+        return plan.event;
+      }
+    }
+    return null;
   }
 
   void _syncAnimationDriver() {
@@ -789,24 +884,11 @@ class MediaDanmakuPainter extends CustomPainter {
     double canvasWidth,
     int positionMs,
   ) {
-    final elapsedMs = positionMs - plan.event.timeMs;
-    if (elapsedMs < 0 || elapsedMs > plan.durationMs) {
-      return null;
-    }
-    return switch (plan.kind) {
-      _DanmakuRenderKind.scroll => Offset(
-        canvasWidth - plan.speed * elapsedMs,
-        plan.top,
-      ),
-      _DanmakuRenderKind.reverse => Offset(
-        -plan.textWidth + plan.speed * elapsedMs,
-        plan.top,
-      ),
-      _DanmakuRenderKind.top || _DanmakuRenderKind.bottom => Offset(
-        (canvasWidth - plan.textWidth) / 2,
-        plan.top,
-      ),
-    };
+    return _offsetForPlan(
+      plan: plan,
+      canvasWidth: canvasWidth,
+      positionMs: positionMs,
+    );
   }
 
   @override
@@ -1427,6 +1509,9 @@ class MediaDanmakuLayer extends StatefulWidget {
     required this.playbackRate,
     this.settings = const MediaDanmakuOverlaySettings(),
     this.onMetricsChanged,
+    this.sendController,
+    this.onEventSelected,
+    this.interactionController,
   });
 
   final MediaDanmakuProvider provider;
@@ -1436,6 +1521,13 @@ class MediaDanmakuLayer extends StatefulWidget {
   final double playbackRate;
   final MediaDanmakuOverlaySettings settings;
   final ValueChanged<MediaDanmakuOverlayMetrics>? onMetricsChanged;
+
+  /// 可选发送通道：传入后由本层在会话生命周期内绑定与解绑。
+  final MediaDanmakuSendController? sendController;
+
+  /// 点选一条可见弹幕（暂停时可用）。为空表示画布不接收触摸。
+  final ValueChanged<MediaDanmakuEvent>? onEventSelected;
+  final MediaDanmakuInteractionController? interactionController;
 
   @override
   State<MediaDanmakuLayer> createState() => _MediaDanmakuLayerState();
@@ -1481,6 +1573,10 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
     _sessionGeneration += 1;
     unawaited(_subscription?.cancel());
     unawaited(_session?.close());
+    final session = _session;
+    if (session != null) {
+      widget.sendController?.unbind(session);
+    }
     _metricsTimer?.cancel();
     super.dispose();
   }
@@ -1488,9 +1584,14 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
   void _openSession() {
     final generation = ++_sessionGeneration;
     unawaited(_subscription?.cancel());
-    unawaited(_session?.close());
+    final previousSession = _session;
+    unawaited(previousSession?.close());
+    if (previousSession != null) {
+      widget.sendController?.unbind(previousSession);
+    }
     final session = widget.provider.openSession(widget.target);
     _session = session;
+    widget.sendController?.bind(session);
     _snapshot = const MediaDanmakuSnapshot();
     _scheduleMetricsReport();
     _subscription = session.snapshots.listen(
@@ -1567,11 +1668,41 @@ class _MediaDanmakuLayerState extends State<MediaDanmakuLayer> {
       playbackState: widget.playbackState,
       playbackRate: widget.playbackRate,
       settings: widget.settings,
+      onEventSelected: widget.onEventSelected,
+      interactionController: widget.interactionController,
     );
   }
 }
 
 enum _DanmakuRenderKind { scroll, reverse, top, bottom }
+
+/// 计划弹幕在给定位置的左上角偏移；不在可见区间内时返回 null。
+///
+/// 绘制与命中测试共用同一份几何计算，避免点选位置与画面不一致。
+Offset? _offsetForPlan({
+  required _DanmakuRenderPlan plan,
+  required double canvasWidth,
+  required int positionMs,
+}) {
+  final elapsedMs = positionMs - plan.event.timeMs;
+  if (elapsedMs < 0 || elapsedMs > plan.durationMs) {
+    return null;
+  }
+  return switch (plan.kind) {
+    _DanmakuRenderKind.scroll => Offset(
+      canvasWidth - plan.speed * elapsedMs,
+      plan.top,
+    ),
+    _DanmakuRenderKind.reverse => Offset(
+      -plan.textWidth + plan.speed * elapsedMs,
+      plan.top,
+    ),
+    _DanmakuRenderKind.top || _DanmakuRenderKind.bottom => Offset(
+      (canvasWidth - plan.textWidth) / 2,
+      plan.top,
+    ),
+  };
+}
 
 final class _AdvancedDanmakuRenderPlan {
   const _AdvancedDanmakuRenderPlan({

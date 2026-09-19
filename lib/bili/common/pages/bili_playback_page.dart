@@ -23,6 +23,7 @@ import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 
 import 'bili_playback_content_surfaces.dart';
+import 'bili_playback_danmaku_composer.dart';
 
 /// Bilibili 播放页入口（薄包装）：构造 B 站内容状态与平台槽位，
 /// 渲染通用播放页壳 [MediaPlaybackPage]。
@@ -58,6 +59,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   late final BiliPlaybackViewModel _viewModel;
   late final MediaPlaybackBinding _playbackBinding;
   late final DanmakuSettingsController _danmakuSettingsController;
+
+  /// 弹幕发送通道：由弹幕层在会话切换时绑定，页面据此决定是否显示输入区。
+  final _danmakuSendController = MediaDanmakuSendController();
+  bool _danmakuSendAvailable = false;
   bool _ownsDanmakuSettingsController = false;
   bool _danmakuSettingsBound = false;
 
@@ -67,6 +72,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   @override
   void initState() {
     super.initState();
+    _danmakuSendController.onAvailabilityChanged = () {
+      // 弹幕层在 initState/build 期间打开会话并绑定，因此这里不能在回调里
+      // 直接 setState——那会在构建阶段标记本页需要重建。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final available = _danmakuSendController.isAvailable;
+        if (available == _danmakuSendAvailable) return;
+        setState(() => _danmakuSendAvailable = available);
+      });
+    };
     _viewModel = BiliPlaybackViewModel(
       detail: widget.detail,
       initialPage: widget.initialPage,
@@ -124,6 +139,16 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       contentTabsTrailing: DanmakuEntryPill(
         danmakuCountLabel: widget.detail.danmakuCountLabel,
       ),
+      danmakuSendController: _danmakuSendController,
+      // 点选只在手机提供；TV 没有触摸，且遥控焦点不应进入画布。
+      onDanmakuEventSelected: _isTvMode ? null : _handleDanmakuEventSelected,
+      // TV 播放页不提供弹幕发送入口。
+      danmakuComposer: _isTvMode || !_danmakuSendAvailable
+          ? null
+          : (currentPositionMs) => BiliDanmakuComposer(
+              sendController: _danmakuSendController,
+              currentPositionMs: currentPositionMs,
+            ),
       tuningCacheEntry: CacheEntryButton(
         onTap: () => unawaited(_openCacheSurfaceFromSettings(context)),
       ),
@@ -189,6 +214,84 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// 点选一条可见弹幕：弹出操作面板。
+  ///
+  /// 交互边界：只有具备服务端 dmid 的弹幕才提供需要服务端标识的操作；
+  /// 合成 ID 只用于本地渲染，绝不用于服务端请求。本地屏蔽不需要服务端
+  /// 标识，但对合成 ID 弹幕同样可用（按 senderHash 匹配）。
+  Future<void> _handleDanmakuEventSelected(MediaDanmakuEvent event) async {
+    final interactions = _danmakuSendController.interactions;
+    final settings = _danmakuSettingsController;
+    final blockedHashes = settings.value.sourceFilter.blockedSenderHashes;
+    final senderBlocked =
+        event.senderHash.isNotEmpty && blockedHashes.contains(event.senderHash);
+    final action = await showMediaGlassSheet<DanmakuEventAction>(
+      context: context,
+      appearance: MediaGlassSheetAppearance.readable,
+      builder: (context) => SignalBuilder(
+        builder: (_) => DanmakuEventSheet(
+          event: event,
+          senderBlocked: senderBlocked,
+          interaction:
+              interactions?.interactionStateFor(event) ??
+              const MediaDanmakuInteractionState(),
+        ),
+      ),
+    );
+    if (action == null || !mounted) {
+      return;
+    }
+    switch (action) {
+      case DanmakuEventAction.copyText:
+        await Clipboard.setData(ClipboardData(text: event.text));
+        _showMessage('已复制弹幕内容');
+      case DanmakuEventAction.toggleSenderBlock:
+        await _toggleSenderBlock(event);
+      case DanmakuEventAction.toggleLike || DanmakuEventAction.retract:
+        if (interactions == null ||
+            !identical(interactions, _danmakuSendController.interactions)) {
+          return;
+        }
+        final message = await switch (action) {
+          DanmakuEventAction.toggleLike => interactions.toggleLike(event),
+          _ => interactions.retract(event),
+        };
+        final successMessage = switch (action) {
+          DanmakuEventAction.retract => '弹幕已撤回',
+          _ =>
+            interactions.interactionStateFor(event).liked ? '已点赞弹幕' : '已取消点赞',
+        };
+        _showMessage(message ?? successMessage);
+    }
+  }
+
+  Future<void> _toggleSenderBlock(MediaDanmakuEvent event) async {
+    if (event.senderHash.isEmpty) {
+      _showMessage('这条弹幕没有可用的发送者标识，无法屏蔽。');
+      return;
+    }
+    final controller = _danmakuSettingsController;
+    final current = controller.value.sourceFilter.blockedSenderHashes;
+    final next = current.contains(event.senderHash)
+        ? (List<String>.of(current)..remove(event.senderHash))
+        : <String>[...current, event.senderHash];
+    final saved = await controller.setValue(
+      controller.value.copyWith(
+        sourceFilter: controller.value.sourceFilter.copyWith(
+          blockedSenderHashes: next,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    _showMessage(
+      saved
+          ? (next.contains(event.senderHash) ? '已屏蔽该发送者的弹幕' : '已取消屏蔽')
+          : '弹幕设置保存失败',
+    );
+  }
+
   MediaPlaybackPresentation _buildPresentation() {
     return MediaPlaybackPresentation(
       enterPlaybackTv: () => _applyPresentation(
@@ -201,8 +304,10 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
         systemUiMode: SystemUiMode.edgeToEdge,
         overlayStyle: biliDarkSurfaceSystemUiStyle,
       ),
-      enterFullscreen: () => _applyPresentation(
-        orientations: biliLandscapeOrientations,
+      enterFullscreen: ({required bool isPortrait}) => _applyPresentation(
+        orientations: isPortrait
+            ? biliPortraitOrientations
+            : biliLandscapeOrientations,
         systemUiMode: SystemUiMode.immersiveSticky,
         overlayStyle: biliDarkSurfaceSystemUiStyle,
       ),

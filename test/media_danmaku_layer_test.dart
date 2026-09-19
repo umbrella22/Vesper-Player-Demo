@@ -614,6 +614,73 @@ void main() {
     expect(painter.debugStandardLayoutBuildCount(size, positionMs: 36000), 2);
   });
 
+  testWidgets('暂停时可点选可见弹幕，播放中画布不接收触摸', (tester) async {
+    final provider = _FakeDanmakuProvider(<MediaDanmakuEvent>[
+      const MediaDanmakuEvent(id: 'roll', timeMs: 0, text: '可点选弹幕'),
+    ]);
+    final selected = <String>[];
+
+    Widget buildLayer(VesperPlaybackState state) {
+      return MaterialApp(
+        home: MediaDanmakuLayer(
+          provider: provider,
+          target: target,
+          positionMs: 500,
+          playbackState: state,
+          playbackRate: 1,
+          onEventSelected: (event) => selected.add(event.id),
+        ),
+      );
+    }
+
+    // 播放中：画布忽略触摸，点画面中心不应命中任何弹幕。
+    await tester.pumpWidget(buildLayer(VesperPlaybackState.playing));
+    await tester.pump();
+    final (painter, size) = _painterAndSize(tester);
+    final offset = painter.debugOffsetForEventAt(
+      eventId: 'roll',
+      positionMs: 500,
+      size: size,
+    );
+    expect(offset, isNotNull);
+    await tester.tapAt(tester.getTopLeft(_danmakuPaintFinder) + offset!);
+    await tester.pump();
+    expect(selected, isEmpty);
+
+    // 暂停：命中同一位置。
+    await tester.pumpWidget(buildLayer(VesperPlaybackState.paused));
+    await tester.pump();
+    await tester.tapAt(tester.getTopLeft(_danmakuPaintFinder) + offset);
+    await tester.pump();
+    expect(selected, <String>['roll']);
+  });
+
+  testWidgets('未提供点选回调时画布保持忽略触摸', (tester) async {
+    final provider = _FakeDanmakuProvider(<MediaDanmakuEvent>[
+      const MediaDanmakuEvent(id: 'roll', timeMs: 0, text: '不可点选'),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaDanmakuLayer(
+          provider: provider,
+          target: target,
+          positionMs: 500,
+          playbackState: VesperPlaybackState.paused,
+          playbackRate: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+    // 画布不含手势识别器，因此不会与播放器手势争抢。
+    expect(
+      find.descendant(
+        of: _danmakuPaintFinder,
+        matching: find.byType(GestureDetector),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('替换播放目标会关闭旧会话并打开新会话', (tester) async {
     final provider = _FakeDanmakuProvider(const <MediaDanmakuEvent>[]);
 

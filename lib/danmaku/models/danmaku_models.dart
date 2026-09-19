@@ -47,6 +47,7 @@ final class BiliDanmakuEntry {
     required this.weight,
     required this.pool,
     this.senderHash = '',
+    this.hasServerId = true,
   });
 
   final int appearAtMs;
@@ -55,6 +56,9 @@ final class BiliDanmakuEntry {
   final int colorValue;
   final String text;
   final String rowId;
+
+  /// rowId 来自服务端；false 表示仅供本地渲染使用的合成键。
+  final bool hasServerId;
 
   /// 服务端智能屏蔽权重。`null` 表示源格式没有提供或无法解码该字段，
   /// 不能将其解释为服务端明确给出的最低权重 0。

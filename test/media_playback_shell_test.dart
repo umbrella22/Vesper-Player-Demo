@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/bili/common/services/bili_quality_mapping.dart';
 import 'package:vesper_media/media/media.dart';
+import 'package:vesper_media/media/models/media_hdr_status.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
@@ -129,6 +131,102 @@ void main() {
     return fakePlatform;
   }
 
+  test('HDR probes follow source and effective track generations', () async {
+    const trackA = VesperMediaTrack(
+      id: 'dv-a',
+      kind: VesperMediaTrackKind.video,
+      codec: 'dvh1.05.06',
+      width: 1920,
+      height: 1080,
+      frameRate: 60,
+    );
+    const trackB = VesperMediaTrack(
+      id: 'dv-b',
+      kind: VesperMediaTrackKind.video,
+      codec: 'dvhe.08.03',
+      width: 3840,
+      height: 2160,
+      frameRate: 24,
+    );
+    final snapshotA = _shellSnapshot.copyWith(
+      trackCatalog: const VesperTrackCatalog(
+        tracks: [trackA, trackB],
+        catalogRevision: 1,
+      ),
+      effectiveVideoTrackId: trackA.id,
+    );
+    final platform = installViewModelEnvironment(initialSnapshot: snapshotA);
+    final probes = <Completer<VesperPlaybackCapabilityProbeResult>>[];
+    platform.probeHandler = (_) {
+      final gate = Completer<VesperPlaybackCapabilityProbeResult>();
+      probes.add(gate);
+      return gate.future;
+    };
+    final viewModel = MediaPlaybackViewModel(
+      detail: target.detail,
+      initialEntry: target.entry,
+      adapter: _ShellAdapter(versionSourcesByResolveCall: true),
+    );
+    addTearDown(viewModel.dispose);
+    await viewModel.controllerFuture;
+    final first = platform.probeRequests.single;
+    expect(first.source!.uri, 'https://example.test/shell-1.mp4');
+    expect(first.codec, trackA.codec);
+    expect(first.width, 1920);
+    expect(first.height, 1080);
+    expect(first.frameRate, 60);
+    expect(
+      first.sourceNormalizerConfiguration.toMap(),
+      platform.createdNormalizer!.toMap(),
+    );
+    expect(viewModel.hdrStatus.output, MediaHdrOutputState.unknown);
+
+    platform.emitSnapshot(snapshotA.copyWith(effectiveVideoTrackId: trackB.id));
+    await pumpEventQueue();
+    expect(platform.probeRequests.last.codec, trackB.codec);
+    expect(platform.probeRequests.last.width, 3840);
+    platform.emitSnapshot(snapshotA);
+    await pumpEventQueue();
+    expect(probes, hasLength(3));
+    probes[2].complete(_shellHdrProbe(profile: 5));
+    await pumpEventQueue();
+    expect(viewModel.hdrStatus.dolbyVisionProfile, 5);
+    expect(viewModel.hdrStatus.isOutputConfirmed, isFalse);
+    // 即使轨道 ID 再次变回 A，第一次 A 和中间 B 的迟到结果也必须作废。
+    probes[0].complete(_shellHdrProbe(profile: 7));
+    probes[1].complete(_shellHdrProbe(profile: 8));
+    await pumpEventQueue();
+    expect(viewModel.hdrStatus.dolbyVisionProfile, 5);
+    platform.emitSnapshot(snapshotA);
+    await pumpEventQueue();
+    expect(probes, hasLength(3));
+
+    platform.emitSnapshot(
+      snapshotA.copyWith(
+        trackCatalog: const VesperTrackCatalog(
+          tracks: [trackA, trackB],
+          catalogRevision: 2,
+        ),
+      ),
+    );
+    await pumpEventQueue();
+    expect(probes, hasLength(4));
+    expect(viewModel.hdrStatus.dolbyVisionProfile, isNull);
+    await viewModel.reloadCurrentPage();
+    await viewModel.controllerFuture;
+    expect(probes, hasLength(5));
+    expect(
+      platform.probeRequests.last.source!.uri,
+      'https://example.test/shell-2.mp4',
+    );
+    probes[3].complete(_shellHdrProbe(profile: 8));
+    await pumpEventQueue();
+    expect(viewModel.hdrStatus.dolbyVisionProfile, isNull);
+    probes[4].complete(_shellHdrProbe(profile: 5));
+    await pumpEventQueue();
+    expect(viewModel.hdrStatus.dolbyVisionProfile, 5);
+  });
+
   Future<_ShellHarness> pumpShell(
     WidgetTester tester, {
     _ShellAdapter? adapter,
@@ -142,6 +240,10 @@ void main() {
     Widget? danmakuSettingsSurface,
     ValueListenable<MediaDanmakuOverlaySettings>? danmakuSettingsListenable,
     ValueChanged<MediaDanmakuOverlaySettings>? onDanmakuSettingsChanged,
+    ValueChanged<MediaDanmakuEvent>? onDanmakuEventSelected,
+    Widget Function(int Function() currentPositionMs)? danmakuComposer,
+    MediaPlaybackPresentation? presentation,
+    bool reportGeometry = true,
     int initialPositionMs = 0,
     VesperPlayerSnapshot? initialSnapshot,
   }) async {
@@ -173,10 +275,12 @@ void main() {
           presentationMode: presentationMode,
           binding: binding,
           deviceControls: deviceControls ?? const MediaNoopDeviceControls(),
-          presentation: _shellPresentation,
+          presentation: presentation ?? _shellPresentation,
           danmakuSettingsSurface: danmakuSettingsSurface,
           danmakuSettingsListenable: danmakuSettingsListenable,
           onDanmakuSettingsChanged: onDanmakuSettingsChanged,
+          onDanmakuEventSelected: onDanmakuEventSelected,
+          danmakuComposer: danmakuComposer,
         ),
       ),
     );
@@ -188,8 +292,583 @@ void main() {
       });
       await tester.pump();
     }
+    if (reportGeometry) {
+      await _reportShellGeometry(
+        tester,
+        aspectRatio: viewModel.videoAspectRatio,
+      );
+    }
     return _ShellHarness(viewModel: viewModel, platform: fakePlatform);
   }
+
+  Future<void> enterListenMode(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+  }
+
+  group('内容比例与竖屏全屏', () {
+    const portraitEntry = MediaPlaybackEntry(
+      entryId: '11',
+      pageNumber: 1,
+      title: '竖屏 P1',
+      durationSeconds: 120,
+      declaredAspectRatio: 9 / 16,
+    );
+    const landscapeEntry = MediaPlaybackEntry(
+      entryId: '22',
+      pageNumber: 2,
+      title: '横屏 P2',
+      durationSeconds: 120,
+      declaredAspectRatio: 16 / 9,
+    );
+    const portraitTarget = MediaPlaybackTarget(
+      detail: MediaDetail(
+        mediaId: 'BV1PORTRAIT',
+        title: '竖屏测试',
+        coverUrl: '',
+        pages: [portraitEntry, landscapeEntry],
+      ),
+      entry: portraitEntry,
+    );
+    final stageFinder = find.byType(vesper_ui.VesperPlayerStage);
+    vesper_ui.VesperPlayerStage stage(WidgetTester tester) =>
+        tester.widget(stageFinder);
+
+    for (final videoTarget in [target, portraitTarget]) {
+      testWidgets('横竖视频的弹幕入口都位于内容标签右侧：${videoTarget.detail.mediaId}', (
+        tester,
+      ) async {
+        int Function()? readPosition;
+        final harness = await pumpShell(
+          tester,
+          playbackTarget: videoTarget,
+          surfaceSize: const Size(390, 844),
+          binding: MediaPlaybackBinding(
+            contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+          ),
+          danmakuComposer: (currentPositionMs) {
+            readPosition ??= currentPositionMs;
+            return TextButton(onPressed: () {}, child: const Text('点我发弹幕'));
+          },
+        );
+        final tab = tester.getRect(
+          find.byKey(const ValueKey('playback-intro-tab')),
+        );
+        final entry = tester.getRect(find.widgetWithText(TextButton, '点我发弹幕'));
+        // TabBar 的底部指示线占 3px，按钮与标签处于同一行。
+        expect(entry.center.dy, closeTo(tab.center.dy, 3));
+        expect(entry.left, greaterThanOrEqualTo(tab.right));
+        harness.platform.emitSnapshot(
+          _shellSnapshot.copyWith(
+            timeline: const VesperTimeline(
+              kind: VesperTimelineKind.vod,
+              isSeekable: true,
+              positionMs: 8500,
+              durationMs: 120000,
+              seekableRange: null,
+              liveEdgeMs: null,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(readPosition!(), 8500);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+
+    testWidgets('内嵌竖屏限制高度并为简介保留空间，原生尺寸可校正比例', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+        binding: MediaPlaybackBinding(
+          contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+        ),
+      );
+      final portraitHeight = tester.getSize(stageFinder).height;
+      expect(portraitHeight, greaterThan(500));
+      expect(portraitHeight, lessThanOrEqualTo(844 * 0.7));
+      expect(
+        tester.getBottomLeft(stageFinder).dy,
+        lessThanOrEqualTo(844 * 0.7),
+      );
+      expect(find.text('仅有简介的面板').hitTestable(), findsOneWidget);
+      expect(
+        stage(tester).controlLayout,
+        vesper_ui.VesperStageControlLayout.compact,
+      );
+      expect(stage(tester).isFullscreen, isFalse);
+
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(
+          videoPresentation: const VesperVideoPresentation(
+            displayWidth: 1440,
+            displayHeight: 1080,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(harness.viewModel.videoAspectRatio, 4 / 3);
+      expect(tester.getSize(stageFinder).height, closeTo(370 / (4 / 3), 0.01));
+    });
+
+    testWidgets('顶层比例仅回退首 P，切到未知尺寸分 P 使用默认比例', (tester) async {
+      const second = MediaPlaybackEntry(
+        entryId: '22',
+        pageNumber: 2,
+        title: '无尺寸 P2',
+        durationSeconds: 120,
+      );
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: MediaPlaybackTarget(
+          detail: MediaDetail(
+            mediaId: 'BV1HINT',
+            title: '首 P 提示',
+            coverUrl: '',
+            pages: [target.entry, second],
+            declaredAspectRatio: 9 / 16,
+          ),
+          entry: target.entry,
+        ),
+      );
+      expect(harness.viewModel.videoAspectRatio, 9 / 16);
+      expect(await harness.viewModel.switchEntry(second), isNull);
+      expect(harness.viewModel.videoAspectRatio, 16 / 9);
+      expect(await harness.viewModel.switchEntry(target.entry), isNull);
+      expect(harness.viewModel.videoAspectRatio, 9 / 16);
+    });
+
+    testWidgets('竖屏全屏使用紧凑控件和退出图标，迟到横屏尺寸更新系统方向', (tester) async {
+      final orientations = <bool>[];
+      var exits = 0;
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+        presentation: MediaPlaybackPresentation(
+          enterPlaybackTv: () async {},
+          enterPlaybackPhone: () async {},
+          enterFullscreen: ({required isPortrait}) async =>
+              orientations.add(isPortrait),
+          exitFullscreen: () async {
+            exits++;
+          },
+          restoreApp: () async {},
+        ),
+      );
+      stage(tester).onToggleFullscreen();
+      await tester.pumpAndSettle();
+      expect(orientations, [true]);
+      expect(stage(tester).isFullscreen, isTrue);
+      expect(
+        stage(tester).controlLayout,
+        vesper_ui.VesperStageControlLayout.compact,
+      );
+      expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+      expect(find.byKey(const ValueKey('enter-listen-mode')), findsNothing);
+
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(
+          videoPresentation: const VesperVideoPresentation(
+            displayWidth: 1920,
+            displayHeight: 1080,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(orientations, [true, false]);
+      await tester.binding.setSurfaceSize(const Size(844, 390));
+      await tester.pumpAndSettle();
+      expect(
+        stage(tester).controlLayout,
+        vesper_ui.VesperStageControlLayout.expanded,
+      );
+      expect(stage(tester).isFullscreen, isTrue);
+      stage(tester).onNavigateBack!();
+      await tester.pumpAndSettle();
+      expect(harness.viewModel.isFullscreen, isFalse);
+      expect(exits, 1);
+      expect(harness.platform.pictureInPictureConfigurations, isNotEmpty);
+      expect(
+        harness.platform.pictureInPictureConfigurations.every(
+          (configuration) => configuration.preferredAspectRatio == null,
+        ),
+        isTrue,
+      );
+    });
+
+    testWidgets('切 P 事务提交前保持比例和方向，成功后更新到目标源', (tester) async {
+      final orientations = <bool>[];
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        presentation: MediaPlaybackPresentation(
+          enterPlaybackTv: () async {},
+          enterPlaybackPhone: () async {},
+          enterFullscreen: ({required isPortrait}) async =>
+              orientations.add(isPortrait),
+          exitFullscreen: () async {},
+          restoreApp: () async {},
+        ),
+      );
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+      // A wide viewport still uses expanded controls for portrait content.
+      expect(
+        stage(tester).controlLayout,
+        vesper_ui.VesperStageControlLayout.expanded,
+      );
+      final gate = Completer<void>();
+      harness.platform.selectSourceGate = gate;
+      final switching = harness.viewModel.switchEntry(landscapeEntry);
+      await tester.pump();
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(
+          videoPresentation: const VesperVideoPresentation(
+            displayWidth: 1920,
+            displayHeight: 1080,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(harness.viewModel.isSourceTransitioning, isTrue);
+      expect(harness.viewModel.videoAspectRatio, 9 / 16);
+      expect(orientations, [true]);
+      gate.complete();
+      expect(await switching, isNull);
+      await tester.pumpAndSettle();
+      expect(harness.viewModel.isSourceTransitioning, isFalse);
+      expect(harness.viewModel.videoAspectRatio, 16 / 9);
+      expect(orientations, [true, false]);
+    });
+
+    testWidgets('切 P 失败回滚保留原条目比例', (tester) async {
+      final reported = <FlutterErrorDetails>[];
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previousOnError);
+      final harness = await pumpShell(tester, playbackTarget: portraitTarget);
+      harness.platform.failSelectSourceCallsRemaining = 1;
+      final message = await harness.viewModel.switchEntry(landscapeEntry);
+      expect(message, contains('切换分 P 失败'));
+      expect(harness.viewModel.selectedEntry, portraitEntry);
+      expect(harness.viewModel.videoAspectRatio, 9 / 16);
+      expect(harness.viewModel.isSourceTransitioning, isFalse);
+      expect(harness.platform.selectSourceCalls, 2);
+      expect(reported, isNotEmpty);
+    });
+
+    testWidgets('退出全屏会排在已开始的方向请求之后并取消尚未执行的更新', (tester) async {
+      final events = <String>[];
+      final entering = Completer<void>();
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        presentation: MediaPlaybackPresentation(
+          enterPlaybackTv: () async {},
+          enterPlaybackPhone: () async {},
+          enterFullscreen: ({required isPortrait}) async {
+            events.add('enter:$isPortrait');
+            await entering.future;
+          },
+          exitFullscreen: () async => events.add('exit'),
+          restoreApp: () async => events.add('restore'),
+        ),
+      );
+      stage(tester).onToggleFullscreen();
+      await tester.pump();
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(
+          videoPresentation: const VesperVideoPresentation(
+            displayWidth: 1920,
+            displayHeight: 1080,
+          ),
+        ),
+      );
+      await tester.pump();
+      stage(tester).onNavigateBack!();
+      await tester.pump();
+      expect(harness.viewModel.isFullscreen, isFalse);
+      entering.complete();
+      await tester.pumpAndSettle();
+      expect(events, ['enter:true', 'exit']);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(events, ['enter:true', 'exit', 'restore']);
+    });
+
+    testWidgets('全屏替换视图后等待新几何', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        adapter: _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider()),
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+      );
+      expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+      final oldStage = stage(tester);
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+      expect(find.byType(MediaDanmakuLayer), findsNothing);
+      oldStage.onGeometryChanged!(
+        const VesperVideoSurfaceGeometry(
+          width: 390,
+          height: 844,
+          contentRect: VesperVideoRect(
+            left: 0,
+            top: 0,
+            width: 390,
+            height: 844,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(MediaDanmakuLayer), findsNothing);
+      await _reportShellGeometry(tester, aspectRatio: 9 / 16);
+      expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+    });
+
+    testWidgets('TV 竖屏弹幕位于横屏容器中央的实际画面区域', (tester) async {
+      await pumpShell(
+        tester,
+        adapter: _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider()),
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(1200, 900),
+        presentationMode: MediaPlaybackPresentationMode.tv,
+      );
+      final canvas = find.byType(MediaDanmakuLayer);
+      expect(tester.getSize(canvas), const Size(506.25, 900));
+      expect(tester.getTopLeft(canvas), const Offset(346.875, 0));
+    });
+
+    testWidgets('竖屏全屏遵守顶部与底部安全区', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 48, bottom: 32);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+      );
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(stageFinder), const Offset(0, 48));
+      expect(tester.getBottomRight(stageFinder), const Offset(390, 812));
+    });
+
+    testWidgets('紧凑顶栏同时支持弹幕小窗和投屏时仍保留标题空间', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+        initialSnapshot: _shellSnapshot.copyWith(
+          playbackState: VesperPlaybackState.playing,
+        ),
+        adapter: _ShellAdapter(
+          danmakuProvider: _EmptyDanmakuProvider(),
+          dlnaConfig: const MediaDlnaConfig(
+            formatAdaptation: mediaDlnaFormatAdaptationConfig,
+          ),
+        ),
+      );
+      harness.platform.emitSnapshot(_shellSnapshot);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('点播视频'))
+            .constraints
+            .maxWidth,
+        greaterThan(100),
+      );
+      expect(tester.getSize(find.text('点播视频')).height, lessThan(24));
+      expect(find.byKey(const ValueKey('toggle-danmaku')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('enter-picture-in-picture')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('enter-listen-mode')), findsNothing);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('enter-listen-mode')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('settings-projection')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find
+            .byKey(const ValueKey('settings-performance-diagnostics'))
+            .hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('settings-projection')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProjectionPickerContent), findsOneWidget);
+      expect(find.byType(MediaPlaybackTuningPanel), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+    for (final fullscreen in [false, true]) {
+      testWidgets('Android PiP 只显示视频并恢复进入前的全屏状态：$fullscreen', (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 48, bottom: 24);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPadding);
+        final harness = await pumpShell(
+          tester,
+          playbackTarget: portraitTarget,
+          surfaceSize: const Size(390, 844),
+        );
+        harness.viewModel.setFullscreen(fullscreen);
+        await tester.pumpAndSettle();
+        final controller = harness.viewModel.controller;
+        final createCalls = harness.platform.createCalls;
+        final playCalls = harness.platform.playCalls;
+
+        harness.platform.emitPictureInPicture(
+          VesperPictureInPictureStatus.entering,
+          isActive: false,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('playback-bottom-surface')),
+          findsNothing,
+        );
+        expect(
+          tester
+              .widget<vesper_ui.VesperPlayerStage>(stageFinder)
+              .pictureInPicturePresentation,
+          isTrue,
+        );
+
+        await tester.binding.setSurfaceSize(const Size(138, 245));
+        harness.platform.emitPictureInPicture(
+          VesperPictureInPictureStatus.active,
+          isActive: true,
+        );
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(stageFinder), Offset.zero);
+        expect(tester.getSize(stageFinder), const Size(138, 245));
+        expect(find.byTooltip('更多'), findsNothing);
+
+        harness.platform.emitPictureInPicture(
+          VesperPictureInPictureStatus.inactive,
+          isActive: false,
+        );
+        await tester.binding.setSurfaceSize(const Size(390, 844));
+        await tester.pumpAndSettle();
+        expect(harness.viewModel.isFullscreen, fullscreen);
+        expect(harness.viewModel.controller, same(controller));
+        expect(harness.platform.createCalls, createCalls);
+        expect(harness.platform.playCalls, playCalls);
+        expect(
+          find.byKey(const ValueKey('playback-bottom-surface')),
+          fullscreen ? findsNothing : findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<vesper_ui.VesperPlayerStage>(stageFinder)
+              .pictureInPicturePresentation,
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+    }
+
+    testWidgets('Android PiP 进入失败恢复内嵌播放布局', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+      );
+      harness.platform.emitPictureInPicture(
+        VesperPictureInPictureStatus.entering,
+        isActive: false,
+      );
+      await tester.pumpAndSettle();
+      harness.platform.emitPictureInPicture(
+        VesperPictureInPictureStatus.failed,
+        isActive: false,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('playback-bottom-surface')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<vesper_ui.VesperPlayerStage>(stageFinder)
+            .pictureInPicturePresentation,
+        isFalse,
+      );
+      expect(tester.getSize(stageFinder).height, lessThan(844 * 0.7));
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+    testWidgets('SDK 确认单击能点选画面内暂停弹幕，黑边与双击不触发点选', (tester) async {
+      final selected = <String>[];
+      final harness = await pumpShell(
+        tester,
+        playbackTarget: portraitTarget,
+        surfaceSize: const Size(390, 844),
+        adapter: _ShellAdapter(danmakuProvider: _SelectionDanmakuProvider()),
+        onDanmakuEventSelected: (event) => selected.add(event.id),
+      );
+      final painterFinder = find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint && widget.painter is MediaDanmakuPainter,
+      );
+      final painter =
+          tester.widget<CustomPaint>(painterFinder).painter!
+              as MediaDanmakuPainter;
+      final point =
+          tester.getTopLeft(painterFinder) +
+          painter.debugOffsetForEventAt(
+            eventId: 'tap-4',
+            positionMs: 0,
+            size: tester.getSize(painterFinder),
+          )! +
+          const Offset(8, 8);
+      await tester.tapAt(point);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(selected, ['tap-4']);
+
+      final blackBarPoint = Offset(
+        tester.getTopLeft(stageFinder).dx + 5,
+        point.dy,
+      );
+      expect(
+        stage(tester).onContentTap!(
+          blackBarPoint - tester.getTopLeft(stageFinder),
+        ),
+        isFalse,
+      );
+      await tester.tapAt(blackBarPoint);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(selected, ['tap-4']);
+      await tester.tapAt(point);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(point);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(selected, ['tap-4']);
+
+      harness.platform.emitSnapshot(
+        _shellSnapshot.copyWith(playbackState: VesperPlaybackState.playing),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        stage(tester).onContentTap!(point - tester.getTopLeft(stageFinder)),
+        isFalse,
+      );
+      harness.platform.emitSnapshot(_shellSnapshot);
+      await tester.pump();
+    });
+  });
 
   group('听视频 MVP', () {
     testWidgets('手机进入和返回保持同一播放会话，播放按钮复用原 controller', (tester) async {
@@ -200,7 +879,7 @@ void main() {
       final initialCreateCalls = harness.platform.createCalls;
       final initialPlayCalls = harness.platform.playCalls;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
 
       expect(
@@ -253,7 +932,7 @@ void main() {
       );
       final initialCreateCalls = harness.platform.createCalls;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('listen-mode-container')),
@@ -300,7 +979,7 @@ void main() {
       );
       final initialCreateCalls = harness.platform.createCalls;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('合集'));
       await tester.pumpAndSettle();
@@ -459,7 +1138,7 @@ void main() {
         ..selectedSourceSuccessSnapshot = _shellSnapshot;
       final initialPlayCalls = harness.platform.playCalls;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('listen-return-video')),
@@ -588,7 +1267,7 @@ void main() {
       harness.platform.selectedSourceSuccessSnapshot = videoSnapshot;
       final initialAbrCalls = harness.platform.abrPolicyCalls.length;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('listen-return-video')),
@@ -645,7 +1324,7 @@ void main() {
         surfaceSize: const Size(390, 844),
       );
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
 
       expect(
@@ -672,7 +1351,7 @@ void main() {
       );
       harness.platform.failSelectSourceCallsRemaining = 1;
 
-      await tester.tap(find.byKey(const ValueKey<String>('enter-listen-mode')));
+      await enterListenMode(tester);
       await tester.pumpAndSettle();
 
       expect(
@@ -1968,7 +2647,14 @@ void main() {
 
     testWidgets('声明弹幕时通过 SDK contentOverlay 挂载', (tester) async {
       final adapter = _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider());
-      await pumpShell(tester, adapter: adapter);
+      await pumpShell(tester, adapter: adapter, reportGeometry: false);
+
+      expect(find.byType(MediaDanmakuLayer), findsNothing);
+      expect(
+        find.byType(MediaDanmakuLayer, skipOffstage: false),
+        findsOneWidget,
+      );
+      await _reportShellGeometry(tester);
 
       expect(find.byType(MediaDanmakuLayer), findsOneWidget);
       expect(
@@ -2052,7 +2738,7 @@ void main() {
       final stage = tester.widget<vesper_ui.VesperPlayerStage>(
         find.byType(vesper_ui.VesperPlayerStage),
       );
-      expect(stage.landscapeControlBarLeading, isNull);
+      expect(stage.expandedControlBarLeading, isNull);
       expect(
         find.byKey(const ValueKey<String>('landscape-control-bar-leading')),
         findsNothing,
@@ -2271,8 +2957,12 @@ void main() {
         ),
       );
       await pumpShell(tester, adapter: adapter);
-
-      expect(find.byType(StageDlnaProjectionButton), findsOneWidget);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('settings-projection')),
+        findsOneWidget,
+      );
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   });
 
@@ -2306,8 +2996,12 @@ void main() {
       'diagnostics state changes do not reattach or interrupt the controller',
       (tester) async {
         final harness = await pumpShell(tester);
+        await tester.tap(find.byTooltip('更多'));
+        await tester.pumpAndSettle();
         await tester.tap(
-          find.byKey(const ValueKey<String>('open-performance-diagnostics')),
+          find.byKey(
+            const ValueKey<String>('settings-performance-diagnostics'),
+          ),
         );
         await tester.pumpAndSettle();
         await tester.tap(
@@ -2806,10 +3500,40 @@ class _ShellHarness {
   final _ShellFakePlatform platform;
 }
 
+Future<void> _reportShellGeometry(
+  WidgetTester tester, {
+  double aspectRatio = 16 / 9,
+}) async {
+  final views = find.byType(VesperPlayerView);
+  for (final element in views.evaluate()) {
+    final view = element.widget as VesperPlayerView;
+    final size = tester.getSize(find.byWidget(view));
+    final fitted = applyBoxFit(
+      BoxFit.contain,
+      Size(aspectRatio, 1),
+      size,
+    ).destination;
+    final rect = Alignment.center.inscribe(fitted, Offset.zero & size);
+    view.onGeometryChanged?.call(
+      VesperVideoSurfaceGeometry(
+        width: size.width,
+        height: size.height,
+        contentRect: VesperVideoRect(
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        ),
+      ),
+    );
+  }
+  await tester.pump();
+}
+
 final _shellPresentation = MediaPlaybackPresentation(
   enterPlaybackTv: () async {},
   enterPlaybackPhone: () async {},
-  enterFullscreen: () async {},
+  enterFullscreen: ({required bool isPortrait}) async {},
   exitFullscreen: () async {},
   restoreApp: () async {},
 );
@@ -2937,6 +3661,35 @@ final class _EmptyDanmakuProvider implements MediaDanmakuProvider {
   }
 }
 
+final class _SelectionDanmakuProvider implements MediaDanmakuProvider {
+  @override
+  MediaDanmakuSession openSession(MediaPlaybackTarget target) =>
+      _SelectionDanmakuSession();
+}
+
+final class _SelectionDanmakuSession implements MediaDanmakuSession {
+  @override
+  Stream<MediaDanmakuSnapshot> get snapshots => Stream.value(
+    MediaDanmakuSnapshot(
+      events: List.generate(
+        6,
+        (index) => MediaDanmakuEvent(
+          id: 'tap-$index',
+          timeMs: 0,
+          text: '可点选弹幕 $index',
+          style: const MediaDanmakuStyle(position: MediaDanmakuPosition.top),
+        ),
+      ),
+    ),
+  );
+
+  @override
+  void updatePosition(int positionMs) {}
+
+  @override
+  Future<void> close() async {}
+}
+
 final class _EmptyDanmakuSession implements MediaDanmakuSession {
   const _EmptyDanmakuSession();
 
@@ -3044,10 +3797,46 @@ final class _ShellDeviceControls implements MediaPlayerDeviceControls {
   Future<double?> setVolumeRatio(double ratio) async => null;
 }
 
+VesperPlaybackCapabilityProbeResult _shellHdrProbe({required int profile}) =>
+    VesperPlaybackCapabilityProbeResult(
+      status: VesperPlaybackCapabilityProbeStatus.supported,
+      codecFamily: VesperPlaybackCodecFamily.hevc,
+      systemPlaybackSupported: true,
+      hardwareDecodeSupported: true,
+      sdkManagedNativeFrameSupported: false,
+      recommendedPlaybackPath: VesperRecommendedPlaybackPath.systemPlayer,
+      outputFormat: VesperPlaybackCapabilityOutputFormat.p010,
+      hdrKind: VesperPlaybackCapabilityHdrKind.dolbyVision,
+      dolbyVisionMode: VesperPlaybackCapabilityDolbyVisionMode.none,
+      confidence: VesperPlaybackCapabilityConfidence.sessionProbe,
+      hdrMetadata: VesperHdrMetadata(
+        hdrKind: VesperPlaybackCapabilityHdrKind.dolbyVision,
+        dolbyVisionProfile: profile,
+      ),
+    );
+
 final class _ShellFakePlatform extends VesperPlayerPlatform {
   _ShellFakePlatform(VesperPlayerSnapshot snapshot) : _current = snapshot;
 
   VesperPlayerSnapshot _current;
+  final probeRequests = <VesperPlaybackCapabilityProbeRequest>[];
+  Future<VesperPlaybackCapabilityProbeResult> Function(
+    VesperPlaybackCapabilityProbeRequest,
+  )?
+  probeHandler;
+  VesperSourceNormalizerConfiguration? createdNormalizer;
+
+  @override
+  Future<VesperPlaybackCapabilityProbeResult> probePlaybackCapability(
+    VesperPlaybackCapabilityProbeRequest request, {
+    String? playerId,
+  }) {
+    expect(playerId, 'shell-test-player');
+    probeRequests.add(request);
+    return probeHandler?.call(request) ??
+        super.probePlaybackCapability(request, playerId: playerId);
+  }
+
   final StreamController<VesperPlayerEvent> _eventsController =
       StreamController<VesperPlayerEvent>.broadcast();
   final seekDeltas = <int>[];
@@ -3112,6 +3901,19 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
     );
   }
 
+  void emitPictureInPicture(
+    VesperPictureInPictureStatus state, {
+    required bool isActive,
+  }) {
+    _eventsController.add(
+      VesperPlayerPictureInPictureEvent(
+        playerId: 'shell-test-player',
+        state: state,
+        isActive: isActive,
+      ),
+    );
+  }
+
   void emitRuntimeTrackRejected(String trackId) {
     _eventsController.add(
       VesperPlayerWarningEvent(
@@ -3171,6 +3973,7 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
         const VesperPipelineEventHookConfiguration(),
   }) async {
     createCalls += 1;
+    createdNormalizer = sourceNormalizerConfiguration;
     return VesperPlatformCreateResult(
       playerId: 'shell-test-player',
       snapshot: _current,

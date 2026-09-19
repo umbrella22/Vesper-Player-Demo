@@ -22,10 +22,17 @@ const int biliDashFnval = 4048;
 const int biliDashCompatFnval = 976;
 
 final class BiliApiException implements Exception {
-  const BiliApiException(this.message, {this.code});
+  const BiliApiException(
+    this.message, {
+    this.code,
+    this.outcomeUnknown = false,
+  });
 
   final String message;
   final int? code;
+
+  /// 请求未得到确定的业务结果，写操作不能据此断言服务端未执行。
+  final bool outcomeUnknown;
 
   @override
   String toString() {

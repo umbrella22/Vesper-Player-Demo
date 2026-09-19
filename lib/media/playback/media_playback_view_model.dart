@@ -8,6 +8,8 @@ import 'package:vesper_player_external_playback/vesper_player_external_playback.
 import '../adapter/media_platform_adapter.dart';
 import '../capabilities/media_history.dart';
 import '../models/media_detail.dart';
+import '../models/media_video_layout.dart';
+import '../models/media_hdr_status.dart';
 import '../models/media_playback_notice.dart';
 import '../models/resolved_media.dart';
 import '../player/media_text.dart';
@@ -16,6 +18,7 @@ import 'media_external_playback_manager.dart';
 import 'seek_aware_player_controller.dart';
 
 part 'media_playback_view_model_controller.dart';
+part 'media_playback_view_model_hdr.dart';
 part 'media_playback_view_model_listen.dart';
 part 'media_playback_view_model_recovery.dart';
 part 'media_playback_view_model_tracks.dart';
@@ -67,6 +70,7 @@ final class MediaPlaybackViewModel {
            : null,
        _preferTextureViewForPlayback =
            preferTextureViewForPlayback ?? _defaultPreferTextureView {
+    _syncVideoAspectRatio();
     _dlnaManager = MediaExternalPlaybackManager(
       detail: detail,
       formatAdaptation: adapter.dlnaConfig?.formatAdaptation,
@@ -128,6 +132,11 @@ final class MediaPlaybackViewModel {
       Signal<ResolvedMediaPlayback?>(null);
   final Signal<String?> _selectedQualityOptionId = Signal<String?>(null);
   final Signal<String?> _selectedCodecIdentity = Signal<String?>(null);
+
+  /// 当前生效轨道的 HDR 三态表达。探测未完成或未返回时保持未确认。
+  final Signal<MediaHdrStatus> _hdrStatus = Signal<MediaHdrStatus>(
+    MediaHdrStatus.none,
+  );
   final Signal<VesperPlayerError?> _suppressedPlaybackCommandError =
       Signal<VesperPlayerError?>(null);
   final Signal<VesperSystemPlaybackPermissionStatus>
@@ -149,10 +158,11 @@ final class MediaPlaybackViewModel {
       Signal<MediaPlaybackRecoveryNotice?>(null);
   bool _castPausedLocalPlayback = false;
   final Signal<bool> _isFullscreen = Signal<bool>(false);
+  final Signal<double> _videoAspectRatio = signal(16 / 9);
   bool _isDisposed = false;
   bool _playbackRecoveryInFlight = false;
   bool _playbackRecoveryFailureReported = false;
-  bool _playbackSourceTransitionInFlight = false;
+  final Signal<bool> _playbackSourceTransitionInFlight = signal(false);
   Future<void> _sourceTransactionTail = Future<void>.value();
   MediaPlaybackSourceMode _sourceMode = MediaPlaybackSourceMode.video;
   _ListenVideoPolicyRestore? _listenVideoPolicyRestore;
@@ -163,6 +173,12 @@ final class MediaPlaybackViewModel {
   final Set<String> _runtimeRejectedVideoTrackIds = <String>{};
   final Set<String> _handledRuntimeTrackRejections = <String>{};
   String? _pendingRuntimeFallbackTrackId;
+  int _hdrProbeGeneration = 0;
+  Object? _hdrProbeKey;
+  VesperSourceNormalizerConfiguration _hdrSourceNormalizerConfiguration =
+      const VesperSourceNormalizerConfiguration();
+  VesperPlaybackCapabilityProbeResult? _hdrCapabilityProbe;
+  final Set<String> _hdrWarningsReported = <String>{};
   VesperPlayerError? _deferredPlaybackRecoveryError;
   StreamSubscription<VesperPlayerEvent>? _controllerEventsSubscription;
   Timer? _playbackRecoverySuccessTimer;
@@ -182,6 +198,10 @@ final class MediaPlaybackViewModel {
   String? get selectedQualityOptionId => _selectedQualityOptionId.value;
 
   String? get selectedCodecIdentity => _selectedCodecIdentity.value;
+
+  /// 当前生效轨道的 HDR 状态。界面必须区分「有 HDR 档位」「能播」
+  /// 「已确认输出 HDR」，不得在未确认时显示「已开启 HDR」。
+  MediaHdrStatus get hdrStatus => _hdrStatus.value;
 
   /// Command rejections do not make otherwise healthy playback terminal.
   /// Subtitle failures are presented by their selection surface, while a
@@ -210,6 +230,26 @@ final class MediaPlaybackViewModel {
   MediaExternalPlaybackManager get dlnaManager => _dlnaManager;
 
   bool get isFullscreen => _isFullscreen.value;
+
+  double get videoAspectRatio => _videoAspectRatio.value;
+
+  bool get isSourceTransitioning => _playbackSourceTransitionInFlight.value;
+
+  void _syncVideoAspectRatio([VesperPlayerSnapshot? snapshot]) {
+    if (_isDisposed || isSourceTransitioning || isAudioOnlyPlaybackActive) {
+      return;
+    }
+    final entry = _selectedEntry.value;
+    _videoAspectRatio.value = resolveMediaVideoAspectRatio(
+      snapshot: snapshot,
+      declaredTracks: _resolvedPlayback.value?.videoTracks ?? const [],
+      declaredAspectRatio:
+          entry.declaredAspectRatio ??
+          (detail.pages.isNotEmpty && detail.firstEntry.entryId == entry.entryId
+              ? detail.declaredAspectRatio
+              : null),
+    );
+  }
 
   MediaPlaybackSourceMode get sourceMode => _sourceMode;
 
@@ -274,10 +314,10 @@ final class MediaPlaybackViewModel {
     }
     final sourceTransaction = _sourceTransactionTail;
     final sourceTransitionWasInFlight =
-        _playbackSourceTransitionInFlight || _playbackRecoveryInFlight;
+        _playbackSourceTransitionInFlight.value || _playbackRecoveryInFlight;
     _controllerGeneration += 1;
     _sourceTransitionGeneration += 1;
-    _playbackSourceTransitionInFlight = false;
+    _playbackSourceTransitionInFlight.value = false;
     _resetPlaybackRecoveryState(clearPendingNotice: true);
     final previous = _controller;
     final previousSnapshot = previous?.snapshot;
@@ -314,7 +354,7 @@ final class MediaPlaybackViewModel {
     // its source. Let the in-flight transition finish untouched instead of
     // interleaving two resolvePlayback -> selectSource -> play chains that
     // would race on _selectedEntry/_resolvedPlayback writes.
-    if (_playbackSourceTransitionInFlight) {
+    if (_playbackSourceTransitionInFlight.value) {
       return null;
     }
 
@@ -754,7 +794,7 @@ final class MediaPlaybackViewModel {
     _playbackRecoverySuccessTimer?.cancel();
     final sourceTransaction = _sourceTransactionTail;
     final sourceTransitionWasInFlight =
-        _playbackSourceTransitionInFlight || _playbackRecoveryInFlight;
+        _playbackSourceTransitionInFlight.value || _playbackRecoveryInFlight;
     final controller = _controller;
     final snapshot = controller?.snapshot;
     final selectedEntry = _selectedEntry.value;
@@ -805,5 +845,7 @@ final class MediaPlaybackViewModel {
     _pendingMessage.dispose();
     _pendingPlaybackRecoveryNotice.dispose();
     _isFullscreen.dispose();
+    _videoAspectRatio.dispose();
+    _playbackSourceTransitionInFlight.dispose();
   }
 }

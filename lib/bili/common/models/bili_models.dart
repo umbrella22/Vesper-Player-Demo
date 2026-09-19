@@ -64,6 +64,38 @@ final class BiliFeedVideo {
   final String? publishedAtLabel;
 }
 
+/// 服务端声明的视频尺寸契约（`/x/web-interface/view` 的 `dimension` 对象）。
+///
+/// 只承载原始值；[displayWidth]/[displayHeight] 按服务端旋转角派生，供起播前的
+/// 占位布局使用。起播后的运行时真值来自 SDK 的 `snapshot.videoPresentation`
+/// （额外做像素宽高比校正），两者语义不同，声明值不覆盖运行时值。
+final class BiliVideoDimension {
+  const BiliVideoDimension({
+    required this.width,
+    required this.height,
+    this.rotateDegrees = 0,
+  });
+
+  /// 服务端声明的编码尺寸（像素）。解析层保证两者为正数。
+  final int width;
+  final int height;
+
+  /// 服务端声明的显示旋转角度（0/90/180/270）。缺失时为 0。
+  final int rotateDegrees;
+
+  /// 旋转校正后的显示宽度。
+  int get displayWidth => _isQuarterTurned ? height : width;
+
+  /// 旋转校正后的显示高度。
+  int get displayHeight => _isQuarterTurned ? width : height;
+
+  /// 旋转校正后的显示宽高比；尺寸非法时为 null。
+  double? get displayAspectRatio =>
+      displayHeight <= 0 ? null : displayWidth / displayHeight;
+
+  bool get _isQuarterTurned => rotateDegrees % 180 == 90;
+}
+
 final class BiliVideoPageEntry {
   const BiliVideoPageEntry({
     required this.cid,
@@ -74,6 +106,7 @@ final class BiliVideoPageEntry {
     this.bvid,
     this.coverUrl,
     this.episodeId,
+    this.dimension,
   });
 
   final int cid;
@@ -84,6 +117,9 @@ final class BiliVideoPageEntry {
   final String? bvid;
   final String? coverUrl;
   final int? episodeId;
+
+  /// 该分 P 的声明尺寸。多 P 各分 P 可横竖不同，缺失时为 null。
+  final BiliVideoDimension? dimension;
 }
 
 final class BiliVideoDetail {
@@ -105,6 +141,7 @@ final class BiliVideoDetail {
     required this.favoriteCountLabel,
     required this.shareCountLabel,
     required this.pages,
+    this.dimension,
   });
 
   final int aid;
@@ -124,6 +161,10 @@ final class BiliVideoDetail {
   final String favoriteCountLabel;
   final String shareCountLabel;
   final List<BiliVideoPageEntry> pages;
+
+  /// 顶层声明尺寸，通常与首个分 P 一致，仅作首帧占位回退。
+  /// 多 P 以目标分 P 的 [BiliVideoPageEntry.dimension] 为准。
+  final BiliVideoDimension? dimension;
 }
 
 final class BiliFavoriteFolder {
@@ -386,6 +427,7 @@ final class BiliVideoComment {
     this.authorLevelLabel,
     this.replyCount = 0,
     this.liked = false,
+    this.likeCount,
   });
 
   final int id;
@@ -395,11 +437,37 @@ final class BiliVideoComment {
   final String createdAtLabel;
   final String message;
   final String likeCountLabel;
+
+  /// 原始服务端计数；缺失时不从缩写文案反推。
+  final int? likeCount;
   final int replyCount;
   final bool liked;
   final List<BiliCommentPicture> pictures;
   final List<BiliVideoComment> replies;
   final List<BiliCommentTimeLink> timeLinks;
+
+  BiliVideoComment copyWith({
+    String? likeCountLabel,
+    int? likeCount,
+    bool? liked,
+    List<BiliVideoComment>? replies,
+  }) {
+    return BiliVideoComment(
+      id: id,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      authorLevelLabel: authorLevelLabel,
+      createdAtLabel: createdAtLabel,
+      message: message,
+      likeCountLabel: likeCountLabel ?? this.likeCountLabel,
+      likeCount: likeCount ?? this.likeCount,
+      replyCount: replyCount,
+      liked: liked ?? this.liked,
+      pictures: pictures,
+      replies: replies ?? this.replies,
+      timeLinks: timeLinks,
+    );
+  }
 }
 
 final class BiliVideoCommentPage {

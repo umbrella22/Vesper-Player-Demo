@@ -328,6 +328,51 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
     }
   }
 
+  /// 打开 TV 收藏浏览页（左收藏夹栏 + 右网格）。
+  Future<void> _openFavorites() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => _buildTvFavoritesPage()));
+    if (mounted) {
+      await _loadHistory();
+    }
+  }
+
+  Widget _buildTvFavoritesPage() {
+    final visualTheme = AppVisualTheme.of(context);
+    return AppGlassScaffold(
+      backgroundColor: visualTheme.background,
+      extendBody: false,
+      appBarHeight: 52,
+      appBar: GlassAppBar(
+        centerTitle: false,
+        leading: AppPressScale(
+          child: IconButton(
+            tooltip: '返回',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+        ),
+        title: Text(
+          '我的收藏',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: visualTheme.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: BiliFavoritesTvView(
+          client: _viewModel.client,
+          historyStore: _viewModel.historyStore,
+          offlineController: _viewModel.offlineController,
+          onLoginTap: _openQrLogin,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openPlayback(
     String bvid, {
     int? aid,

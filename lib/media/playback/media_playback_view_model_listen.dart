@@ -26,7 +26,7 @@ extension MediaPlaybackListenMode on MediaPlaybackViewModel {
     if (audioSource == null) {
       return '当前视频暂无可用的纯音频源。';
     }
-    if (_playbackSourceTransitionInFlight) {
+    if (_playbackSourceTransitionInFlight.value) {
       return '播放源正在切换，请稍候。';
     }
 
@@ -94,7 +94,7 @@ extension MediaPlaybackListenMode on MediaPlaybackViewModel {
     if (controller == null || resolved == null || audioSource == null) {
       return '播放器尚未准备好。';
     }
-    if (_playbackSourceTransitionInFlight) {
+    if (_playbackSourceTransitionInFlight.value) {
       return '播放源正在切换，请稍候。';
     }
 
@@ -165,16 +165,22 @@ extension MediaPlaybackListenMode on MediaPlaybackViewModel {
   }
 
   int _beginSourceTransition() {
-    _playbackSourceTransitionInFlight = true;
+    _sourceGeneration += 1;
+    _playbackSourceTransitionInFlight.value = true;
+    _resetHdrStatus();
     _invalidatePlaybackSelectionRequests();
     _resetPlaybackRecoveryState(clearPendingNotice: true);
-    _sourceGeneration += 1;
     return ++_sourceTransitionGeneration;
   }
 
   void _finishSourceTransition(int generation) {
     if (generation == _sourceTransitionGeneration) {
-      _playbackSourceTransitionInFlight = false;
+      _playbackSourceTransitionInFlight.value = false;
+      final controller = _controller;
+      if (controller != null) {
+        _syncHdrCapability(controller.snapshot);
+        _syncVideoAspectRatio(controller.snapshot);
+      }
     }
   }
 

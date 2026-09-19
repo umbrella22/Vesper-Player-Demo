@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
+import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_media_mapper.dart';
@@ -16,6 +17,8 @@ import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 
+import '../models/bili_comment_like_models.dart';
+import '../models/bili_favorites_models.dart';
 import '../models/bili_models.dart';
 import '../view_models/bili_playback_view_model.dart';
 
@@ -62,6 +65,26 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
     MediaPlaybackTarget target,
   ) {
     return _CommentsSurface(surfaces: this);
+  }
+
+  /// 打开收藏夹选择器并只在确认后提交差异。
+  ///
+  /// 收藏按钮不再「点一下加入第一个收藏夹」：归属由用户在多选列表里决定，
+  /// 取消收藏也只移出用户显式取消的收藏夹。返回提示语由互动条展示。
+  Future<String?> _showFavoriteFolderPicker(BuildContext context) async {
+    final selection = await showMediaGlassSheet<BiliFavoriteSelection>(
+      context: context,
+      appearance: MediaGlassSheetAppearance.readable,
+      maxContentHeightFactor: 0.82,
+      builder: (context) => _FavoriteFolderPickerSheet(
+        loadFolders: viewModel.loadFavoriteFolders,
+      ),
+    );
+    if (selection == null) {
+      // 用户取消选择：不提交任何写请求。
+      return null;
+    }
+    return viewModel.applyFavoriteSelection(selection);
   }
 
   Future<void> _showPageSelectionSheet(BuildContext context) async {

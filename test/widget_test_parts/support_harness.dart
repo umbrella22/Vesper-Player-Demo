@@ -132,6 +132,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   BiliResolvedPlayback? initialResolvedPlayback,
   ThemeData? theme,
   bool externalPlaybackMockInstalled = false,
+  Widget? previousPage,
 }) async {
   final previousPlatform = VesperPlayerPlatform.instance;
   final platform = _FakePlaybackVesperPlatform(
@@ -179,22 +180,26 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: theme,
-      home: BiliPlaybackPage(
-        detail: playbackDetail,
-        initialPage: page,
-        client: client,
-        historyStore: historyStore,
-        initialResolvedPlayback:
-            initialResolvedPlayback ??
-            _resolvedPlaybackFor(playbackDetail, page),
-        initialPositionMs: initialPositionMs,
-        presentationMode: presentationMode,
-      ),
-    ),
+  final playbackPage = BiliPlaybackPage(
+    detail: playbackDetail,
+    initialPage: page,
+    client: client,
+    historyStore: historyStore,
+    initialResolvedPlayback:
+        initialResolvedPlayback ?? _resolvedPlaybackFor(playbackDetail, page),
+    initialPositionMs: initialPositionMs,
+    presentationMode: presentationMode,
   );
+  await tester.pumpWidget(
+    MaterialApp(theme: theme, home: previousPage ?? playbackPage),
+  );
+  if (previousPage != null) {
+    unawaited(
+      Navigator.of(
+        tester.element(find.byWidget(previousPage)),
+      ).push<void>(MaterialPageRoute(builder: (_) => playbackPage)),
+    );
+  }
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await _flushRealAsync(tester);

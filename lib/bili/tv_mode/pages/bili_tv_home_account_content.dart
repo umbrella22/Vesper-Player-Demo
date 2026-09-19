@@ -168,6 +168,16 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
             children: [
               Expanded(
                 child: _TvLibraryAction(
+                  key: const ValueKey<String>('bili-tv-mine-favorites'),
+                  icon: Icons.star_outline_rounded,
+                  label: '我的收藏',
+                  compact: compact,
+                  onTap: () => unawaited(_openFavorites()),
+                ),
+              ),
+              Container(width: 1, height: 54, color: visualTheme.divider),
+              Expanded(
+                child: _TvLibraryAction(
                   key: const ValueKey<String>('bili-tv-mine-history'),
                   icon: Icons.history_rounded,
                   label: '历史播放',

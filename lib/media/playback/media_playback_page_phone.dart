@@ -13,114 +13,151 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
 
     final visualTheme = AppVisualTheme.of(context);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final stageCornerPadding = _displayCornerPadding(context);
-        // Stage and bottom surface read different VM signals, so each is
-        // wrapped in its own SignalBuilder to rebuild independently.
-        final stage = SignalBuilder(
-          builder: (context) => _buildStage(
-            controller: controller,
-            snapshot: snapshot,
-            isFullscreen: isFullscreen,
-          ),
-        );
-
-        if (isFullscreen) {
-          return PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, _) {
-              if (!didPop) {
-                unawaited(_exitFullscreen());
-              }
-            },
-            child: ColoredBox(color: Colors.black, child: stage),
-          );
-        }
-
-        final isWide =
-            constraints.maxWidth >= 840 && constraints.maxHeight >= 480;
-        final bottomSurface = _buildBottomSurface(context, snapshot);
-
-        if (isWide) {
-          final panelWidth = (constraints.maxWidth * 0.36)
-              .clamp(constraints.maxWidth * 0.28, constraints.maxWidth * 0.42)
-              .toDouble();
-          return PopScope(
-            canPop: true,
-            child: ColoredBox(
-              color: visualTheme.background,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildStageFrame(
-                      stage,
-                      padding: stageCornerPadding.add(
-                        const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      ),
-                      safeBottom: true,
-                    ),
-                  ),
-                  SizedBox(
-                    width: panelWidth,
-                    child: SafeArea(left: false, child: bottomSurface),
-                  ),
-                ],
+    return SignalBuilder(
+      builder: (context) {
+        final aspectRatio = _viewModel.videoAspectRatio;
+        final showPictureInPicture =
+            !kIsWeb &&
+            defaultTargetPlatform == TargetPlatform.android &&
+            _pictureInPicturePresentation.value;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final stageCornerPadding = _displayCornerPadding(context);
+            // Stage and bottom surface read different VM signals, so each is
+            // wrapped in its own SignalBuilder to rebuild independently.
+            final stage = SignalBuilder(
+              builder: (context) => _buildStage(
+                controller: controller,
+                snapshot: snapshot,
+                isFullscreen: isFullscreen,
+                usesCompactControls:
+                    !isFullscreen ||
+                    constraints.maxWidth < 600 ||
+                    constraints.maxWidth < constraints.maxHeight,
               ),
-            ),
-          );
-        }
+            );
 
-        return PopScope(
-          canPop: true,
-          child: ColoredBox(
-            color: visualTheme.background,
-            child: Builder(
-              builder: (context) {
-                final stagePadding = stageCornerPadding.add(
-                  const EdgeInsets.fromLTRB(10, 6, 10, 12),
-                );
-                final expandedStageHeight = _mobileStageExpandedHeight(
-                  context,
-                  constraints,
-                  stagePadding,
-                );
-                final collapsedStageHeight =
-                    MediaQuery.paddingOf(context).top + 64;
-                final collapseDistance =
-                    expandedStageHeight - collapsedStageHeight;
-                final effectiveCollapseOffset =
-                    snapshot.playbackState == VesperPlaybackState.playing
-                    ? 0.0
-                    : _mobileStageCollapseOffset;
-                final collapseProgress = collapseDistance <= 0
-                    ? 0.0
-                    : (effectiveCollapseOffset / collapseDistance)
-                          .clamp(0.0, 1.0)
-                          .toDouble();
-                final stageHeight = ui.lerpDouble(
-                  expandedStageHeight,
-                  collapsedStageHeight,
-                  collapseProgress,
-                )!;
-                return Column(
-                  children: [
-                    SizedBox(
-                      height: stageHeight,
-                      child: _buildCollapsibleStageFrame(
-                        stage,
-                        controller: controller,
-                        snapshot: snapshot,
-                        padding: stagePadding,
-                        progress: collapseProgress,
+            if (showPictureInPicture) {
+              // Android shrinks the Activity itself into PiP. Fill that window
+              // with video, without inline content, page padding or safe areas.
+              return ColoredBox(color: Colors.black, child: stage);
+            }
+
+            if (isFullscreen) {
+              return PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) {
+                    unawaited(_exitFullscreen());
+                  }
+                },
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: SafeArea(child: stage),
+                ),
+              );
+            }
+
+            final isWide =
+                constraints.maxWidth >= 840 && constraints.maxHeight >= 480;
+            final bottomSurface = _buildBottomSurface(context, snapshot);
+
+            if (isWide) {
+              final panelWidth = (constraints.maxWidth * 0.36)
+                  .clamp(
+                    constraints.maxWidth * 0.28,
+                    constraints.maxWidth * 0.42,
+                  )
+                  .toDouble();
+              return PopScope(
+                canPop: true,
+                child: ColoredBox(
+                  color: visualTheme.background,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildStageFrame(
+                          stage,
+                          padding: stageCornerPadding.add(
+                            const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                          ),
+                          safeBottom: true,
+                        ),
                       ),
-                    ),
-                    Expanded(child: bottomSurface),
-                  ],
-                );
-              },
-            ),
-          ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: SafeArea(left: false, child: bottomSurface),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return PopScope(
+              canPop: true,
+              child: ColoredBox(
+                color: Colors.black,
+                child: Builder(
+                  builder: (context) {
+                    final stagePadding = stageCornerPadding.add(
+                      const EdgeInsets.fromLTRB(10, 6, 10, 12),
+                    );
+                    final expandedStageHeight = _mobileStageExpandedHeight(
+                      context,
+                      constraints,
+                      stagePadding,
+                      aspectRatio,
+                    );
+                    final collapsedStageHeight =
+                        MediaQuery.paddingOf(context).top + 64;
+                    final collapseDistance =
+                        expandedStageHeight - collapsedStageHeight;
+                    final effectiveCollapseOffset =
+                        snapshot.playbackState == VesperPlaybackState.playing
+                        ? 0.0
+                        : _mobileStageCollapseOffset;
+                    final collapseProgress = collapseDistance <= 0
+                        ? 0.0
+                        : (effectiveCollapseOffset / collapseDistance)
+                              .clamp(0.0, 1.0)
+                              .toDouble();
+                    final stageHeight = ui.lerpDouble(
+                      expandedStageHeight,
+                      collapsedStageHeight,
+                      collapseProgress,
+                    )!;
+                    return Column(
+                      children: [
+                        SizedBox(
+                          height: stageHeight,
+                          child: _buildCollapsibleStageFrame(
+                            stage,
+                            controller: controller,
+                            snapshot: snapshot,
+                            padding: stagePadding,
+                            progress: collapseProgress,
+                          ),
+                        ),
+                        Expanded(
+                          child: ColoredBox(
+                            // Match the backdrop exposed by the rounded panel
+                            // to the player, then to the collapsed toolbar.
+                            color: Color.lerp(
+                              Colors.black,
+                              visualTheme.surface,
+                              collapseProgress,
+                            )!,
+                            child: bottomSurface,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -130,16 +167,20 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
     BuildContext context,
     BoxConstraints constraints,
     EdgeInsetsGeometry padding,
+    double aspectRatio,
   ) {
     final resolvedPadding = padding.resolve(Directionality.of(context));
     final availableWidth =
         constraints.maxWidth - resolvedPadding.left - resolvedPadding.right;
     final videoHeight =
-        availableWidth.clamp(0.0, constraints.maxWidth) * 9 / 16;
-    return MediaQuery.paddingOf(context).top +
+        availableWidth.clamp(0.0, constraints.maxWidth) / aspectRatio;
+    final idealHeight =
+        MediaQuery.paddingOf(context).top +
         resolvedPadding.top +
         videoHeight +
         resolvedPadding.bottom;
+    // Keep at least 30% of the inline layout available for content and comments.
+    return idealHeight.clamp(0.0, constraints.maxHeight * 0.7);
   }
 
   Widget _buildCollapsibleStageFrame(

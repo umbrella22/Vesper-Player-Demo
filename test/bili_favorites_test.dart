@@ -149,6 +149,150 @@ void main() {
         expect(result.hasMore, isFalse);
       },
     );
+
+    test('batch removal sends folder-scoped resource ids', () async {
+      await client.removeFavoriteItems(
+        folderId: 9,
+        resourceIds: const ['123:2', '456:2'],
+      );
+      expect(transport.posts.single.path, BiliApiPaths.favResourceBatchDel);
+      expect(transport.posts.single.data, {
+        'resources': '123:2,456:2',
+        'media_id': 9,
+      });
+    });
+
+    test('batch removal rejects malformed ids and empty requests', () async {
+      await expectLater(
+        client.removeFavoriteItems(folderId: 9, resourceIds: const ['abc']),
+        throwsArgumentError,
+      );
+      await expectLater(
+        client.removeFavoriteItems(folderId: 0, resourceIds: const ['1:2']),
+        throwsArgumentError,
+      );
+      await client.removeFavoriteItems(folderId: 9, resourceIds: const []);
+      expect(transport.posts, isEmpty);
+    });
+
+    test('folder creation trims the title and maps privacy', () async {
+      transport.postResult = {'id': 77};
+      final id = await client.createFavoriteFolder(
+        title: '  学习  ',
+        isPrivate: true,
+      );
+      expect(id, 77);
+      expect(transport.posts.single.path, BiliApiPaths.favFolderAdd);
+      expect(transport.posts.single.data, {'title': '学习', 'privacy': 1});
+
+      await expectLater(
+        client.createFavoriteFolder(title: '   ', isPrivate: false),
+        throwsA(isA<BiliApiException>()),
+      );
+      expect(transport.posts, hasLength(1));
+    });
+
+    test('folder creation surfaces a missing server id', () async {
+      transport.postResult = const <String, Object?>{};
+      await expectLater(
+        client.createFavoriteFolder(title: '学习', isPrivate: false),
+        throwsA(isA<BiliApiException>()),
+      );
+    });
+
+    test('favorite selection submits only the requested difference', () async {
+      // 取消收藏只移出用户显式取消的收藏夹，其余归属保持不变。
+      transport.folders = {
+        'list': [
+          {'id': 1, 'title': '默认', 'fav_state': 1, 'media_count': 2},
+          {'id': 2, 'title': '学习', 'fav_state': 1, 'media_count': 1},
+        ],
+      };
+      transport.relation = {'like': false, 'favorite': true};
+      final current = BiliVideoEngagement(
+        isAuthenticated: true,
+        isLiked: false,
+        isFavorited: true,
+        isFollowingOwner: false,
+        favoriteMediaIds: const [1, 2],
+      );
+      final result = await client.applyVideoFavoriteSelection(
+        detail: _detail(),
+        current: current,
+        selection: const BiliFavoriteSelection(
+          addFolderIds: [],
+          removeFolderIds: [1],
+        ),
+      );
+      final deal = transport.posts.single;
+      expect(deal.path, BiliApiPaths.favResourceDeal);
+      expect(deal.data['del_media_ids'], '1');
+      expect(deal.data['add_media_ids'], '');
+      // 服务端在重新读取时仍报告两个归属，以服务端结果为准。
+      expect(result.isFavorited, isTrue);
+      expect(result.favoriteMediaIds, [1, 2]);
+    });
+
+    test(
+      'a failed refetch falls back to the requested difference, not "empty"',
+      () async {
+        final current = BiliVideoEngagement(
+          isAuthenticated: true,
+          isLiked: false,
+          isFavorited: true,
+          isFollowingOwner: false,
+          favoriteMediaIds: const [1, 2],
+        );
+        // relation 未配置 -> fetchVideoEngagement 抛错 -> 走回退分支。
+        final result = await client.applyVideoFavoriteSelection(
+          detail: _detail(),
+          current: current,
+          selection: const BiliFavoriteSelection(
+            addFolderIds: [],
+            removeFolderIds: [1],
+          ),
+        );
+        expect(result.isFavorited, isTrue);
+        expect(result.favoriteMediaIds, [2]);
+      },
+    );
+
+    test('an empty selection performs no write request', () async {
+      final base = BiliVideoEngagement(
+        isAuthenticated: true,
+        isLiked: false,
+        isFavorited: true,
+        isFollowingOwner: false,
+        favoriteMediaIds: const [1],
+      );
+      final result = await client.applyVideoFavoriteSelection(
+        detail: _detail(),
+        current: base,
+        selection: const BiliFavoriteSelection(
+          addFolderIds: [],
+          removeFolderIds: [],
+        ),
+      );
+      expect(transport.posts, isEmpty);
+      expect(result.favoriteMediaIds, [1]);
+    });
+
+    test('favorite diff reports additions and removals', () {
+      final selection = BiliFavoriteSelection.diff(
+        current: const [1, 2],
+        target: const [2, 3],
+      );
+      expect(selection.addFolderIds, [3]);
+      expect(selection.removeFolderIds, [1]);
+      expect(selection.isEmpty, isFalse);
+      expect(
+        BiliFavoriteSelection.diff(
+          current: const [1],
+          target: const [1],
+        ).isEmpty,
+        isTrue,
+      );
+    });
   });
 
   group('favorite view model', () {
@@ -359,6 +503,33 @@ void main() {
   });
 }
 
+BiliVideoDetail _detail() => const BiliVideoDetail(
+  aid: 55,
+  bvid: 'BV55',
+  title: '收藏视频',
+  ownerMid: 7,
+  ownerName: 'UP 主',
+  ownerAvatarUrl: '',
+  coverUrl: '',
+  description: '',
+  publishedAtLabel: null,
+  playCountLabel: '1',
+  danmakuCountLabel: '1',
+  replyCountLabel: '1',
+  likeCountLabel: '1',
+  coinCountLabel: '1',
+  favoriteCountLabel: '1',
+  shareCountLabel: '1',
+  pages: [
+    BiliVideoPageEntry(
+      cid: 11,
+      pageNumber: 1,
+      title: 'P1',
+      durationSeconds: 60,
+    ),
+  ],
+);
+
 Map<String, Object?> _rawItem(int id) => {
   'id': id,
   'type': 2,
@@ -375,7 +546,14 @@ Map<String, Object?> _rawItem(int id) => {
 final class _FavoritesTransport extends BiliTransport {
   Map<String, Object?> folders = {};
   Map<String, Object?> resources = {};
+  Map<String, Object?>? relation;
   final requests = <({String path, Map<String, Object?> params})>[];
+  final posts = <({String path, Map<String, Object?> data})>[];
+  Map<String, Object?> postResult = const <String, Object?>{};
+
+  /// 测试不建立真实的 buvid/WBI 前置请求，直接放行。
+  @override
+  Future<void> ensureReady() async {}
 
   @override
   Future<Map<String, Object?>> getData({
@@ -391,8 +569,22 @@ final class _FavoritesTransport extends BiliTransport {
     return switch (path) {
       BiliApiPaths.favFolderListAll => folders,
       BiliApiPaths.favResourceList => resources,
+      BiliApiPaths.archiveRelation =>
+        relation ?? (throw StateError('relation not configured')),
       _ => throw StateError('Unexpected endpoint: $path'),
     };
+  }
+
+  @override
+  Future<Map<String, Object?>> postData({
+    required String host,
+    required String path,
+    Map<String, Object?> data = const <String, Object?>{},
+    String referer = biliDefaultReferer,
+    bool ensureReady = true,
+  }) async {
+    posts.add((path: path, data: data));
+    return postResult;
   }
 }
 

@@ -411,10 +411,27 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     final shouldEnterFullscreen = !_viewModel.isFullscreen;
     if (shouldEnterFullscreen) {
       _viewModel.setFullscreen(true);
-      await _runPresentation(widget.presentation.enterFullscreen);
       return;
     }
     await _exitFullscreen();
+  }
+
+  void _syncFullscreenPresentation() {
+    final fullscreen = _viewModel.isFullscreen;
+    final portrait = _viewModel.videoAspectRatio < 1;
+    if (!fullscreen || _isTvMode) {
+      _fullscreenPortrait = null;
+      return;
+    }
+    if (_fullscreenPortrait == portrait) return;
+    _fullscreenPortrait = portrait;
+    untracked(
+      () => unawaited(
+        _runPresentation(
+          () => widget.presentation.enterFullscreen(isPortrait: portrait),
+        ),
+      ),
+    );
   }
 
   Future<void> _enterPlaybackPresentation() async {
@@ -429,23 +446,22 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     if (!_viewModel.isFullscreen) {
       return;
     }
-    await _runPresentation(widget.presentation.exitFullscreen);
-    if (!mounted) {
-      return;
-    }
     _viewModel.setFullscreen(false);
+    await _runPresentation(widget.presentation.exitFullscreen);
   }
 
   Future<void> _restoreAppPresentation() async {
     await _runPresentation(widget.presentation.restoreApp);
   }
 
-  Future<void> _runPresentation(Future<void> Function() operation) async {
+  Future<void> _runPresentation(Future<void> Function() operation) {
     final generation = ++_presentationGeneration;
-    await operation();
-    if (generation != _presentationGeneration) {
-      return;
-    }
+    final next = _presentationTail.then((_) async {
+      if (generation == _presentationGeneration) await operation();
+    });
+    // A failed system request must not block a later exit or app restoration.
+    _presentationTail = next.catchError((Object _) {});
+    return next;
   }
 
   Future<void> _switchEntry(MediaPlaybackEntry entry) {

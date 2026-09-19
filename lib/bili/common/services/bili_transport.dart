@@ -317,6 +317,7 @@ class BiliTransport {
     var timedOut = false;
     final timeoutError = BiliApiException(
       'Bilibili request timed out after ${_requestTimeout.inSeconds}s.',
+      outcomeUnknown: true,
     );
 
     Future<BiliHttpResponse> send() async {

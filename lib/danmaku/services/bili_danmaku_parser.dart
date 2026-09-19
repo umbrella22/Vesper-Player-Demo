@@ -34,6 +34,7 @@ final class BiliDanmakuParser {
       if (appearAtMs < 0 || text.trim().isEmpty) {
         continue;
       }
+      final serverId = parts.length > 7 ? parts[7] : '';
 
       entries.add(
         BiliDanmakuEntry(
@@ -42,7 +43,8 @@ final class BiliDanmakuParser {
           fontSize: fontSize,
           colorValue: colorValue,
           text: text,
-          rowId: parts.length > 7 ? parts[7] : '$appearAtMs:$text',
+          rowId: serverId.isNotEmpty ? serverId : '$appearAtMs:$text',
+          hasServerId: serverId.isNotEmpty,
           weight: parts.length > 8 ? int.tryParse(parts[8]) : null,
           pool: parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0,
           senderHash: parts.length > 6 ? parts[6] : '',

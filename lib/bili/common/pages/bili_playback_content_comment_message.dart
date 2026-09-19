@@ -284,21 +284,31 @@ class _CommentPicture extends StatelessWidget {
 }
 
 class _CommentActionRow extends StatelessWidget {
-  const _CommentActionRow({required this.comment});
+  const _CommentActionRow({
+    required this.comment,
+    this.likeState,
+    this.onToggleLike,
+  });
 
   final BiliVideoComment comment;
+  final BiliCommentLikeState? likeState;
+  final VoidCallback? onToggleLike;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final like = likeState;
+    final liked = like?.liked ?? comment.liked;
+    final likeLabel = like?.likeCountLabel ?? comment.likeCountLabel;
     return Row(
       children: [
         _CommentPassiveAction(
-          icon: comment.liked
-              ? Icons.thumb_up_rounded
-              : Icons.thumb_up_alt_outlined,
-          label: comment.likeCountLabel,
-          selected: comment.liked,
+          key: const ValueKey<String>('comment-like-action'),
+          icon: liked ? Icons.thumb_up_rounded : Icons.thumb_up_alt_outlined,
+          label: likeLabel,
+          selected: liked,
+          // 写请求进行中时禁用，避免快速连点重复提交。
+          onTap: like?.pending == true ? null : onToggleLike,
         ),
         const SizedBox(width: 14),
         const _CommentPassiveAction(
@@ -323,16 +333,21 @@ class _CommentActionRow extends StatelessWidget {
   }
 }
 
+/// 评论动作项。默认是只读展示；提供 [onTap] 时变成可点击，
+/// [onTap] 为 null 且 [tappable] 为 true 表示暂时禁用（写请求进行中）。
 class _CommentPassiveAction extends StatelessWidget {
   const _CommentPassiveAction({
+    super.key,
     required this.icon,
     required this.label,
     this.selected = false,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -340,25 +355,41 @@ class _CommentPassiveAction extends StatelessWidget {
     final color = selected
         ? AppVisualTokens.primaryBlue
         : visualTheme.textSecondary;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 21, color: color),
+        if (label.isNotEmpty) ...[
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              fontFeatures: const [ui.FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ],
+    );
+    if (onTap == null) {
+      return SizedBox(height: 40, child: content);
+    }
     return SizedBox(
       height: 40,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 21, color: color),
-          if (label.isNotEmpty) ...[
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                fontFeatures: const [ui.FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        ],
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label.isEmpty ? null : label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: content,
+          ),
+        ),
       ),
     );
   }

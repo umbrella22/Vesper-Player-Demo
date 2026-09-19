@@ -52,3 +52,36 @@ final class BiliFavoritePage {
   final bool hasMore;
   final int? totalCount;
 }
+
+/// 一次收藏夹归属的增删差异。
+///
+/// 调用方只在确认后提交差异，不在点击瞬间推断目标收藏夹——取消收藏时
+/// 只移出用户明确取消的收藏夹，而不是服务端返回的全部归属。
+final class BiliFavoriteSelection {
+  const BiliFavoriteSelection({
+    required this.addFolderIds,
+    required this.removeFolderIds,
+  });
+
+  final List<int> addFolderIds;
+  final List<int> removeFolderIds;
+
+  bool get isEmpty => addFolderIds.isEmpty && removeFolderIds.isEmpty;
+
+  /// 计算从 [current] 到 [target] 的差异，两者都是收藏夹 ID 集合。
+  factory BiliFavoriteSelection.diff({
+    required Iterable<int> current,
+    required Iterable<int> target,
+  }) {
+    final currentSet = current.toSet();
+    final targetSet = target.toSet();
+    return BiliFavoriteSelection(
+      addFolderIds: targetSet
+          .where((id) => !currentSet.contains(id))
+          .toList(growable: false),
+      removeFolderIds: currentSet
+          .where((id) => !targetSet.contains(id))
+          .toList(growable: false),
+    );
+  }
+}

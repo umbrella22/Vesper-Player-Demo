@@ -242,6 +242,8 @@ class _CommentReplyPanel extends StatelessWidget {
     required this.onLoadMore,
     required this.onRetry,
     required this.onSeekToTime,
+    required this.likeStateFor,
+    required this.onToggleLike,
   });
 
   final BiliVideoComment comment;
@@ -256,6 +258,10 @@ class _CommentReplyPanel extends StatelessWidget {
   final Future<void> Function() onLoadMore;
   final Future<void> Function() onRetry;
   final ValueChanged<int> onSeekToTime;
+
+  /// 点赞状态按评论 ID 共享：根评论与回复共用同一查询，主列表与楼中楼同步。
+  final BiliCommentLikeState Function(BiliVideoComment comment) likeStateFor;
+  final ValueChanged<BiliVideoComment> onToggleLike;
 
   @override
   Widget build(BuildContext context) {
@@ -305,11 +311,15 @@ class _CommentReplyPanel extends StatelessWidget {
               if (index == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
-                  child: _CommentTile(
-                    comment: comment,
-                    onSeekToTime: onSeekToTime,
-                    onOpenReplies: (_) {},
-                    showRepliesPreview: false,
+                  child: SignalBuilder(
+                    builder: (_) => _CommentTile(
+                      comment: comment,
+                      onSeekToTime: onSeekToTime,
+                      onOpenReplies: (_) {},
+                      showRepliesPreview: false,
+                      likeState: likeStateFor(comment),
+                      onToggleLike: () => onToggleLike(comment),
+                    ),
                   ),
                 );
               }
@@ -332,11 +342,15 @@ class _CommentReplyPanel extends StatelessWidget {
                   key: ValueKey<String>('playback-comment-reply-${reply.id}'),
                   child: Column(
                     children: [
-                      _CommentTile(
-                        comment: reply,
-                        onSeekToTime: onSeekToTime,
-                        onOpenReplies: (_) {},
-                        showRepliesPreview: false,
+                      SignalBuilder(
+                        builder: (_) => _CommentTile(
+                          comment: reply,
+                          onSeekToTime: onSeekToTime,
+                          onOpenReplies: (_) {},
+                          showRepliesPreview: false,
+                          likeState: likeStateFor(reply),
+                          onToggleLike: () => onToggleLike(reply),
+                        ),
                       ),
                       if (replyIndex != replies.length - 1)
                         Divider(

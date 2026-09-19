@@ -114,6 +114,7 @@ final class BiliDanmakuSegmentParser {
       colorValue: colorValue,
       text: text,
       rowId: rowId,
+      hasServerId: idString.isNotEmpty || id > 0,
       weight: weight,
       pool: pool,
       senderHash: senderHash,

@@ -22,6 +22,8 @@ class TuningOptionButton extends StatelessWidget {
     required this.onTap,
     this.enabled = true,
     this.supportingText,
+    this.badge,
+    this.badgeConfirmed = false,
   });
 
   final String label;
@@ -29,6 +31,15 @@ class TuningOptionButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool enabled;
   final String? supportingText;
+
+  /// 标签后的短标识（如 HDR / DV）。
+  ///
+  /// 只表达「该档位是 HDR 源」，不表达设备是否在输出 HDR；输出证据由
+  /// [badgeConfirmed] 单独表达，两者不得互相推导。
+  final String? badge;
+
+  /// 已确认设备正在输出 HDR。未确认时角标不带确认样式。
+  final bool badgeConfirmed;
 
   @override
   Widget build(BuildContext context) {
@@ -69,18 +80,33 @@ class TuningOptionButton extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: selected && enabled
-                            ? FontWeight.w900
-                            : FontWeight.w700,
-                        fontSize: 14,
-                        height: 1.15,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: selected && enabled
+                                  ? FontWeight.w900
+                                  : FontWeight.w700,
+                              fontSize: 14,
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        if (badge != null && badge!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          TuningOptionBadge(
+                            label: badge!,
+                            confirmed: badgeConfirmed,
+                            enabled: enabled,
+                          ),
+                        ],
+                      ],
                     ),
                     if (detail != null && detail.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -101,6 +127,56 @@ class TuningOptionButton extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 清晰度按钮上的 HDR/DV 角标。
+///
+/// 角标只表示「该档位的源是 HDR」；[confirmed] 才表示已确认设备正在输出
+/// HDR。未确认时角标是描边样式，不显示已开启语义。
+class TuningOptionBadge extends StatelessWidget {
+  const TuningOptionBadge({
+    super.key,
+    required this.label,
+    this.confirmed = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final bool confirmed;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    final tone = enabled
+        ? (confirmed ? AppVisualTokens.primaryBlue : visualTheme.textSecondary)
+        : visualTheme.textTertiary;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: confirmed && enabled
+            ? AppVisualTokens.primaryBlue.withValues(alpha: 0.16)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: confirmed && enabled
+              ? AppVisualTokens.primaryBlue.withValues(alpha: 0.55)
+              : tone.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: tone,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
           ),
         ),
       ),

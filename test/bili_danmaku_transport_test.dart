@@ -38,6 +38,97 @@ List<int> _bytesField(int field, List<int> value) => <int>[
 ];
 
 void main() {
+  test('弹幕点赞与撤回保留完整 dmid 并携带 CSRF', () async {
+    final transport = _DanmakuWriteTransport()
+      ..setCookie('SESSDATA', 'test-session')
+      ..setCookie('bili_jct', 'test-csrf');
+    final client = BiliClient(transport: transport);
+    const dmid = '18446744073709551001';
+    await client.setVideoDanmakuLike(
+      bvid: 'BV1TEST',
+      cid: 123,
+      dmid: dmid,
+      liked: true,
+    );
+    expect(transport.path, '/x/v2/dm/thumbup/add');
+    expect(transport.fields, {
+      'oid': '123',
+      'dmid': dmid,
+      'op': '1',
+      'platform': 'web_player',
+      'csrf': 'test-csrf',
+      'csrf_token': 'test-csrf',
+    });
+    expect(transport.referer, biliVideoReferer('BV1TEST'));
+    await client.setVideoDanmakuLike(
+      bvid: 'BV1TEST',
+      cid: 123,
+      dmid: dmid,
+      liked: false,
+    );
+    expect(transport.fields['op'], '2');
+    await client.retractVideoDanmaku(bvid: 'BV1TEST', cid: 123, dmid: dmid);
+    expect(transport.path, '/x/dm/recall');
+    expect(transport.fields, {
+      'cid': '123',
+      'dmid': dmid,
+      'type': '1',
+      'csrf': 'test-csrf',
+      'csrf_token': 'test-csrf',
+    });
+    for (final invalid in ['', 'local:100', '0', '-1']) {
+      await expectLater(
+        client.setVideoDanmakuLike(
+          bvid: 'BV1TEST',
+          cid: 123,
+          dmid: invalid,
+          liked: true,
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        client.retractVideoDanmaku(bvid: 'BV1TEST', cid: 123, dmid: invalid),
+        throwsArgumentError,
+      );
+    }
+    expect(transport.calls, 3);
+  });
+
+  test('服务端接受发送但缺少 dmid 时结果仍为未知', () async {
+    final transport = _DanmakuWriteTransport()
+      ..setCookie('SESSDATA', 'test-session')
+      ..setCookie('bili_jct', 'test-csrf');
+    final client = BiliClient(transport: transport);
+    await expectLater(
+      client.postVideoDanmaku(
+        bvid: 'BV1TEST',
+        cid: 123,
+        aid: 456,
+        message: '测试',
+        progressMs: 0,
+        mode: 1,
+      ),
+      throwsA(
+        isA<BiliApiException>().having(
+          (e) => e.outcomeUnknown,
+          'outcomeUnknown',
+          isTrue,
+        ),
+      ),
+    );
+    expect(transport.calls, 1);
+  });
+
+  test('XML 合成标识只用于本地渲染', () {
+    final entries = const BiliDanmakuParser().parse(
+      '<i><d p="1,1,25,16777215">缺少编号</d>'
+      '<d p="2,1,25,16777215,0,0,hash,">空编号</d>'
+      '<d p="3,1,25,16777215,0,0,hash,18446744073709551001">真实编号</d></i>',
+    );
+    expect(entries.map((e) => e.hasServerId), [false, false, true]);
+    expect(entries.last.rowId, '18446744073709551001');
+  });
+
   group('BiliTransport binary response', () {
     test('聚合并原样返回非 UTF-8 字节', () async {
       final httpClient = _BytesHttpClient(<List<int>>[
@@ -274,6 +365,39 @@ void main() {
     expect(transport.requestedIncludeCookies, <bool>[true, false]);
     expect(() => entries.add(entries.single), throwsUnsupportedError);
   });
+}
+
+final class _DanmakuWriteTransport extends BiliTransport {
+  _DanmakuWriteTransport() : super(httpClient: _BytesHttpClient(const []));
+  String? path;
+  String? referer;
+  Map<String, String> fields = {};
+  int calls = 0;
+
+  @override
+  Future<void> ensureReady() async {}
+
+  @override
+  Future<BiliHttpResponse> sendRequest(
+    Uri uri, {
+    required String referer,
+    String method = 'GET',
+    String? requestBody,
+    String acceptHeader = 'application/json, */*',
+    bool includeCookies = true,
+    bool storeResponseCookies = true,
+  }) async {
+    expect(method, 'POST');
+    expect(includeCookies, isTrue);
+    calls++;
+    path = uri.path;
+    this.referer = referer;
+    fields = Uri.splitQueryString(requestBody!);
+    return BiliHttpResponse(
+      statusCode: 200,
+      bodyBytes: utf8.encode('{"code":0,"data":{}}'),
+    );
+  }
 }
 
 final class _RecordingBinaryTransport extends BiliTransport {

@@ -85,7 +85,16 @@ void main() {
     final request = _Request();
     final transport = _transport(request);
 
-    await expectLater(send(transport), throwsA(isA<BiliApiException>()));
+    await expectLater(
+      send(transport),
+      throwsA(
+        isA<BiliApiException>().having(
+          (e) => e.outcomeUnknown,
+          'outcomeUnknown',
+          isTrue,
+        ),
+      ),
+    );
 
     expect(request.abortCalls, 1);
     expect(request.closeCalls, 1);

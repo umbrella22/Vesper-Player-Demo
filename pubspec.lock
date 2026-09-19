@@ -45,10 +45,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-      sha256: cfd4f5f575a49c5f10ca856e9846073f1e6c3ee94912377eea5f6cefc5272941
+      sha256: "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.1.0"
   collection:
     dependency: transitive
     description:
@@ -135,18 +135,18 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_secure_storage
-      sha256: d87713a152ee2f255117bdbbf43da1dea1797e0551e499e0334f0c9dcfafddd2
+      sha256: d4e1fb6b2cb524868929e78dc0282fa000554b22060fb53789dc481c9fc95bb8
       url: "https://pub.dev"
     source: hosted
-    version: "11.1.1"
+    version: "11.2.0"
   flutter_secure_storage_darwin:
     dependency: transitive
     description:
       name: flutter_secure_storage_darwin
-      sha256: d0b136b1e21fd4081170fc394e64197046ce889e8f63f2370a13e41b832cc044
+      sha256: a031ceac9b070e62ef183cd7f7d1a8798ebde402d5049f0fe6eb3a51bd797a21
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.2"
+    version: "0.4.3"
   flutter_secure_storage_linux:
     dependency: transitive
     description:
@@ -159,10 +159,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_secure_storage_platform_interface
-      sha256: "4bc033841169d07f690d46d89dbc3f5305b6562820822445384c82e0866e2719"
+      sha256: "64951127f001f546891c86f414972bf49ef2c4c8a4c92c65f5790cc0c9100045"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.0"
+    version: "2.1.1"
   flutter_secure_storage_web:
     dependency: transitive
     description:
@@ -281,10 +281,10 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: cab709fbb39dc2935542f1f8fe0a22974cbcc625a73be6a02d26fbada749a791
+      sha256: "368ec302cd14dd9e7482ac66c7aa8f2b5b55ca7ca8dfc97d20b152d371528d89"
       url: "https://pub.dev"
     source: hosted
-    version: "1.6.1"
+    version: "1.6.2"
   logging:
     dependency: transitive
     description:
@@ -566,74 +566,74 @@ packages:
     dependency: transitive
     description:
       name: vector_math
-      sha256: f36f9f3be64c6198714492bb455c11056e33e2f85d9a0b676a48301e44fdcf47
+      sha256: "92b9910f66ed1057fd4da7b040ae7c74cafacf885bdc81be496928d5049b032d"
       url: "https://pub.dev"
     source: hosted
-    version: "2.4.2"
+    version: "2.4.3"
   vesper_player:
     dependency: "direct main"
     description:
       name: vesper_player
-      sha256: "5cbbe848dafb847729f563471dd59136a105c232245ccba133e4510e244ec727"
+      sha256: "096018bf5ac9d88665ab467ffc020cfbf0d2c132a66893f0e7a64d3f2363ed8b"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_android:
     dependency: transitive
     description:
       name: vesper_player_android
-      sha256: "16abc0600f23edf61afeff9ee7b900904c8fff44be114225696d9b0a1a714139"
+      sha256: "9bbd8529d1f2d0e5d83c52f3119026d42562566f18a167d7c955ef9432373a61"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_external_playback:
     dependency: "direct main"
     description:
       name: vesper_player_external_playback
-      sha256: "3938a54049b6ec0814572735f7afc8e88a967add270be03aac22c2aa59ea09f9"
+      sha256: "6772eaa8707f2dc8627f47b04a1cf795f54717ccc1055c5af315ab5881cd18f6"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_ios:
     dependency: transitive
     description:
       name: vesper_player_ios
-      sha256: e891806758bc98c260ff7985e7cd8f0cce4a5261d8c0522bc4312e18880a6fd3
+      sha256: a99ba7c6e3ae130296945e3b870b19758580952aac30012b249a061e5743cd49
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_platform_interface:
     dependency: transitive
     description:
       name: vesper_player_platform_interface
-      sha256: fced72bb9e88e2099dcc210e1c6412e9a67c461ca97417851b711ba8ef79d6fc
+      sha256: "9775b722c050f9775955799c240993a5dc2ece88df87fd2c30c02613d1238524"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_remux_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_remux_ffmpeg
-      sha256: a510ef147c8a44a79e739f1a46213947fd7ac5602004b115d5db406b371cf30d
+      sha256: a2cf0229ff0708b876c652305e75e408b0765ecf76f2491638ba4623a2ab238b
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_source_normalizer_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_source_normalizer_ffmpeg
-      sha256: "115dad3e6f5c192951662b278ebbb2f5b880dccefb47953a175004c1ac29170e"
+      sha256: "486bb70b676a98c15f903bc0d8324f3637ac74c7979dc262bbfac4542684a38e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vesper_player_ui:
     dependency: "direct main"
     description:
       name: vesper_player_ui
-      sha256: "8be426e3bd59a2080cb9c17ac92248bbd75950c31fc837a4983c1ef9ed8b26d4"
+      sha256: f43e027e6fc091fafd0827eb2cec584b681fcd46b2a6b1bf5654456e7f711d6d
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.6"
+    version: "0.6.2"
   vm_service:
     dependency: transitive
     description:

@@ -26,8 +26,8 @@ final class MediaPlaybackPresentation {
   /// 手机模式进入播放页（竖屏 edge-to-edge）。
   final Future<void> Function() enterPlaybackPhone;
 
-  /// 进入全屏（横屏沉浸式）。
-  final Future<void> Function() enterFullscreen;
+  /// Enters fullscreen, or updates its orientation after the video ratio changes.
+  final Future<void> Function({required bool isPortrait}) enterFullscreen;
 
   /// 退出全屏（竖屏 edge-to-edge）。
   final Future<void> Function() exitFullscreen;
@@ -45,12 +45,13 @@ final class MediaPlaybackPresentation {
   static const noop = MediaPlaybackPresentation(
     enterPlaybackTv: _noop,
     enterPlaybackPhone: _noop,
-    enterFullscreen: _noop,
+    enterFullscreen: _noopFullscreen,
     exitFullscreen: _noop,
     restoreApp: _noop,
   );
 
   static Future<void> _noop() async {}
+  static Future<void> _noopFullscreen({required bool isPortrait}) async {}
 }
 
 /// 壳提供给内容槽的宿主：滚动联动、评论回复开关同步、评论时间跳转、

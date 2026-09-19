@@ -29,6 +29,25 @@ part 'bili_client_playback.dart';
 part 'bili_client_region.dart';
 part 'bili_client_search.dart';
 
+/// 解析 `dimension` 对象为声明尺寸。缺失、非正数与畸形值一律返回 null（未知），
+/// 与竖屏布局契约一致：未知尺寸回退横屏占位，不猜默认值。
+BiliVideoDimension? _parseVideoDimension(Object? value) {
+  final map = readObjectMap(value);
+  if (map.isEmpty) {
+    return null;
+  }
+  final width = readInt(map['width']);
+  final height = readInt(map['height']);
+  if (width == null || width <= 0 || height == null || height <= 0) {
+    return null;
+  }
+  return BiliVideoDimension(
+    width: width,
+    height: height,
+    rotateDegrees: readInt(map['rotate']) ?? 0,
+  );
+}
+
 class BiliClient {
   BiliClient({
     HttpClient? httpClient,
@@ -161,6 +180,49 @@ class BiliClient {
       pageSize: pageSize,
       keyword: keyword,
       order: order,
+    );
+  }
+
+  Future<void> removeFavoriteItems({
+    required int folderId,
+    required List<String> resourceIds,
+  }) {
+    return _BiliClientFavoritesImplementation(
+      this,
+    ).removeFavoriteItems(folderId: folderId, resourceIds: resourceIds);
+  }
+
+  Future<int> createFavoriteFolder({
+    required String title,
+    required bool isPrivate,
+  }) {
+    return _BiliClientFavoritesImplementation(
+      this,
+    ).createFavoriteFolder(title: title, isPrivate: isPrivate);
+  }
+
+  /// 读取当前视频的收藏夹归属，供收藏夹选择器预选。
+  Future<List<BiliFavoriteFolder>> fetchVideoFavoriteFolders(
+    BiliVideoDetail detail,
+  ) {
+    return _BiliClientFavoritesImplementation(
+      this,
+    ).fetchVideoFavoriteFolders(detail);
+  }
+
+  /// 按用户确认的归属集合提交增删差异。
+  ///
+  /// 与 [setVideoFavorite] 的区别是取消收藏只影响 [selection] 中显式移出的
+  /// 收藏夹；[setVideoFavorite] 仍保留「切换收藏按钮」的旧语义。
+  Future<BiliVideoEngagement> applyVideoFavoriteSelection({
+    required BiliVideoDetail detail,
+    required BiliFavoriteSelection selection,
+    BiliVideoEngagement? current,
+  }) {
+    return _BiliClientFavoritesImplementation(this).applyVideoFavoriteSelection(
+      detail: detail,
+      selection: selection,
+      current: current,
     );
   }
 
@@ -373,6 +435,7 @@ class BiliClient {
             aid: readInt(data['aid']),
             bvid: readString(data['bvid']) ?? fallbackBvid,
             coverUrl: biliNormalizeImageUrl(readString(data['pic']) ?? ''),
+            dimension: _parseVideoDimension(value['dimension']),
           ),
         )
         .toList(growable: false);
@@ -398,6 +461,7 @@ class BiliClient {
       favoriteCountLabel: biliFormatCount(readDouble(stat['favorite'])),
       shareCountLabel: biliFormatCount(readDouble(stat['share'])),
       pages: pages,
+      dimension: _parseVideoDimension(data['dimension']),
     );
   }
 
@@ -783,6 +847,98 @@ class BiliClient {
     );
   }
 
+  /// 发送一条普通弹幕，返回服务端分配的 dmid。
+  ///
+  /// 只支持普通弹幕池（mode 1/4/5/6）。mode 7 高级弹幕的发送侧未开放，
+  /// mode 8/9 永久不发：两者都不进入本方法的参数。
+  ///
+  /// 失败不自动重试——风控与限频的失败语义是「稍后再试」，重发会加重限流。
+  Future<String> postVideoDanmaku({
+    required String bvid,
+    required int cid,
+    required int aid,
+    required String message,
+    required int progressMs,
+    required int mode,
+    int fontSize = 25,
+    int color = 16777215,
+  }) async {
+    final text = message.trim();
+    if (text.isEmpty) {
+      throw const BiliApiException('弹幕内容不能为空。');
+    }
+    if (mode != 1 && mode != 4 && mode != 5 && mode != 6) {
+      throw ArgumentError('不支持的弹幕模式：$mode');
+    }
+    final data = await _transport.postData(
+      host: biliApiHost,
+      path: BiliApiPaths.danmakuPost,
+      data: <String, Object?>{
+        'type': 1,
+        'oid': cid,
+        if (aid > 0) 'pid': aid,
+        'bvid': bvid,
+        'msg': text,
+        'progress': progressMs < 0 ? 0 : progressMs,
+        'mode': mode,
+        'fontsize': fontSize,
+        'color': color,
+        'pool': 0,
+      },
+      referer: biliVideoReferer(bvid),
+    );
+    final dmid =
+        readString(data['dmid_str']) ??
+        readString(data['dmid']) ??
+        readInt(data['dmid'])?.toString();
+    if (dmid == null || dmid.isEmpty) {
+      throw const BiliApiException('弹幕已发送，但服务端未返回弹幕 ID。', outcomeUnknown: true);
+    }
+    return dmid;
+  }
+
+  Future<void> setVideoDanmakuLike({
+    required String bvid,
+    required int cid,
+    required String dmid,
+    required bool liked,
+  }) async {
+    _validateDanmakuIdentity(cid, dmid);
+    await _transport.postData(
+      host: biliApiHost,
+      path: BiliApiPaths.danmakuThumbup,
+      data: {
+        'oid': cid,
+        'dmid': dmid,
+        'op': liked ? 1 : 2,
+        'platform': 'web_player',
+      },
+      referer: biliVideoReferer(bvid),
+    );
+  }
+
+  Future<void> retractVideoDanmaku({
+    required String bvid,
+    required int cid,
+    required String dmid,
+  }) async {
+    _validateDanmakuIdentity(cid, dmid);
+    await _transport.postData(
+      host: biliApiHost,
+      path: BiliApiPaths.danmakuRecall,
+      data: {'cid': cid, 'dmid': dmid, 'type': 1},
+      referer: biliVideoReferer(bvid),
+    );
+  }
+
+  void _validateDanmakuIdentity(int cid, String dmid) {
+    if (cid <= 0 ||
+        !RegExp(r'^[0-9]+$').hasMatch(dmid) ||
+        BigInt.parse(dmid) <= BigInt.zero) {
+      throw ArgumentError('弹幕操作需要有效的分集和服务端弹幕 ID。');
+    }
+  }
+
   Future<List<int>> fetchDanmakuSpecialResource({
     required String bvid,
     required String resourceUrl,
@@ -929,6 +1085,32 @@ class BiliClient {
     return _parseVideoComment(map);
   }
 
+  /// 点赞 / 取消点赞一条评论。
+  ///
+  /// 服务端不返回新的点赞数，因此调用方按乐观更新处理：本地翻转状态与
+  /// 计数，失败时回滚。楼中楼回复使用相同的 `rpid` 语义，不需要另一个端点。
+  Future<void> setVideoCommentLike({
+    required BiliVideoDetail detail,
+    required int commentId,
+    required bool liked,
+  }) async {
+    if (commentId <= 0) {
+      throw ArgumentError('评论 ID 必须为正数。');
+    }
+    await _transport.postData(
+      host: biliApiHost,
+      path: BiliApiPaths.replyAction,
+      data: <String, Object?>{
+        // 只在视频评论区提供入口，因此 type 固定为 1。
+        'type': 1,
+        'oid': detail.aid,
+        'rpid': commentId,
+        'action': liked ? 1 : 0,
+      },
+      referer: biliVideoReferer(detail.bvid),
+    );
+  }
+
   Future<BiliVideoEngagement> setVideoFavorite({
     required BiliVideoDetail detail,
     required bool favorited,
@@ -1070,6 +1252,7 @@ class BiliClient {
       createdAtLabel: _readCommentCreatedAtLabel(value['ctime']),
       message: message,
       likeCountLabel: biliFormatCount(readDouble(value['like'])),
+      likeCount: readInt(value['like']),
       replyCount:
           readInt(value['rcount']) ?? readInt(value['count']) ?? replies.length,
       liked: (readInt(value['action']) ?? 0) > 0,

@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player/vesper_player.dart';
 
+import '../models/media_hdr_status.dart';
 import '../models/resolved_media.dart';
 import 'media_playback_widgets.dart';
 
@@ -21,6 +22,8 @@ final class TuningCodecOption {
   final bool enabled;
   final String? supportingText;
 }
+
+/// 一个清晰度选项的 HDR 表达：源标识 + 输出确认。
 
 /// 通用音画调校面板：分辨率（质量选项）/ 播放策略（codec）/ 倍速 / 字幕。
 /// 弹幕设置由播放页独立抽屉承载，不属于本面板。
@@ -47,8 +50,11 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     required this.timelineLabel,
     required this.transportLabel,
     required this.resolvedUri,
+    this.qualityHdrBadgeFor,
+    this.hdrLabel,
     this.debugPath,
     this.cacheEntry,
+    this.quickActions,
     required this.onSelectQuality,
     required this.onSelectCodec,
     required this.onSetRate,
@@ -71,8 +77,18 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
   final String timelineLabel;
   final String? transportLabel;
   final String? resolvedUri;
+
+  /// 各清晰度选项的 HDR 角标；返回 null 表示该档位无 HDR 标识。
+  final TuningQualityHdrBadge? Function(MediaQualitySelectionOption option)?
+  qualityHdrBadgeFor;
+
+  /// 当前生效轨道的 HDR 状态文案（含三态依据）；null 时不显示该行。
+  final String? hdrLabel;
   final String? debugPath;
   final Widget? cacheEntry;
+
+  /// Secondary playback actions hosted in the settings surface.
+  final Widget? quickActions;
   final ValueChanged<String?> onSelectQuality;
   final ValueChanged<String?> onSelectCodec;
   final ValueChanged<double> onSetRate;
@@ -88,6 +104,10 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
       children: [
         const PanelHeading(title: '播放设置'),
         const SizedBox(height: 16),
+        if (quickActions case final actions?) ...[
+          actions,
+          const SizedBox(height: 16),
+        ],
         Text(
           '分辨率',
           style: theme.textTheme.titleMedium?.copyWith(
@@ -156,6 +176,8 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
                 label: '实际轨道',
                 value: snapshot.effectiveVideoTrackId!,
               ),
+            if ((hdrLabel ?? '').isNotEmpty)
+              _SnapshotRow(label: 'HDR', value: hdrLabel!),
           ],
         ),
       ],
@@ -204,6 +226,9 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
             selected: selectedQualityOptionId == option.id,
             enabled: option.canSelect,
             supportingText: qualitySupportingTextFor(option),
+            badge: qualityHdrBadgeFor?.call(option)?.label,
+            badgeConfirmed:
+                qualityHdrBadgeFor?.call(option)?.confirmed ?? false,
             onTap: () => onSelectQuality(option.id),
           ),
       ],

@@ -1,5 +1,142 @@
 part of 'bili_playback_content_surfaces.dart';
 
+/// 收藏夹选择器：加载归属、预选已有收藏夹，确认后只提交差异。
+class _FavoriteFolderPickerSheet extends StatefulWidget {
+  const _FavoriteFolderPickerSheet({required this.loadFolders});
+
+  final Future<List<BiliFavoriteFolder>> Function() loadFolders;
+
+  @override
+  State<_FavoriteFolderPickerSheet> createState() =>
+      _FavoriteFolderPickerSheetState();
+}
+
+class _FavoriteFolderPickerSheetState
+    extends State<_FavoriteFolderPickerSheet> {
+  List<BiliFavoriteFolder>? _folders;
+  Set<int> _selected = <int>{};
+  bool _loadFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final folders = await widget.loadFolders();
+      if (!mounted) return;
+      setState(() {
+        _folders = folders;
+        _selected = folders
+            .where((folder) => folder.containsCurrentVideo)
+            .map((folder) => folder.id)
+            .toSet();
+        _loadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _folders = const <BiliFavoriteFolder>[];
+        _loadFailed = true;
+      });
+    }
+  }
+
+  void _toggle(int folderId, bool selected) {
+    setState(() {
+      final next = Set<int>.of(_selected);
+      if (selected) {
+        next.add(folderId);
+      } else {
+        next.remove(folderId);
+      }
+      _selected = next;
+    });
+  }
+
+  void _confirm() {
+    final folders = _folders;
+    if (folders == null) return;
+    Navigator.of(context).pop(
+      BiliFavoriteSelection.diff(
+        current: folders
+            .where((folder) => folder.containsCurrentVideo)
+            .map((folder) => folder.id),
+        target: _selected,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    final folders = _folders;
+    return PlaybackBottomSheetScaffold(
+      title: '选择收藏夹',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (folders == null)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_loadFailed)
+            Column(
+              children: [
+                Text(
+                  '收藏夹加载失败。',
+                  style: TextStyle(color: visualTheme.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                AppGlassButton(
+                  label: '重试',
+                  onPressed: () {
+                    setState(() => _folders = null);
+                    unawaited(_load());
+                  },
+                ),
+              ],
+            )
+          else if (folders.isEmpty)
+            Text(
+              '还没有收藏夹，请先在收藏页新建。',
+              style: TextStyle(color: visualTheme.textSecondary),
+            )
+          else ...[
+            for (final folder in folders)
+              CheckboxListTile(
+                key: ValueKey('favorite-folder-${folder.id}'),
+                value: _selected.contains(folder.id),
+                onChanged: (value) => _toggle(folder.id, value ?? false),
+                contentPadding: EdgeInsets.zero,
+                title: Text(folder.title),
+                subtitle: folder.mediaCount == null
+                    ? null
+                    : Text('${folder.mediaCount} 个内容'),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              _selected.isEmpty
+                  ? '不选择任何收藏夹并确认，将取消收藏。'
+                  : '将收藏到已选的 ${_selected.length} 个收藏夹。',
+              style: TextStyle(color: visualTheme.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 14),
+            AppGlassButton(
+              label: '确认',
+              onPressed: _confirm,
+              width: double.infinity,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _IntroSurface extends StatefulWidget {
   const _IntroSurface({required this.surfaces});
 
@@ -7,6 +144,29 @@ class _IntroSurface extends StatefulWidget {
 
   @override
   State<_IntroSurface> createState() => _IntroSurfaceState();
+}
+
+/// 收藏按钮改为打开收藏夹选择器；其余动作沿用平台声明的回调。
+List<MediaEngagementActionSpec> _withFavoritePicker(
+  List<MediaEngagementActionSpec> actions,
+  BiliPlaybackContentSurfaces surfaces,
+  BuildContext context,
+) {
+  return [
+    for (final action in actions)
+      if (action.id == MediaEngagementActionId.favorite)
+        MediaEngagementActionSpec(
+          id: action.id,
+          label: action.label,
+          count: action.count,
+          countLabel: action.countLabel,
+          selected: action.selected,
+          busy: action.busy,
+          perform: () => surfaces._showFavoriteFolderPicker(context),
+        )
+      else
+        action,
+  ];
 }
 
 class _IntroSurfaceState extends State<_IntroSurface> {
@@ -84,7 +244,7 @@ class _IntroSurfaceState extends State<_IntroSurface> {
             key: const ValueKey<String>('bili-intro-engagement-bar'),
             padding: const EdgeInsets.only(top: 22),
             child: MediaEngagementBar(
-              actions: capability.actions,
+              actions: _withFavoritePicker(capability.actions, s, context),
               onMessage: (message) => _showSnackBar(context, message),
               layout: MediaEngagementBarLayout.compactIconRow,
             ),

@@ -43,6 +43,12 @@ final class SeekAwarePlayerController implements VesperPlayerController {
       _inner.pictureInPictureEvents;
 
   @override
+  Stream<VesperVideoSurfaceGeometry?> videoGeometryForView(int viewId) =>
+      // The SDK view subscribes through this proxy; preserve its per-view stream.
+      // ignore: invalid_use_of_internal_member
+      _inner.videoGeometryForView(viewId);
+
+  @override
   Future<VesperPlaybackCapabilityProbeResult> probeAssociatedPlaybackCapability(
     VesperPlaybackCapabilityProbeRequest request,
   ) => _inner.probeAssociatedPlaybackCapability(request);

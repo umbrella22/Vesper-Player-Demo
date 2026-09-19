@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_media/bili/bili_media_platform_adapter.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -25,6 +27,18 @@ void main() {
       expect(generic.pages.first.pageNumber, 1);
       expect(generic.pages.first.title, 'P1 标题');
       expect(generic.pages.first.durationSeconds, 300);
+      expect(generic.declaredAspectRatio, 9 / 16);
+      expect(generic.pages.first.declaredAspectRatio, 9 / 16);
+      expect(generic.pages.last.declaredAspectRatio, isNull);
+      expect(jsonDecode(jsonEncode(generic.platformExtras))['dimension'], {
+        'width': 1920,
+        'height': 1080,
+        'rotate': 90,
+      });
+      expect(
+        jsonDecode(jsonEncode(generic.pages.first.platformExtras))['dimension'],
+        {'width': 1080, 'height': 1920, 'rotate': 0},
+      );
     });
 
     test('番剧详情标记 isEpisodic', () {
@@ -72,6 +86,9 @@ void main() {
       expect(roundTrip.coinCountLabel, original.coinCountLabel);
       expect(roundTrip.favoriteCountLabel, original.favoriteCountLabel);
       expect(roundTrip.shareCountLabel, original.shareCountLabel);
+      expect(roundTrip.dimension?.width, original.dimension?.width);
+      expect(roundTrip.dimension?.height, original.dimension?.height);
+      expect(roundTrip.dimension?.rotateDegrees, 90);
       expect(roundTrip.pages, hasLength(original.pages.length));
       for (var i = 0; i < original.pages.length; i++) {
         expect(roundTrip.pages[i].cid, original.pages[i].cid);
@@ -85,6 +102,18 @@ void main() {
         expect(roundTrip.pages[i].aid, original.pages[i].aid);
         expect(roundTrip.pages[i].bvid, original.pages[i].bvid);
         expect(roundTrip.pages[i].episodeId, original.pages[i].episodeId);
+        expect(
+          roundTrip.pages[i].dimension?.width,
+          original.pages[i].dimension?.width,
+        );
+        expect(
+          roundTrip.pages[i].dimension?.height,
+          original.pages[i].dimension?.height,
+        );
+        expect(
+          roundTrip.pages[i].dimension?.rotateDegrees,
+          original.pages[i].dimension?.rotateDegrees,
+        );
       }
     });
   });
@@ -271,6 +300,11 @@ BiliVideoDetail _buildDetail() {
     coinCountLabel: '7.6千',
     favoriteCountLabel: '5.4千',
     shareCountLabel: '3.2千',
+    dimension: const BiliVideoDimension(
+      width: 1920,
+      height: 1080,
+      rotateDegrees: 90,
+    ),
     pages: const <BiliVideoPageEntry>[
       BiliVideoPageEntry(
         cid: 101,
@@ -280,6 +314,7 @@ BiliVideoDetail _buildDetail() {
         aid: 42,
         bvid: 'BV1xx',
         coverUrl: 'https://cover/p1',
+        dimension: BiliVideoDimension(width: 1080, height: 1920),
         episodeId: null,
       ),
       BiliVideoPageEntry(

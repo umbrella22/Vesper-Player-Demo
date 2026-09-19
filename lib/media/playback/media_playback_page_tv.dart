@@ -94,31 +94,53 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   fit: StackFit.expand,
                   children: [
                     Positioned.fill(
-                      child: VesperPlayerView(controller: controller),
-                    ),
-                    if (_viewModel.adapter.danmaku case final danmaku?)
-                      Positioned.fill(
-                        child: SignalBuilder(
-                          builder: (context) => MediaDanmakuLayer(
-                            provider: danmaku,
-                            target: MediaPlaybackTarget(
-                              detail: _viewModel.detail,
-                              entry: _viewModel.selectedEntry,
-                            ),
-                            positionMs: snapshot.timeline.positionMs,
-                            playbackState: snapshot.playbackState,
-                            playbackRate: snapshot.playbackRate,
-                            settings: _danmakuSettings,
-                            onMetricsChanged:
-                                _performanceDiagnosticsController
-                                    .overlayReportingActive
-                                    .value
-                                ? _performanceDiagnosticsController
-                                      .updateOverlayMetrics
-                                : null,
-                          ),
+                      child: SignalBuilder(
+                        builder: (context) => MediaVideoContent(
+                          key: ObjectKey(controller),
+                          active:
+                              !_viewModel.isSourceTransitioning &&
+                              !_viewModel.isAudioOnlyPlaybackActive,
+                          overlayBuilder: _viewModel.adapter.danmaku == null
+                              ? null
+                              : (interaction, visible) => SignalBuilder(
+                                  builder: (context) => MediaDanmakuLayer(
+                                    provider: _viewModel.adapter.danmaku!,
+                                    target: MediaPlaybackTarget(
+                                      detail: _viewModel.detail,
+                                      entry: _viewModel.selectedEntry,
+                                    ),
+                                    positionMs: snapshot.timeline.positionMs,
+                                    playbackState: snapshot.playbackState,
+                                    playbackRate: snapshot.playbackRate,
+                                    settings: visible
+                                        ? _danmakuSettings
+                                        : _danmakuSettings.copyWith(
+                                            enabled: false,
+                                          ),
+                                    onMetricsChanged:
+                                        _performanceDiagnosticsController
+                                            .overlayReportingActive
+                                            .value
+                                        ? _performanceDiagnosticsController
+                                              .updateOverlayMetrics
+                                        : null,
+                                  ),
+                                ),
+                          builder: (onGeometryChanged, overlay, onContentTap) =>
+                              Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  VesperPlayerView(
+                                    controller: controller,
+                                    onGeometryChanged: onGeometryChanged,
+                                  ),
+                                  if (overlay != null)
+                                    IgnorePointer(child: overlay),
+                                ],
+                              ),
                         ),
                       ),
+                    ),
                     Positioned.fill(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,

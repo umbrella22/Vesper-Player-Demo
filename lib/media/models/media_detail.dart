@@ -12,6 +12,7 @@ final class MediaDetail {
     this.ownerName,
     this.replyCountLabel,
     this.danmakuCountLabel,
+    this.declaredAspectRatio,
     this.platformExtras = const <String, Object?>{},
   });
 
@@ -34,6 +35,9 @@ final class MediaDetail {
   final String? replyCountLabel;
   final String? danmakuCountLabel;
 
+  /// Rotation-corrected metadata hint for the first entry, before native size.
+  final double? declaredAspectRatio;
+
   final Map<String, Object?> platformExtras;
 
   MediaPlaybackEntry get firstEntry => pages.first;
@@ -47,6 +51,7 @@ final class MediaPlaybackEntry {
     required this.title,
     required this.durationSeconds,
     this.coverUrl,
+    this.declaredAspectRatio,
     this.platformExtras = const <String, Object?>{},
   });
 
@@ -57,6 +62,9 @@ final class MediaPlaybackEntry {
   final String title;
   final int durationSeconds;
   final String? coverUrl;
+
+  /// This entry's rotation-corrected display ratio, before native size is known.
+  final double? declaredAspectRatio;
 
   final Map<String, Object?> platformExtras;
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vesper_media/bili/common/models/bili_favorites_models.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
@@ -243,6 +244,135 @@ void main() {
       expect(client.sentComments, <String>['好看，支持一下']);
       expect(vm.comments.first.message, '好看，支持一下');
     });
+
+    test('comment like is optimistic and shares state by comment id', () async {
+      final client = _FakePlaybackVmClient()
+        ..comments = [_comment(7, '用户A', '第一条', likeCountLabel: '12')];
+      final vm = await _createVm(client, _detail(), _detail().pages.first);
+      await vm.loadComments();
+      final comment = vm.comments.single;
+      expect(vm.commentLikeStateFor(comment).liked, isFalse);
+
+      expect(await vm.toggleCommentLike(comment), '已点赞');
+      expect(client.commentLikeCalls.single.commentId, 7);
+      expect(client.commentLikeCalls.single.liked, isTrue);
+      // 服务端不返回新计数，本地乐观 +1。
+      expect(vm.commentLikeStateFor(comment).liked, isTrue);
+      expect(vm.commentLikeStateFor(comment).likeCountLabel, '13');
+
+      expect(await vm.toggleCommentLike(comment), '已取消点赞');
+      expect(client.commentLikeCalls.last.liked, isFalse);
+      expect(vm.commentLikeStateFor(comment).likeCountLabel, '12');
+    });
+
+    test('a failed comment like rolls back state and count', () async {
+      final client = _FakePlaybackVmClient()
+        ..comments = [_comment(7, '用户A', '第一条', likeCountLabel: '1.2万')]
+        ..commentLikeError = const BiliApiException('风控校验失败');
+      final vm = await _createVm(client, _detail(), _detail().pages.first);
+      await vm.loadComments();
+      final comment = vm.comments.single;
+
+      final message = await vm.toggleCommentLike(comment);
+      expect(message, contains('风控校验失败'));
+      expect(vm.commentLikeStateFor(comment).liked, isFalse);
+      expect(vm.commentLikeStateFor(comment).likeCountLabel, '1.2万');
+      expect(vm.commentLikeStateFor(comment).pending, isFalse);
+    });
+
+    test('an in-flight comment like blocks duplicate submission', () async {
+      final client = _FakePlaybackVmClient()
+        ..comments = [_comment(7, '用户A', '第一条', likeCountLabel: '3')]
+        ..commentLikeCompleter = Completer<void>();
+      final vm = await _createVm(client, _detail(), _detail().pages.first);
+      await vm.loadComments();
+      final comment = vm.comments.single;
+
+      final pending = vm.toggleCommentLike(comment);
+      expect(vm.commentLikeStateFor(comment).pending, isTrue);
+      // 快速连点的第二次不产生新请求。
+      expect(await vm.toggleCommentLike(comment), isNull);
+      expect(client.commentLikeCalls, hasLength(1));
+      client.commentLikeCompleter!.complete();
+      await pending;
+      expect(vm.commentLikeStateFor(comment).pending, isFalse);
+      expect(vm.commentLikeStateFor(comment).liked, isTrue);
+    });
+
+    test(
+      'raw counts preserve abbreviated label precision when unliking',
+      () async {
+        final comment = _comment(
+          7,
+          '用户A',
+          '第一条',
+          likeCountLabel: '1.0万',
+          likeCount: 10499,
+        ).copyWith(liked: true);
+        final client = _FakePlaybackVmClient()..comments = [comment];
+        final vm = await _createVm(client, _detail(), _detail().pages.first);
+        await vm.loadComments();
+        await vm.toggleCommentLike(comment);
+        expect(vm.commentLikeStateFor(comment).likeCount, 10498);
+        expect(vm.commentLikeStateFor(comment).likeCountLabel, '1.0万');
+      },
+    );
+
+    test(
+      'a fresh comment response reconciles a completed like override',
+      () async {
+        final original = _comment(7, '用户A', '第一条', likeCount: 12);
+        final client = _FakePlaybackVmClient()..comments = [original];
+        final vm = await _createVm(client, _detail(), _detail().pages.first);
+        await vm.loadComments();
+        await vm.toggleCommentLike(original);
+        client.comments = [
+          _comment(7, '用户A', '第一条', likeCountLabel: '20', likeCount: 20),
+        ];
+        await vm.loadComments();
+        expect(vm.commentLikeStateFor(original).liked, isFalse);
+        expect(vm.commentLikeStateFor(original).likeCount, 20);
+      },
+    );
+
+    test(
+      'an older read response cannot erase a newer completed like',
+      () async {
+        final original = _comment(7, '用户A', '第一条', likeCountLabel: '12');
+        final client = _FakePlaybackVmClient()..comments = [original];
+        final vm = await _createVm(client, _detail(), _detail().pages.first);
+        await vm.loadComments();
+        final gate = Completer<BiliVideoCommentPage>();
+        client.commentsGate = gate;
+        final reload = vm.loadComments();
+        await vm.toggleCommentLike(original);
+        gate.complete(
+          BiliVideoCommentPage(
+            comments: [original],
+            page: 1,
+            pageSize: 20,
+            totalCount: 1,
+            hasMore: false,
+          ),
+        );
+        await reload;
+        expect(vm.commentLikeStateFor(vm.comments.single).liked, isTrue);
+        expect(vm.commentLikeStateFor(original).likeCount, 13);
+      },
+    );
+
+    test('an unknown raw count keeps the server label', () async {
+      final client = _FakePlaybackVmClient()
+        ..comments = [_comment(7, '用户A', '第一条', likeCountLabel: '--')];
+      final vm = await _createVm(client, _detail(), _detail().pages.first);
+      await vm.loadComments();
+      final comment = vm.comments.single;
+
+      await vm.toggleCommentLike(comment);
+      expect(vm.commentLikeStateFor(comment).liked, isTrue);
+      // 无法解析计数时不做本地增减，也不显示猜出来的数字。
+      expect(vm.commentLikeStateFor(comment).likeCountLabel, '--');
+    });
   });
 
   group('engagement and watch later', () {
@@ -341,6 +471,92 @@ void main() {
       expect(await vm.toggleFollow(), '已关注 UP 主');
       expect(vm.engagement!.isFollowingOwner, isTrue);
     });
+
+    test('loadFavoriteFolders surfaces ownership for preselection', () async {
+      final client = _FakePlaybackVmClient()
+        ..favoriteFolders = const [
+          BiliFavoriteFolder(id: 1, title: '默认', containsCurrentVideo: true),
+          BiliFavoriteFolder(id: 2, title: '学习', containsCurrentVideo: false),
+        ];
+      final vm = await authenticatedVm(client);
+      final folders = await vm.loadFavoriteFolders();
+      expect(folders.map((folder) => folder.id), [1, 2]);
+      expect(folders.first.containsCurrentVideo, isTrue);
+    });
+
+    test('unfavoriting one folder keeps the other ownership', () async {
+      final client = _FakePlaybackVmClient()
+        ..engagement = const BiliVideoEngagement(
+          isAuthenticated: true,
+          isLiked: false,
+          isFavorited: true,
+          isFollowingOwner: false,
+          favoriteMediaIds: <int>[1, 2],
+        );
+      final vm = await authenticatedVm(client);
+
+      // 只移出收藏夹 1，保留收藏夹 2 的归属。
+      final message = await vm.applyFavoriteSelection(
+        const BiliFavoriteSelection(addFolderIds: [], removeFolderIds: [1]),
+      );
+      expect(message, '已收藏');
+      expect(client.submittedSelections.single.removeFolderIds, [1]);
+      expect(vm.engagement!.favoriteMediaIds, [2]);
+      expect(vm.engagement!.isFavorited, isTrue);
+    });
+
+    test('clearing every folder reports an unfavorite', () async {
+      final client = _FakePlaybackVmClient()
+        ..engagement = const BiliVideoEngagement(
+          isAuthenticated: true,
+          isLiked: false,
+          isFavorited: true,
+          isFollowingOwner: false,
+          favoriteMediaIds: <int>[1],
+        );
+      final vm = await authenticatedVm(client);
+
+      final message = await vm.applyFavoriteSelection(
+        const BiliFavoriteSelection(addFolderIds: [], removeFolderIds: [1]),
+      );
+      expect(message, '已取消收藏');
+      expect(vm.engagement!.isFavorited, isFalse);
+      expect(vm.engagement!.favoriteMediaIds, isEmpty);
+    });
+
+    test('an unchanged selection writes nothing and stays silent', () async {
+      final client = _FakePlaybackVmClient()
+        ..engagement = const BiliVideoEngagement(
+          isAuthenticated: true,
+          isLiked: false,
+          isFavorited: true,
+          isFollowingOwner: false,
+          favoriteMediaIds: <int>[1],
+        );
+      final vm = await authenticatedVm(client);
+
+      final message = await vm.applyFavoriteSelection(
+        const BiliFavoriteSelection(addFolderIds: [], removeFolderIds: []),
+      );
+      expect(message, isNull);
+      expect(vm.engagement!.isFavorited, isTrue);
+      expect(vm.engagement!.favoriteMediaIds, [1]);
+    });
+
+    test(
+      'a failed selection write reports the failure and clears busy',
+      () async {
+        final client = _FakePlaybackVmClient()
+          ..favoriteSelectionError = const BiliApiException('风控校验失败');
+        final vm = await authenticatedVm(client);
+
+        final message = await vm.applyFavoriteSelection(
+          const BiliFavoriteSelection(addFolderIds: [3], removeFolderIds: []),
+        );
+        expect(message, contains('风控校验失败'));
+        expect(vm.pendingEngagementAction, isNull);
+      },
+    );
 
     test(
       'pending engagement action deduplicates concurrent operations',
@@ -631,6 +847,8 @@ BiliVideoComment _comment(
   String author,
   String message, {
   int replyCount = 0,
+  String likeCountLabel = '0',
+  int? likeCount,
 }) {
   return BiliVideoComment(
     id: id,
@@ -639,7 +857,8 @@ BiliVideoComment _comment(
     authorLevelLabel: 'LV1',
     createdAtLabel: '刚刚',
     message: message,
-    likeCountLabel: '0',
+    likeCountLabel: likeCountLabel,
+    likeCount: likeCount ?? int.tryParse(likeCountLabel),
     replyCount: replyCount,
     pictures: const <BiliCommentPicture>[],
     replies: const <BiliVideoComment>[],
@@ -661,6 +880,7 @@ BiliFeedVideo _feed(int aid, String bvid, String title) {
 }
 
 final class _FakePlaybackVmClient extends BiliClient {
+  Completer<BiliVideoCommentPage>? commentsGate;
   List<BiliVideoComment> comments = const <BiliVideoComment>[];
   List<BiliVideoComment> extraComments = const <BiliVideoComment>[];
   Object? commentError;
@@ -718,6 +938,7 @@ final class _FakePlaybackVmClient extends BiliClient {
     int page = 1,
     int pageSize = 20,
   }) async {
+    if (commentsGate case final gate?) return gate.future;
     final error = commentError;
     if (error != null) {
       throw error;
@@ -814,6 +1035,61 @@ final class _FakePlaybackVmClient extends BiliClient {
     BiliVideoEngagement? current,
   }) async {
     engagement = (current ?? engagement).copyWith(isFavorited: favorited);
+    return engagement;
+  }
+
+  List<BiliFavoriteFolder> favoriteFolders = const <BiliFavoriteFolder>[];
+  Object? favoriteFoldersError;
+  final List<({int commentId, bool liked})> commentLikeCalls =
+      <({int commentId, bool liked})>[];
+  Object? commentLikeError;
+  Completer<void>? commentLikeCompleter;
+
+  @override
+  Future<void> setVideoCommentLike({
+    required BiliVideoDetail detail,
+    required int commentId,
+    required bool liked,
+  }) async {
+    commentLikeCalls.add((commentId: commentId, liked: liked));
+    final error = commentLikeError;
+    if (error != null) throw error;
+    final completer = commentLikeCompleter;
+    if (completer != null) {
+      await completer.future;
+    }
+  }
+
+  final List<BiliFavoriteSelection> submittedSelections =
+      <BiliFavoriteSelection>[];
+  Object? favoriteSelectionError;
+
+  @override
+  Future<List<BiliFavoriteFolder>> fetchVideoFavoriteFolders(
+    BiliVideoDetail detail,
+  ) async {
+    final error = favoriteFoldersError;
+    if (error != null) throw error;
+    return favoriteFolders;
+  }
+
+  @override
+  Future<BiliVideoEngagement> applyVideoFavoriteSelection({
+    required BiliVideoDetail detail,
+    required BiliFavoriteSelection selection,
+    BiliVideoEngagement? current,
+  }) async {
+    submittedSelections.add(selection);
+    final error = favoriteSelectionError;
+    if (error != null) throw error;
+    final base = current ?? engagement;
+    final owned = <int>{...base.favoriteMediaIds, ...selection.addFolderIds}
+      ..removeAll(selection.removeFolderIds);
+    engagement = base.copyWith(
+      isAuthenticated: true,
+      isFavorited: owned.isNotEmpty,
+      favoriteMediaIds: owned.toList(growable: false),
+    );
     return engagement;
   }
 

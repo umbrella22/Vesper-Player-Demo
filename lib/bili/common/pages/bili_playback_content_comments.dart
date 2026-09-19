@@ -10,7 +10,13 @@ class _CommentsSurface extends StatefulWidget {
 }
 
 class _CommentsSurfaceState extends State<_CommentsSurface> {
-  BiliVideoComment? _openedCommentReplies;
+  final _openedCommentReplies = signal<BiliVideoComment?>(null);
+
+  @override
+  void dispose() {
+    _openedCommentReplies.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +27,7 @@ class _CommentsSurfaceState extends State<_CommentsSurface> {
   void _openReplies(BiliVideoComment comment) {
     final s = widget.surfaces;
     s.host.commentComposerFocusNode.unfocus();
-    setState(() {
-      _openedCommentReplies = comment;
-    });
+    _openedCommentReplies.value = comment;
     s.host.onCommentRepliesVisibilityChanged(true);
     unawaited(s.viewModel.loadCommentReplies(comment));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -35,12 +39,10 @@ class _CommentsSurfaceState extends State<_CommentsSurface> {
 
   void _closeReplies() {
     final s = widget.surfaces;
-    if (_openedCommentReplies == null) {
+    if (_openedCommentReplies.value == null) {
       return;
     }
-    setState(() {
-      _openedCommentReplies = null;
-    });
+    _openedCommentReplies.value = null;
     s.host.onCommentRepliesVisibilityChanged(false);
     s.viewModel.clearCommentReplies();
   }
@@ -48,26 +50,35 @@ class _CommentsSurfaceState extends State<_CommentsSurface> {
   Widget _buildCommentsBody(BuildContext context) {
     final s = widget.surfaces;
     final vm = s.viewModel;
-    final openedCommentReplies = _openedCommentReplies;
+    final openedCommentReplies = _openedCommentReplies.value;
     if (openedCommentReplies != null) {
-      return NotificationListener<ScrollNotification>(
-        onNotification: s.host.onContentScroll,
-        child: _CommentReplyPanel(
-          comment: openedCommentReplies,
-          replies: vm.commentReplies,
-          totalCount: vm.commentRepliesTotalCount,
-          loading: vm.commentRepliesLoading,
-          loadingMore: vm.commentRepliesLoadingMore,
-          hasMore: vm.commentRepliesHasMore,
-          errorMessage: vm.commentRepliesError,
-          controller: s.host.commentRepliesScrollController,
-          onClose: _closeReplies,
-          onLoadMore: vm.loadMoreCommentReplies,
-          onRetry: () => vm.retryCommentReplies(openedCommentReplies),
-          onSeekToTime: (seconds) {
-            _closeReplies();
-            unawaited(s.host.onSeekToTime(seconds));
-          },
+      return PopScope(
+        // 楼中楼是播放页内的一层内容，系统与播放器返回都先关闭这一层。
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _closeReplies();
+        },
+        child: NotificationListener<ScrollNotification>(
+          onNotification: s.host.onContentScroll,
+          child: _CommentReplyPanel(
+            comment: openedCommentReplies,
+            replies: vm.commentReplies,
+            totalCount: vm.commentRepliesTotalCount,
+            loading: vm.commentRepliesLoading,
+            loadingMore: vm.commentRepliesLoadingMore,
+            hasMore: vm.commentRepliesHasMore,
+            errorMessage: vm.commentRepliesError,
+            controller: s.host.commentRepliesScrollController,
+            onClose: _closeReplies,
+            onLoadMore: vm.loadMoreCommentReplies,
+            onRetry: () => vm.retryCommentReplies(openedCommentReplies),
+            onSeekToTime: (seconds) {
+              _closeReplies();
+              unawaited(s.host.onSeekToTime(seconds));
+            },
+            likeStateFor: vm.commentLikeStateFor,
+            onToggleLike: (comment) => unawaited(_toggleLike(context, comment)),
+          ),
         ),
       );
     }
@@ -96,6 +107,9 @@ class _CommentsSurfaceState extends State<_CommentsSurface> {
                 onSeekToTime: (seconds) =>
                     unawaited(s.host.onSeekToTime(seconds)),
                 onOpenReplies: _openReplies,
+                likeStateFor: vm.commentLikeStateFor,
+                onToggleLike: (comment) =>
+                    unawaited(_toggleLike(context, comment)),
               ),
             ],
           ),
@@ -112,6 +126,17 @@ class _CommentsSurfaceState extends State<_CommentsSurface> {
         ),
       ],
     );
+  }
+
+  /// 点赞一条评论：状态由 view model 按评论 ID 共享，主列表与楼中楼同步。
+  Future<void> _toggleLike(
+    BuildContext context,
+    BiliVideoComment comment,
+  ) async {
+    final message = await widget.surfaces.viewModel.toggleCommentLike(comment);
+    if (message != null && context.mounted) {
+      _showSnackBar(context, message);
+    }
   }
 
   Future<void> _submitComment(BuildContext context, String rawMessage) async {
@@ -154,6 +179,8 @@ class _CommentThreadList extends StatelessWidget {
     required this.onLoadMore,
     required this.onSeekToTime,
     required this.onOpenReplies,
+    required this.likeStateFor,
+    required this.onToggleLike,
   });
 
   final List<BiliVideoComment> comments;
@@ -165,6 +192,8 @@ class _CommentThreadList extends StatelessWidget {
   final Future<void> Function() onLoadMore;
   final ValueChanged<int> onSeekToTime;
   final ValueChanged<BiliVideoComment> onOpenReplies;
+  final BiliCommentLikeState Function(BiliVideoComment comment) likeStateFor;
+  final ValueChanged<BiliVideoComment> onToggleLike;
 
   @override
   Widget build(BuildContext context) {
@@ -226,10 +255,14 @@ class _CommentThreadList extends StatelessWidget {
           )
         else ...[
           for (final comment in comments) ...[
-            _CommentTile(
-              comment: comment,
-              onSeekToTime: onSeekToTime,
-              onOpenReplies: onOpenReplies,
+            SignalBuilder(
+              builder: (_) => _CommentTile(
+                comment: comment,
+                onSeekToTime: onSeekToTime,
+                onOpenReplies: onOpenReplies,
+                likeState: likeStateFor(comment),
+                onToggleLike: () => onToggleLike(comment),
+              ),
             ),
             if (comment != comments.last)
               Divider(height: 28, thickness: 0.7, color: visualTheme.divider),
@@ -278,12 +311,18 @@ class _CommentTile extends StatelessWidget {
     required this.comment,
     required this.onSeekToTime,
     required this.onOpenReplies,
+    this.likeState,
+    this.onToggleLike,
     this.showRepliesPreview = true,
   });
 
   final BiliVideoComment comment;
   final ValueChanged<int> onSeekToTime;
   final ValueChanged<BiliVideoComment> onOpenReplies;
+
+  /// 点赞状态（含待处理标记）；null 时回退到服务端返回值且不可交互。
+  final BiliCommentLikeState? likeState;
+  final VoidCallback? onToggleLike;
   final bool showRepliesPreview;
 
   @override
@@ -375,7 +414,11 @@ class _CommentTile extends StatelessWidget {
                 _CommentPictureGrid(pictures: comment.pictures),
               ],
               const SizedBox(height: 10),
-              _CommentActionRow(comment: comment),
+              _CommentActionRow(
+                comment: comment,
+                likeState: likeState,
+                onToggleLike: onToggleLike,
+              ),
               if (showRepliesPreview && comment.replies.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 _CommentReplyPreview(

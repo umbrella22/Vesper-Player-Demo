@@ -5,6 +5,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
     final generation = ++_controllerGeneration;
     _invalidatePlaybackSelectionRequests();
     _resetRuntimeTrackCapabilityState();
+    _resetHdrStatus();
     _suppressedPlaybackCommandError.value = null;
     VesperPlayerController? nextController;
     try {
@@ -20,6 +21,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
           );
       if (!_isDisposed && generation == _controllerGeneration) {
         _resolvedPlayback.value = resolved;
+        _syncVideoAspectRatio();
       }
 
       final sourceNormalizerFuture = mediaPlayerSourceNormalizerConfiguration();
@@ -75,6 +77,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
         throw const _PlaybackSourceObsoleted();
       }
       _controller = nextController;
+      _hdrSourceNormalizerConfiguration = sourceNormalizerConfiguration;
       _userController = SeekAwarePlayerController(
         nextController,
         () => _userSeekGeneration += 1,
@@ -82,6 +85,9 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       if (nextController.snapshot.lastError case final lastError?) {
         _handleControllerError(lastError, generation);
       }
+      // 异步探测当前源的 HDR 能力和元数据，不阻塞起播。
+      _syncHdrCapability(nextController.snapshot);
+      _syncVideoAspectRatio(nextController.snapshot);
       // controllerFuture 对外 resolve 代理：页面/舞台拿到的是
       // seek 感知实例（SDK 进度条手势 seek 使在途历史续播失效）。
       return _userController!;

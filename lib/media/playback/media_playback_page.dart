@@ -15,6 +15,7 @@ import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import '../diagnostics/media_diagnostics_report_share.dart';
 
 import 'media_listen_mode_view.dart';
+import 'media_video_content.dart';
 
 part 'media_playback_page_actions.dart';
 part 'media_playback_page_diagnostics.dart';
@@ -46,6 +47,9 @@ class MediaPlaybackPage extends StatefulWidget {
     this.binding = const MediaPlaybackBinding(),
     this.deviceControls = const MediaNoopDeviceControls(),
     this.contentTabsTrailing,
+    this.danmakuComposer,
+    this.danmakuSendController,
+    this.onDanmakuEventSelected,
     this.tuningCacheEntry,
     this.danmakuSettingsSurface,
     this.danmakuSettingsListenable,
@@ -69,6 +73,18 @@ class MediaPlaybackPage extends StatefulWidget {
 
   /// 内容 tab 尾部扩展（如弹幕入口胶囊）。
   final Widget? contentTabsTrailing;
+
+  /// 手机内容 tab 尾部的弹幕发送入口，优先于 [contentTabsTrailing]。
+  ///
+  /// 壳提供当前位置读取函数，弹出的输入栏在提交时调用，避免使用打开时
+  /// 的旧位置。平台未声明发送能力时为空。
+  final Widget Function(int Function() currentPositionMs)? danmakuComposer;
+
+  /// 点击一条可见弹幕（暂停时可用）；为空表示画布不接收触摸。
+  final ValueChanged<MediaDanmakuEvent>? onDanmakuEventSelected;
+
+  /// 弹幕发送通道：壳把它绑定到当前弹幕会话，供 [danmakuComposer] 使用。
+  final MediaDanmakuSendController? danmakuSendController;
 
   /// 调校面板的离线缓存入口（下载保持 app 级）。
   final Widget? tuningCacheEntry;
@@ -112,6 +128,9 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   void Function()? _messageEffect;
   void Function()? _diagnosticsTargetEffect;
   void Function()? _controllerEffect;
+  void Function()? _fullscreenPresentationEffect;
+  bool? _fullscreenPortrait;
+  Future<void> _presentationTail = Future<void>.value();
 
   /// 内容 tab 控制器；平台未声明内容面板时为 null（不渲染 tab 区）。
   /// build 中按能力同步（评论面板可用性依赖 context，initState 无法判定）。
@@ -162,7 +181,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   VesperPlayerController? _pictureInPictureController;
   StreamSubscription<VesperPlayerPictureInPictureEvent>?
   _pictureInPictureEvents;
-  bool _pictureInPictureActive = false;
+  final Signal<bool> _pictureInPicturePresentation = Signal<bool>(false);
   bool _pictureInPictureSupported = false;
   bool _pictureInPictureAvailabilityPolled = false;
 
@@ -218,6 +237,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     _messageEffect = effect(_handleViewModelMessage);
     _diagnosticsTargetEffect = effect(_trackDiagnosticsPlaybackTarget);
     _controllerEffect = effect(_trackPlaybackController);
+    _fullscreenPresentationEffect = effect(_syncFullscreenPresentation);
     WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleTvHardwareKeyEvent);
     widget.danmakuSettingsListenable?.addListener(
@@ -274,10 +294,12 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     _messageEffect?.call();
     _diagnosticsTargetEffect?.call();
     _controllerEffect?.call();
+    _fullscreenPresentationEffect?.call();
     unawaited(_performanceDiagnosticsController.dispose());
     _diagnosticsDanmakuEnabledOverride.dispose();
     _danmakuSettingsSignal.dispose();
     _detachPictureInPicture();
+    _pictureInPicturePresentation.dispose();
     unawaited(_restoreAppPresentation());
     super.dispose();
   }
@@ -369,7 +391,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
     _pictureInPictureEvents?.cancel();
     _pictureInPictureEvents = null;
     _pictureInPictureController = null;
-    _pictureInPictureActive = false;
+    _pictureInPicturePresentation.value = false;
     _pictureInPictureSupported = false;
     _pictureInPictureAvailabilityPolled = false;
   }
@@ -429,17 +451,14 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   }
 
   void _handlePictureInPictureEvent(VesperPlayerPictureInPictureEvent event) {
+    _pictureInPicturePresentation.value =
+        event.isActive || event.state == VesperPictureInPictureStatus.entering;
     // Android 8–11 没有系统 autoEnter：宿主转发 onUserLeaveHint 后 SDK 只发
     // entering 事件，这里补一次进入请求；Android 12+ 系统已自动进入，重复
     // 请求被系统忽略。
     if (event.state == VesperPictureInPictureStatus.entering &&
         event.diagnostics['reason'] == 'userLeaveHint') {
       unawaited(_requestPictureInPicture());
-    }
-    if (_pictureInPictureActive != event.isActive) {
-      _mutate(() {
-        _pictureInPictureActive = event.isActive;
-      });
     }
   }
 

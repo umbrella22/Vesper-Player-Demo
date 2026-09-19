@@ -9,6 +9,8 @@ import 'package:vesper_media/bili/bili_media_platform_adapter.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
 import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/media/media.dart';
+import '../models/bili_comment_like_models.dart';
+import '../models/bili_favorites_models.dart';
 import '../models/bili_models.dart';
 import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
@@ -106,6 +108,16 @@ final class BiliPlaybackViewModel {
   final Signal<BiliVideoEngagement?> _engagement;
   final Signal<List<BiliVideoComment>> _comments;
   final Signal<List<BiliVideoComment>> _commentReplies;
+
+  /// 评论点赞的本地覆盖状态，按评论 ID 共享。
+  ///
+  /// 主列表与楼中楼可能包含同一条评论，点赞状态必须一致，因此状态不挂在
+  /// 各自的列表项上。服务端不返回新计数，这里保存乐观更新后的状态；
+  /// 请求失败时回滚到覆盖前的值。
+  final Signal<Map<int, BiliCommentLikeState>> _commentLikeStates =
+      Signal<Map<int, BiliCommentLikeState>>(
+        const <int, BiliCommentLikeState>{},
+      );
   final Signal<List<BiliFeedVideo>> _relatedVideos;
   final Signal<bool> _engagementLoading = Signal<bool>(false);
   final Signal<bool> _commentsLoading = Signal<bool>(false);
@@ -402,6 +414,114 @@ final class BiliPlaybackViewModel {
 
   List<BiliVideoComment> get commentReplies => _commentReplies.value;
 
+  /// 某条评论的当前点赞状态：本地覆盖优先，否则用服务端返回的状态。
+  BiliCommentLikeState commentLikeStateFor(BiliVideoComment comment) {
+    final override = _commentLikeStates.value[comment.id];
+    if (override != null) {
+      return override;
+    }
+    return BiliCommentLikeState(
+      liked: comment.liked,
+      likeCountLabel: comment.likeCountLabel,
+      likeCount: comment.likeCount,
+    );
+  }
+
+  /// 点赞 / 取消点赞一条评论。
+  ///
+  /// 乐观更新：先翻转本地状态（含计数），失败回滚并返回提示语。写请求进行
+  /// 中时该条评论标记 busy，界面据此阻止重复提交。
+  Future<String?> toggleCommentLike(BiliVideoComment comment) async {
+    if (_isDisposed || comment.id <= 0) {
+      return null;
+    }
+    final current = commentLikeStateFor(comment);
+    if (current.pending) {
+      return null;
+    }
+    final nextLiked = !current.liked;
+    final count = current.likeCount;
+    final nextCount = count == null ? null : (count + (nextLiked ? 1 : -1));
+    final boundedCount = nextCount == null
+        ? null
+        : (nextCount < 0 ? 0 : nextCount);
+    final nextLabel = boundedCount == null
+        ? current.likeCountLabel
+        : biliFormatCount(boundedCount);
+    _applyCommentLikeState(
+      comment.id,
+      BiliCommentLikeState(
+        liked: nextLiked,
+        likeCountLabel: nextLabel,
+        likeCount: boundedCount,
+        pending: true,
+      ),
+    );
+    try {
+      await client.setVideoCommentLike(
+        detail: detail,
+        commentId: comment.id,
+        liked: nextLiked,
+      );
+      if (_isDisposed) {
+        return null;
+      }
+      _applyCommentLikeState(
+        comment.id,
+        BiliCommentLikeState(
+          liked: nextLiked,
+          likeCountLabel: nextLabel,
+          likeCount: boundedCount,
+        ),
+      );
+      return nextLiked ? '已点赞' : '已取消点赞';
+    } catch (error) {
+      if (_isDisposed) {
+        return null;
+      }
+      if (isBiliSessionInvalidError(error)) {
+        // 未登录：回滚本地状态并引导登录，不重试写请求。
+        _applyCommentLikeState(comment.id, current);
+        return '登录状态已失效，请重新登录后再试。';
+      }
+      _applyCommentLikeState(comment.id, current);
+      return '操作失败：${biliErrorMessage(error)}';
+    }
+  }
+
+  void _applyCommentLikeState(int commentId, BiliCommentLikeState state) {
+    _commentLikeStates.value = <int, BiliCommentLikeState>{
+      ..._commentLikeStates.value,
+      commentId: state,
+    };
+  }
+
+  // 只接受读请求发出后未再修改的点赞状态，避免旧列表回包覆盖新点赞。
+  void _reconcileCommentLikes(
+    Iterable<BiliVideoComment> comments,
+    Map<int, BiliCommentLikeState> statesAtRequest,
+  ) {
+    final current = _commentLikeStates.peek();
+    final next = Map<int, BiliCommentLikeState>.of(current);
+    void reconcile(Iterable<BiliVideoComment> values) {
+      for (final comment in values) {
+        final state = current[comment.id];
+        if (state?.pending != true &&
+            identical(state, statesAtRequest[comment.id])) {
+          next[comment.id] = BiliCommentLikeState(
+            liked: comment.liked,
+            likeCountLabel: comment.likeCountLabel,
+            likeCount: comment.likeCount,
+          );
+        }
+        reconcile(comment.replies);
+      }
+    }
+
+    reconcile(comments);
+    _commentLikeStates.value = next;
+  }
+
   List<BiliFeedVideo> get relatedVideos => _relatedVideos.value;
 
   bool get engagementLoading => _engagementLoading.value;
@@ -496,6 +616,7 @@ final class BiliPlaybackViewModel {
     _commentsError.value = null;
     _commentsPage = 0;
     _commentsHasMore.value = false;
+    final likeStates = _commentLikeStates.peek();
     try {
       final page = await client.fetchVideoCommentPage(
         detail,
@@ -505,6 +626,7 @@ final class BiliPlaybackViewModel {
       if (_isDisposed) {
         return;
       }
+      _reconcileCommentLikes(page.comments, likeStates);
       _comments.value = page.comments;
       _commentsPage = page.page;
       _commentsHasMore.value = page.hasMore;
@@ -528,6 +650,7 @@ final class BiliPlaybackViewModel {
     }
     _commentsLoadingMore.value = true;
     _commentsError.value = null;
+    final likeStates = _commentLikeStates.peek();
     try {
       final nextPage = _commentsPage <= 0 ? 1 : _commentsPage + 1;
       final page = await client.fetchVideoCommentPage(
@@ -538,6 +661,7 @@ final class BiliPlaybackViewModel {
       if (_isDisposed) {
         return;
       }
+      _reconcileCommentLikes(page.comments, likeStates);
       final seenIds = _comments.value.map((comment) => comment.id).toSet();
       final additions = page.comments
           .where((comment) => seenIds.add(comment.id))
@@ -577,6 +701,7 @@ final class BiliPlaybackViewModel {
     _commentRepliesLoading.value = true;
     _commentRepliesLoadingMore.value = false;
     _commentRepliesError.value = null;
+    final likeStates = _commentLikeStates.peek();
     try {
       final page = await client.fetchVideoCommentReplyPage(
         detail,
@@ -587,6 +712,7 @@ final class BiliPlaybackViewModel {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
+      _reconcileCommentLikes(page.replies, likeStates);
       _commentReplies.value = page.replies;
       _commentRepliesPage = page.page;
       _commentRepliesTotalCount.value =
@@ -619,6 +745,7 @@ final class BiliPlaybackViewModel {
     final generation = _commentRepliesRequestGeneration;
     _commentRepliesLoadingMore.value = true;
     _commentRepliesError.value = null;
+    final likeStates = _commentLikeStates.peek();
     try {
       final nextPage = _commentRepliesPage <= 0 ? 1 : _commentRepliesPage + 1;
       final page = await client.fetchVideoCommentReplyPage(
@@ -630,6 +757,7 @@ final class BiliPlaybackViewModel {
       if (!_isCurrentCommentRepliesRequest(rootReplyId, generation)) {
         return;
       }
+      _reconcileCommentLikes(page.replies, likeStates);
       final seenIds = _commentReplies.value.map((reply) => reply.id).toSet();
       final additions = page.replies
           .where((reply) => seenIds.add(reply.id))
@@ -844,6 +972,37 @@ final class BiliPlaybackViewModel {
     });
   }
 
+  /// 读取收藏夹归属，供收藏夹选择器预选。
+  Future<List<BiliFavoriteFolder>> loadFavoriteFolders() {
+    return client.fetchVideoFavoriteFolders(detail);
+  }
+
+  /// 按用户确认的归属提交差异。
+  ///
+  /// 与 [toggleFavorite] 的区别：取消收藏只移出用户显式取消的收藏夹，
+  /// 而不是服务端返回的全部归属。
+  Future<String?> applyFavoriteSelection(BiliFavoriteSelection selection) {
+    return _runEngagementAction(BiliEngagementAction.favorite, () async {
+      final nextEngagement = await client.applyVideoFavoriteSelection(
+        detail: detail,
+        selection: selection,
+        current: _engagement.value,
+      );
+      if (_isDisposed) {
+        return null;
+      }
+      _engagement.value = nextEngagement;
+      if (selection.isEmpty) {
+        return null;
+      }
+      if (nextEngagement.isFavorited) {
+        final count = nextEngagement.favoriteMediaIds.length;
+        return count > 1 ? '已收藏到 $count 个收藏夹' : '已收藏';
+      }
+      return '已取消收藏';
+    });
+  }
+
   Future<String?> toggleFollow() {
     return _runEngagementAction(BiliEngagementAction.follow, () async {
       var current = _engagement.value;
@@ -990,6 +1149,7 @@ final class BiliPlaybackViewModel {
     _shareCountLabel.dispose();
     _engagement.dispose();
     _comments.dispose();
+    _commentLikeStates.dispose();
     _commentReplies.dispose();
     _relatedVideos.dispose();
     _engagementLoading.dispose();

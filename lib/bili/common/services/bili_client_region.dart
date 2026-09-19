@@ -178,6 +178,7 @@ extension _BiliClientRegionImplementation on BiliClient {
             episodeId: rawEpisodeId != null && rawEpisodeId > 0
                 ? rawEpisodeId
                 : null,
+            dimension: _parseVideoDimension(value['dimension']),
           );
         })
         .whereType<BiliVideoPageEntry>()

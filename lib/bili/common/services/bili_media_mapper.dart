@@ -22,6 +22,7 @@ final class BiliMediaMapper {
   static const String _favoriteCountLabelKey = 'favoriteCountLabel';
   static const String _shareCountLabelKey = 'shareCountLabel';
   static const String _episodeIdKey = 'episodeId';
+  static const String _dimensionKey = 'dimension';
 
   static MediaDetail toGenericDetail(BiliVideoDetail detail) {
     return MediaDetail(
@@ -41,6 +42,7 @@ final class BiliMediaMapper {
       ownerName: detail.ownerName,
       replyCountLabel: detail.replyCountLabel,
       danmakuCountLabel: detail.danmakuCountLabel,
+      declaredAspectRatio: detail.dimension?.displayAspectRatio,
       platformExtras: <String, Object?>{
         _aidKey: detail.aid,
         _ownerMidKey: detail.ownerMid,
@@ -53,6 +55,7 @@ final class BiliMediaMapper {
         _coinCountLabelKey: detail.coinCountLabel,
         _favoriteCountLabelKey: detail.favoriteCountLabel,
         _shareCountLabelKey: detail.shareCountLabel,
+        _dimensionKey: _dimensionMap(detail.dimension),
       },
     );
   }
@@ -77,6 +80,7 @@ final class BiliMediaMapper {
       favoriteCountLabel: extras[_favoriteCountLabelKey] as String? ?? '',
       shareCountLabel: extras[_shareCountLabelKey] as String? ?? '',
       pages: detail.pages.map(toBiliEntry).toList(growable: false),
+      dimension: _dimensionFromMap(extras[_dimensionKey]),
     );
   }
 
@@ -91,10 +95,12 @@ final class BiliMediaMapper {
       title: page.title,
       durationSeconds: page.durationSeconds,
       coverUrl: page.coverUrl,
+      declaredAspectRatio: page.dimension?.displayAspectRatio,
       platformExtras: <String, Object?>{
         _aidKey: page.aid ?? fallbackAid,
         'bvid': page.bvid ?? fallbackBvid,
         _episodeIdKey: page.episodeId,
+        _dimensionKey: _dimensionMap(page.dimension),
       },
     );
   }
@@ -110,8 +116,33 @@ final class BiliMediaMapper {
       aid: extras[_aidKey] as int?,
       bvid: extras['bvid'] as String?,
       episodeId: extras[_episodeIdKey] as int?,
+      dimension: _dimensionFromMap(extras[_dimensionKey]),
     );
   }
+
+  static Map<String, Object?>? _dimensionMap(BiliVideoDimension? dimension) =>
+      dimension == null
+      ? null
+      : {
+          'width': dimension.width,
+          'height': dimension.height,
+          'rotate': dimension.rotateDegrees,
+        };
+
+  static BiliVideoDimension? _dimensionFromMap(Object? value) =>
+      switch (value) {
+        {
+          'width': final int width,
+          'height': final int height,
+          'rotate': final int rotate,
+        } =>
+          BiliVideoDimension(
+            width: width,
+            height: height,
+            rotateDegrees: rotate,
+          ),
+        _ => null,
+      };
 
   static ResolvedMediaPlayback toResolvedPlayback(
     BiliResolvedPlayback resolved,

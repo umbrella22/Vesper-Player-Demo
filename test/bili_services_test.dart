@@ -554,6 +554,98 @@ void main() {
     );
   });
 
+  group('bili video dimension contract', () {
+    Future<BiliVideoDetail> fetchDetail(Map<String, Object?> viewData) async {
+      final httpClient = _DimensionViewHttpClient(viewData);
+      final client = BiliClient(httpClient: httpClient)
+        ..restoreCookies(const <String, String>{
+          'buvid3': 'fake-buvid3',
+          'buvid4': 'fake-buvid4',
+        });
+      addTearDown(() => client.transport.httpClient.close(force: true));
+      return client.fetchVideoDetail('BV1xx411c7mD');
+    }
+
+    Map<String, Object?> pagePayload({Object? dimension}) {
+      return <String, Object?>{
+        'cid': 200,
+        'page': 1,
+        'part': 'P1',
+        'duration': 125,
+        'dimension': ?dimension,
+      };
+    }
+
+    Map<String, Object?> viewPayload({Object? dimension, Object? pageDimension}) {
+      return <String, Object?>{
+        'aid': 100,
+        'bvid': 'BV1xx411c7mD',
+        'pages': <Object?>[pagePayload(dimension: pageDimension)],
+        'dimension': ?dimension,
+      };
+    }
+
+    test('parses top-level and per-page dimensions independently', () async {
+      final detail = await fetchDetail(
+        viewPayload(
+          dimension: <String, Object?>{'width': 1920, 'height': 1080},
+          pageDimension: <String, Object?>{
+            'width': 1080,
+            'height': 1920,
+            'rotate': 0,
+          },
+        ),
+      );
+
+      expect(detail.dimension?.width, 1920);
+      expect(detail.dimension?.height, 1080);
+      expect(detail.dimension?.displayAspectRatio, closeTo(1.7778, 0.001));
+      expect(detail.pages.single.dimension?.width, 1080);
+      expect(detail.pages.single.dimension?.height, 1920);
+    });
+
+    test('applies server rotation to the layout hint', () async {
+      final detail = await fetchDetail(
+        viewPayload(
+          dimension: <String, Object?>{
+            'width': 1920,
+            'height': 1080,
+            'rotate': 90,
+          },
+        ),
+      );
+
+      expect(detail.dimension?.displayWidth, 1080);
+      expect(detail.dimension?.displayHeight, 1920);
+      expect(detail.dimension?.displayAspectRatio, closeTo(0.5625, 0.001));
+      expect(detail.pages.single.dimension, isNull);
+    });
+
+    test('treats missing, non-positive and malformed sizes as unknown', () async {
+      final missing = await fetchDetail(viewPayload());
+      expect(missing.dimension, isNull);
+      expect(missing.pages.single.dimension, isNull);
+
+      final nonPositive = await fetchDetail(
+        viewPayload(
+          dimension: <String, Object?>{'width': 0, 'height': 1080},
+          pageDimension: <String, Object?>{'width': 1920, 'height': -5},
+        ),
+      );
+      expect(nonPositive.dimension, isNull);
+      expect(nonPositive.pages.single.dimension, isNull);
+
+      final malformed = await fetchDetail(
+        viewPayload(
+          dimension: 'portrait',
+          pageDimension: <String, Object?>{'width': 'abc', 'height': 100},
+        ),
+      );
+      expect(malformed.dimension, isNull);
+      expect(malformed.pages.single.dimension, isNull);
+    });
+  });
+
   group('bili text helpers', () {
     test('extracts BV id from urls and raw text', () {
       expect(
@@ -2676,6 +2768,78 @@ final class _CookieHttpClientResponse extends Stream<List<int>>
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _DimensionViewHttpClient implements HttpClient {
+  _DimensionViewHttpClient(this.viewData);
+
+  final Map<String, Object?> viewData;
+  String? _userAgent;
+
+  @override
+  String? get userAgent => _userAgent;
+
+  @override
+  set userAgent(String? value) {
+    _userAgent = value;
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    return _FakeRegionHttpClientRequest(_responseFor(url));
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  _FakeRegionHttpClientResponse _responseFor(Uri url) {
+    if (url.host == 'www.bilibili.com') {
+      return _FakeRegionHttpClientResponse('<html></html>');
+    }
+
+    if (url.path == '/x/frontend/finger/spi') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{'b_3': 'fake-buvid3', 'b_4': 'fake-buvid4'},
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/nav') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': <String, Object?>{
+            'isLogin': false,
+            'wbi_img': <String, Object?>{
+              'img_url':
+                  'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',
+              'sub_url':
+                  'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png',
+            },
+          },
+        }),
+      );
+    }
+
+    if (url.path == '/x/web-interface/view') {
+      return _FakeRegionHttpClientResponse(
+        jsonEncode(<String, Object?>{
+          'code': 0,
+          'message': '0',
+          'data': viewData,
+        }),
+      );
+    }
+
+    throw StateError('unexpected path in dimension test: ${url.path}');
+  }
 }
 
 final class _TypeDriftHttpClient implements HttpClient {
