@@ -33,7 +33,7 @@ SESSION_NOTES_*.md
 #.vscode/
 
 # Flutter/Dart/Pub related
-**/doc/api/
+doc/*
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
