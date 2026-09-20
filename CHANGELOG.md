@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.14.0...vesper_media-v1.15.0) (2026-09-20)
+
+
+### Features
+
+* **updates:** add GitHub release updates for Android and PlayCover ([f9c51a4](https://github.com/umbrella22/Vesper-Player-Demo/commit/f9c51a45a91a36b557d0045dbef40c1defd8c93a))
+
 ## [1.14.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.13.1...vesper_media-v1.14.0) (2026-09-20)
 
 ### Features
