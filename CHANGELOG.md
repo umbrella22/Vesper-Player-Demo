@@ -7,6 +7,14 @@
 
 * **updates:** add GitHub release updates for Android and PlayCover ([f9c51a4](https://github.com/umbrella22/Vesper-Player-Demo/commit/f9c51a45a91a36b557d0045dbef40c1defd8c93a))
 
+### Android signing migration
+
+Android releases now use a dedicated, fixed release signing key. Older APKs were
+signed with temporary debug keys, so Android cannot install 1.15.0 over those
+versions. The first migration requires a manual reinstall, which removes local
+app data, including account state, settings, and cached videos. Subsequent
+releases will use the same release key and support updates in place.
+
 ## [1.14.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.13.1...vesper_media-v1.14.0) (2026-09-20)
 
 ### Features
