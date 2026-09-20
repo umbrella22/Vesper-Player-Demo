@@ -9,6 +9,7 @@ import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/app_version.dart';
+import 'package:vesper_media/app/updates/app_update_widgets.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/app/system_presentation.dart';
@@ -415,6 +416,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
               subtitle: '版本 ${_version.value.isEmpty ? '--' : _version.value}',
               trailing: const SizedBox(width: 24),
             ),
+            const AppUpdateSettingsRow(),
           ],
         ),
       ],

@@ -36,6 +36,7 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/android-release-apk.yml
+    secrets: inherit
     with:
       tag_name: ${{ needs.release-please.outputs.tag_name }}
 

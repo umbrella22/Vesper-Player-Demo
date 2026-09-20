@@ -23,6 +23,11 @@ val excludedAndroidAbiPatterns =
         .filterNot(configuredAndroidAbis::contains)
         .map { abi -> "lib/$abi/**" }
 
+val releaseKeystorePath = providers.environmentVariable("VESPER_ANDROID_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("VESPER_ANDROID_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("VESPER_ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("VESPER_ANDROID_KEY_PASSWORD").orNull
+
 android {
     namespace = "dev.ikaros.vesper_player"
     compileSdk = 37
@@ -46,6 +51,17 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (!releaseKeystorePath.isNullOrBlank()) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["mainActivityName"] = ".DiagnosticsMainActivity"
@@ -58,7 +74,7 @@ android {
         }
 
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -81,6 +97,21 @@ android {
     }
 }
 
+val validateReleaseSigningConfiguration = tasks.register("validateReleaseSigningConfiguration") {
+    doLast {
+        check(listOf(releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+            .all { !it.isNullOrBlank() }) {
+            "Release signing requires VESPER_ANDROID_KEYSTORE_PATH, VESPER_ANDROID_STORE_PASSWORD, " +
+                "VESPER_ANDROID_KEY_ALIAS and VESPER_ANDROID_KEY_PASSWORD. See doc/app-update-notes.md."
+        }
+        check(file(releaseKeystorePath!!).isFile) { "Android release keystore was not found." }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(validateReleaseSigningConfiguration)
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -96,8 +127,7 @@ dependencies {
     val performanceDiagnostics =
         "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.6.2"
 
-    debugImplementation(coreKtx)
-    add("profileImplementation", coreKtx)
+    implementation(coreKtx)
     debugImplementation(performanceDiagnostics)
     add("profileImplementation", performanceDiagnostics)
 }

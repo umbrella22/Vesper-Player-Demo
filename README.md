@@ -53,6 +53,8 @@ Vesper 从未在任何平台上架和收费（包括 App Store、TestFlight 与 
 - 番剧/分区入口与分区视频列表，登录后可浏览。
 - “我的”页面聚合账号信息、历史记录，以及关注列表与稍后再看（媒体库）入口。
 - 设置页提供外观主题、强制 TV 模式、账号与离线数据管理。
+- Android 与 PlayCover 支持从 GitHub Release 检查更新，确认后下载安装包并打开
+  安装程序；设置页也提供手动检查入口。
 
 ### 播放验证
 
@@ -121,6 +123,12 @@ flutter run
 ```
 
 ## 构建
+
+Android Release 构建需要固定发布签名，通过 `VESPER_ANDROID_KEYSTORE_PATH`、
+`VESPER_ANDROID_STORE_PASSWORD`、`VESPER_ANDROID_KEY_ALIAS` 和
+`VESPER_ANDROID_KEY_PASSWORD` 环境变量提供。CI 使用对应的 GitHub Secrets；
+配置缺失时会停止构建。签名迁移与更新契约见
+[`doc/app-update-notes.md`](doc/app-update-notes.md)。
 
 ```sh
 flutter build apk --release --target-platform android-arm64

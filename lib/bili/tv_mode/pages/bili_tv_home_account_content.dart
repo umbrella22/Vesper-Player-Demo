@@ -339,6 +339,19 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
                         fontSize: 13,
                       ),
                     ),
+                    if (AppUpdateScope.maybeOf(context)
+                        case final controller?) ...[
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: () => showAppUpdateDialog(
+                          context,
+                          controller,
+                          check: true,
+                        ),
+                        icon: const Icon(Icons.system_update_rounded),
+                        label: const Text('检查更新'),
+                      ),
+                    ],
                   ],
                 ),
               ),

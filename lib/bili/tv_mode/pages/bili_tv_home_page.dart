@@ -8,6 +8,7 @@ import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/app_version.dart';
+import 'package:vesper_media/app/updates/app_update_widgets.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';

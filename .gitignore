@@ -10,6 +10,11 @@
 .history
 .svn/
 .swiftpm/
+*.jks
+*.keystore
+*.p12
+android-release.json
+android/key.properties
 .zcode/
 migrate_working_dir/
 

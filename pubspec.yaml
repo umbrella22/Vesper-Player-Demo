@@ -47,6 +47,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   liquid_glass_widgets: ^1.6.2
   package_info_plus: ^10.2.1
+  pub_semver: ^2.2.1
 
 dev_dependencies:
   flutter_test:

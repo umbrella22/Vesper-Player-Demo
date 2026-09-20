@@ -2,11 +2,100 @@ import Flutter
 import Photos
 import UIKit
 
+/// PlayCover runs the IPA on macOS; ordinary iOS devices cannot install it.
+private final class AppUpdateBridge {
+  private let channel: FlutterMethodChannel
+  private let presenter: () -> UIViewController?
+
+  init(messenger: FlutterBinaryMessenger, presenter: @escaping () -> UIViewController?) {
+    self.presenter = presenter
+    channel = FlutterMethodChannel(
+      name: "dev.ikaros.vesper_player/app_update", binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call, result: result)
+    }
+  }
+
+  private var isRunningOnMac: Bool {
+    ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "platform" {
+      result(isRunningOnMac ? "playCover" : "unsupported")
+      return
+    }
+    guard isRunningOnMac else {
+      result(FlutterError(code: "UNSUPPORTED", message: "此安装包仅适用于 PlayCover。", details: nil))
+      return
+    }
+    guard call.method == "install" || call.method == "export" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    guard let arguments = call.arguments as? [String: Any],
+          let path = arguments["path"] as? String else {
+      result(FlutterError(code: "INVALID_PATH", message: "安装包文件无效。", details: nil))
+      return
+    }
+    let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+    // path_provider's iOS temporary directory is NSCachesDirectory.
+    let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("vesper-updates", isDirectory: true).resolvingSymlinksInPath()
+    guard url.deletingLastPathComponent().path == cache.path,
+          url.pathExtension == "ipa",
+          FileManager.default.fileExists(atPath: url.path) else {
+      result(FlutterError(code: "INVALID_PATH", message: "安装包文件无效，请重新下载。", details: nil))
+      return
+    }
+    if call.method == "export" {
+      guard let viewController = presenter() else {
+        result(FlutterError(code: "EXPORT_FAILED", message: "无法打开文件导出窗口。", details: nil))
+        return
+      }
+      viewController.present(UIDocumentPickerViewController(forExporting: [url], asCopy: true), animated: true)
+      result(nil)
+      return
+    }
+    if openInPlayCover(url) {
+      result("opened")
+    } else {
+      result(FlutterError(
+        code: "INSTALL_FAILED",
+        message: "未能打开 PlayCover。请保存安装包，然后在 PlayCover 中导入安装。",
+        details: nil
+      ))
+    }
+  }
+
+  private func openInPlayCover(_ url: URL) -> Bool {
+    // NSWorkspace is a public macOS API. Resolve it only at runtime so the IPA
+    // also links on iOS, where AppKit is unavailable. PlayCover's file handler
+    // accepts local .ipa URLs; its custom URL scheme does not install apps.
+    guard let workspaceClass = NSClassFromString("NSWorkspace") as? NSObject.Type,
+          let workspace = workspaceClass.perform(NSSelectorFromString("sharedWorkspace"))?
+            .takeUnretainedValue() as? NSObject,
+          let appURL = workspace.perform(
+            NSSelectorFromString("URLForApplicationWithBundleIdentifier:"),
+            with: "io.playcover.PlayCover"
+          )?.takeUnretainedValue() as? URL else {
+      return false
+    }
+    let selector = NSSelectorFromString("openFile:withApplication:")
+    guard workspace.responds(to: selector) else { return false }
+    typealias OpenFile = @convention(c) (AnyObject, Selector, NSString, NSString) -> Bool
+    let open = unsafeBitCast(workspace.method(for: selector), to: OpenFile.self)
+    return open(workspace, selector, url.path as NSString, appURL.path as NSString)
+  }
+}
+
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var storageSpaceChannel: FlutterMethodChannel?
   private var mediaExportChannel: FlutterMethodChannel?
   private var platformInfoChannel: FlutterMethodChannel?
+  private var appUpdateBridge: AppUpdateBridge?
 #if DEBUG || PROFILE
   private var performanceDiagnosticsShareChannel: FlutterMethodChannel?
 #endif
@@ -19,6 +108,10 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    appUpdateBridge = AppUpdateBridge(
+      messenger: engineBridge.applicationRegistrar.messenger(),
+      presenter: { [weak self] in self?.topViewController() }
+    )
     let platformChannel = FlutterMethodChannel(
       name: "dev.ikaros.vesper_player/platform",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -131,6 +224,8 @@ import UIKit
     }
   }
 
+#endif
+
   private func topViewController() -> UIViewController? {
     let root = window?.rootViewController ?? UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }
@@ -143,7 +238,6 @@ import UIKit
     }
     return current
   }
-#endif
 
   private func deviceStorageUsage() -> [String: Int64] {
     do {

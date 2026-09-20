@@ -54,6 +54,7 @@ open class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        AppUpdateBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

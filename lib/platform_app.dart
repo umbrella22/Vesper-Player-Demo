@@ -13,6 +13,8 @@ import 'app/services/app_settings_store.dart';
 import 'app/services/bili_ui_mode_controller.dart';
 import 'app/services/danmaku_settings_controller.dart';
 import 'app/system_presentation.dart';
+import 'app/updates/app_update_controller.dart';
+import 'app/updates/app_update_widgets.dart';
 import 'bili/common/services/bili_client.dart';
 import 'bili/common/services/bili_platform_info.dart';
 import 'bili/common/services/bili_ui_mode_resolver.dart';
@@ -35,6 +37,7 @@ class PlatformApp extends StatefulWidget {
     this.danmakuSettingsController,
     this.client,
     this.offlineController,
+    this.updateController,
   });
 
   final AppSettingsStore appSettings;
@@ -44,6 +47,7 @@ class PlatformApp extends StatefulWidget {
   final DanmakuSettingsController? danmakuSettingsController;
   final BiliClient? client;
   final BiliOfflineDownloadController? offlineController;
+  final AppUpdateController? updateController;
 
   @override
   State<PlatformApp> createState() => _PlatformAppState();
@@ -52,10 +56,12 @@ class PlatformApp extends StatefulWidget {
 class _PlatformAppState extends State<PlatformApp> {
   late final BiliUiModeController _uiModeController;
   late final DanmakuSettingsController _danmakuSettingsController;
+  late final AppUpdateController _updateController;
 
   @override
   void initState() {
     super.initState();
+    _updateController = widget.updateController ?? AppUpdateController();
     _uiModeController =
         widget.uiModeController ??
         BiliUiModeController(
@@ -71,6 +77,9 @@ class _PlatformAppState extends State<PlatformApp> {
 
   @override
   void dispose() {
+    if (widget.updateController == null) {
+      _updateController.dispose();
+    }
     if (widget.uiModeController == null) {
       _uiModeController.dispose();
     }
@@ -82,22 +91,28 @@ class _PlatformAppState extends State<PlatformApp> {
 
   @override
   Widget build(BuildContext context) {
-    return DanmakuSettingsScope(
-      controller: _danmakuSettingsController,
-      child: VesperApp(
-        appSettings: widget.appSettings,
-        initialThemePreference: widget.initialThemePreference,
-        host: VesperAppHost(
-          tvModeListenable: _uiModeController.tvModeListenable,
-          refreshPreferredOrientations:
-              refreshBiliAppPreferredOrientationsIfActive,
-          tvSystemUiStyle: biliTvSystemUiStyle,
-          systemUiStyleForBrightness: appSystemUiStyleForBrightness,
-          homeBuilder: (_) => HomePage(
-            uiModeController: _uiModeController,
-            client: widget.client,
-            offlineController: widget.offlineController,
-            appSettings: widget.appSettings,
+    return AppUpdateScope(
+      controller: _updateController,
+      child: DanmakuSettingsScope(
+        controller: _danmakuSettingsController,
+        child: VesperApp(
+          appSettings: widget.appSettings,
+          initialThemePreference: widget.initialThemePreference,
+          host: VesperAppHost(
+            tvModeListenable: _uiModeController.tvModeListenable,
+            refreshPreferredOrientations:
+                refreshBiliAppPreferredOrientationsIfActive,
+            tvSystemUiStyle: biliTvSystemUiStyle,
+            systemUiStyleForBrightness: appSystemUiStyleForBrightness,
+            homeBuilder: (_) => AppUpdateStartupCheck(
+              controller: _updateController,
+              child: HomePage(
+                uiModeController: _uiModeController,
+                client: widget.client,
+                offlineController: widget.offlineController,
+                appSettings: widget.appSettings,
+              ),
+            ),
           ),
         ),
       ),
