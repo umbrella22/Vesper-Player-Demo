@@ -648,13 +648,7 @@ class _MediaEngagementActionButtonState
         child: Opacity(
           opacity: disabled ? 0.55 : 1,
           child: Material(
-            color: widget.compact
-                ? action.selected
-                      ? AppVisualTokens.primaryBlue.withValues(alpha: 0.10)
-                      : Colors.transparent
-                : action.selected
-                ? AppVisualTokens.primaryBlue.withValues(alpha: 0.10)
-                : visualTheme.surfaceRaised,
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             child: InkWell(
               key: ValueKey<String>('engagement-${action.id.name}'),
@@ -748,7 +742,9 @@ class _MediaEngagementActionButtonState
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: visualTheme.textTertiary,
+                  color: widget.action.selected
+                      ? foreground
+                      : visualTheme.textTertiary,
                   fontWeight: FontWeight.w600,
                   fontFeatures: const <FontFeature>[
                     FontFeature.tabularFigures(),

@@ -388,35 +388,49 @@ void main() {
       });
     }
 
-    testWidgets('大圆角 Android 手机的内嵌播放区保持可用宽度和视频比例', (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.padding = const FakeViewPadding(top: 48, bottom: 24);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPadding);
-      await pumpShell(
-        tester,
-        surfaceSize: const Size(390, 844),
-        displayCornerRadii: BorderRadius.circular(44),
-        binding: MediaPlaybackBinding(
-          contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
-        ),
-      );
+    for (final sideInset in [0.0, 12.0]) {
+      testWidgets(
+        '大圆角 Android 手机的内嵌画面贴合安全区且无额外黑边：$sideInset',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.padding = FakeViewPadding(
+            left: sideInset,
+            top: 48,
+            right: sideInset,
+            bottom: 24,
+          );
+          addTearDown(tester.view.resetDevicePixelRatio);
+          addTearDown(tester.view.resetPadding);
+          await pumpShell(
+            tester,
+            surfaceSize: const Size(390, 844),
+            displayCornerRadii: BorderRadius.circular(44),
+            binding: MediaPlaybackBinding(
+              contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+            ),
+          );
 
-      final stageRect = tester.getRect(stageFinder);
-      expect(stageRect.left, 10);
-      expect(stageRect.top, 54);
-      expect(stageRect.width, 370);
-      expect(stageRect.height, closeTo(370 / (16 / 9), 0.01));
-      expect(tester.getRect(find.byType(VesperPlayerView)), stageRect);
-      expect(tester.getRect(find.byType(AndroidViewSurface)), stageRect);
-      expect(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('playback-bottom-surface')))
-            .dy,
-        closeTo(stageRect.bottom + 12, 0.01),
+          final stageRect = tester.getRect(stageFinder);
+          final videoWidth = 390 - sideInset * 2;
+          expect(stageRect.left, sideInset);
+          expect(stageRect.top, 48);
+          expect(stageRect.width, videoWidth);
+          expect(stageRect.height, closeTo(videoWidth / (16 / 9), 0.01));
+          expect(tester.getRect(find.byType(VesperPlayerView)), stageRect);
+          expect(tester.getRect(find.byType(AndroidViewSurface)), stageRect);
+          expect(
+            tester
+                .getTopLeft(find.byKey(const ValueKey('playback-bottom-surface')))
+                .dy,
+            closeTo(stageRect.bottom, 0.01),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        },
+        variant: TargetPlatformVariant.only(TargetPlatform.android),
       );
-      expect(tester.takeException(), isNull);
-    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+    }
 
     testWidgets('内嵌竖屏限制高度并为简介保留空间，原生尺寸可校正比例', (tester) async {
       final harness = await pumpShell(
@@ -451,7 +465,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.viewModel.videoAspectRatio, 4 / 3);
-      expect(tester.getSize(stageFinder).height, closeTo(370 / (4 / 3), 0.01));
+      expect(tester.getSize(stageFinder).height, closeTo(390 / (4 / 3), 0.01));
     });
 
     testWidgets('顶层比例仅回退首 P，切到未知尺寸分 P 使用默认比例', (tester) async {
@@ -826,6 +840,7 @@ void main() {
         playbackTarget: portraitTarget,
         surfaceSize: const Size(390, 844),
       );
+      final inlineRect = tester.getRect(stageFinder);
       harness.platform.emitPictureInPicture(
         VesperPictureInPictureStatus.entering,
         isActive: false,
@@ -846,7 +861,11 @@ void main() {
             .pictureInPicturePresentation,
         isFalse,
       );
-      expect(tester.getSize(stageFinder).height, lessThan(844 * 0.7));
+      expect(tester.getRect(stageFinder), inlineRect);
+      expect(tester.getSize(stageFinder).height, lessThanOrEqualTo(844 * 0.7));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
     testWidgets('SDK 确认单击能点选画面内暂停弹幕，黑边与双击不触发点选', (tester) async {

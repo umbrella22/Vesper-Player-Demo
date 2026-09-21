@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.1...vesper_media-v1.16.2) (2026-09-21)
+
+### Bug Fixes
+
+* Let phone inline video fill its safe area and remove the extra black padding around the player.
+* Keep engagement action backgrounds transparent and highlight only selected icons, labels, and counts.
+
 ## [1.16.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.0...vesper_media-v1.16.1) (2026-09-21)
 
 ### Bug Fixes

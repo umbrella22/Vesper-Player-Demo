@@ -97,7 +97,7 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
                 color: Colors.black,
                 child: Builder(
                   builder: (context) {
-                    const stagePadding = EdgeInsets.fromLTRB(10, 6, 10, 12);
+                    const stagePadding = EdgeInsets.zero;
                     final expandedStageHeight = _mobileStageExpandedHeight(
                       context,
                       constraints,
@@ -165,12 +165,15 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
     double aspectRatio,
   ) {
     final resolvedPadding = padding.resolve(Directionality.of(context));
+    final safePadding = MediaQuery.paddingOf(context);
     final availableWidth =
-        constraints.maxWidth - resolvedPadding.left - resolvedPadding.right;
+        constraints.maxWidth -
+        safePadding.horizontal -
+        resolvedPadding.horizontal;
     final videoHeight =
         availableWidth.clamp(0.0, constraints.maxWidth) / aspectRatio;
     final idealHeight =
-        MediaQuery.paddingOf(context).top +
+        safePadding.top +
         resolvedPadding.top +
         videoHeight +
         resolvedPadding.bottom;
