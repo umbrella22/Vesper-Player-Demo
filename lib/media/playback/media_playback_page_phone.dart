@@ -22,7 +22,6 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
             _pictureInPicturePresentation.value;
         return LayoutBuilder(
           builder: (context, constraints) {
-            final stageCornerPadding = _displayCornerPadding(context);
             // Stage and bottom surface read different VM signals, so each is
             // wrapped in its own SignalBuilder to rebuild independently.
             final stage = SignalBuilder(
@@ -78,9 +77,7 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
                       Expanded(
                         child: _buildStageFrame(
                           stage,
-                          padding: stageCornerPadding.add(
-                            const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                          ),
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                           safeBottom: true,
                         ),
                       ),
@@ -100,9 +97,7 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
                 color: Colors.black,
                 child: Builder(
                   builder: (context) {
-                    final stagePadding = stageCornerPadding.add(
-                      const EdgeInsets.fromLTRB(10, 6, 10, 12),
-                    );
+                    const stagePadding = EdgeInsets.fromLTRB(10, 6, 10, 12);
                     final expandedStageHeight = _mobileStageExpandedHeight(
                       context,
                       constraints,

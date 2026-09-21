@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
@@ -588,7 +589,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
         dimension: AppVisualTokens.minimumTapTarget,
         child: ExcludeSemantics(
           child: Icon(
-            Icons.close_rounded,
+            AppIcons.closeFill,
             color: visualTheme.textPrimary,
             size: 24,
           ),
@@ -607,7 +608,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
 
   Widget _buildSearchFieldIcon(AppVisualTheme visualTheme) {
     return ExcludeSemantics(
-      child: Icon(Icons.search_rounded, color: visualTheme.textSecondary),
+      child: Icon(AppIcons.searchLine, color: visualTheme.textSecondary),
     );
   }
 
@@ -642,7 +643,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
           onPressed: search.onClear,
           padding: EdgeInsets.zero,
           icon: Icon(
-            Icons.cancel_rounded,
+            AppIcons.closeCircleLine,
             color: visualTheme.textSecondary,
             size: 20,
           ),
@@ -830,7 +831,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
             _OpaqueCircleButton(
               key: AppGlassBottomNavigation.searchButtonKey,
               label: '搜索',
-              icon: Icons.search_rounded,
+              icon: AppIcons.searchLine,
               foregroundColor: AppVisualTheme.of(context).textSecondary,
               onTap: () => searchConfig.onActiveChanged(true),
             ),
@@ -872,7 +873,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
               _OpaqueCircleButton(
                 key: AppGlassBottomNavigation.searchButtonKey,
                 label: '搜索',
-                icon: Icons.search_rounded,
+                icon: AppIcons.searchLine,
                 foregroundColor: AppVisualTheme.of(context).textSecondary,
                 size: AppGlassBottomNavigation.barHeight,
                 onTap: () => searchConfig.onActiveChanged(true),
@@ -938,7 +939,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                   prefixIcon: Icon(
-                    Icons.search_rounded,
+                    AppIcons.searchLine,
                     color: visualTheme.textSecondary,
                   ),
                   prefixIconConstraints: const BoxConstraints.tightFor(
@@ -960,7 +961,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
           _OpaqueCircleButton(
             key: AppGlassBottomNavigation.searchDismissButtonKey,
             label: '关闭键盘',
-            icon: Icons.close_rounded,
+            icon: AppIcons.closeFill,
             foregroundColor: visualTheme.textPrimary,
             onTap: search.focusNode.unfocus,
           ),
@@ -997,7 +998,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
         tooltip: '清空搜索',
         onPressed: search.onClear,
         icon: Icon(
-          Icons.cancel_rounded,
+          AppIcons.closeCircleLine,
           color: visualTheme.textSecondary,
           size: 20,
         ),
@@ -1444,7 +1445,7 @@ class AppSettingsRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 trailing ??
                     Icon(
-                      Icons.chevron_right_rounded,
+                      AppIcons.arrowRightSLine,
                       color: visualTheme.textTertiary,
                     ),
               ],

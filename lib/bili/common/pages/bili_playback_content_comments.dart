@@ -230,7 +230,7 @@ class _CommentThreadList extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.sort_rounded, size: 20, color: visualTheme.textTertiary),
+            Icon(AppIcons.sortDesc, size: 20, color: visualTheme.textTertiary),
             const SizedBox(width: 5),
             Text(
               '按热度',
@@ -280,7 +280,7 @@ class _CommentThreadList extends StatelessWidget {
             Center(
               child: TextButton.icon(
                 onPressed: () => unawaited(onLoadMore()),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
+                icon: const Icon(AppIcons.refreshLine, size: 18),
                 label: const Text('加载更多失败，点此重试'),
                 style: TextButton.styleFrom(
                   foregroundColor: AppVisualTokens.primaryBlue,
@@ -334,7 +334,7 @@ class _CommentTile extends StatelessWidget {
         : ResizeImage.resizeIfNeeded(
             96,
             96,
-            NetworkImage(comment.authorAvatarUrl),
+            appNetworkImageProvider(context, comment.authorAvatarUrl),
           );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,

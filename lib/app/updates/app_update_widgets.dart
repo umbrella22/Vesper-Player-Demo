@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import '../design/app_glass_controls.dart';
@@ -70,7 +71,7 @@ class AppUpdateSettingsRow extends StatelessWidget {
         }
         return AppSettingsRow(
           key: const ValueKey('app-check-for-updates'),
-          icon: Icons.system_update_rounded,
+          icon: AppIcons.installLine,
           title: '检查更新',
           subtitle: state.phase == AppUpdatePhase.available
               ? '发现新版本 ${state.release!.version}'

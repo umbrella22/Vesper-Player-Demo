@@ -31,7 +31,7 @@ void _registerAppShellWidgetTests() {
       find.byKey(const ValueKey<String>('bili-home-region-button')),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.grid_view_rounded), findsOneWidget);
+    expect(find.byIcon(AppIcons.gridLine), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('bili-home-title')),
       findsOneWidget,
@@ -71,7 +71,7 @@ void _registerAppShellWidgetTests() {
       isA<Icon>().having(
         (icon) => icon.icon,
         'icon',
-        Icons.person_outline_rounded,
+        AppIcons.user3Line,
       ),
     );
     expect(bottomBar.iconSize, 22);

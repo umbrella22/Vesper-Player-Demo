@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
@@ -102,7 +103,7 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
-              Icons.lock_outline_rounded,
+              AppIcons.lockLine,
               size: 42,
               color: AppVisualTokens.primaryBlue,
             ),

@@ -61,11 +61,11 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               radius: compact ? 32 : 40,
               backgroundColor: const Color(0x33FFFFFF),
               backgroundImage: profile.avatarUrl.isNotEmpty
-                  ? NetworkImage(profile.avatarUrl)
+                  ? appNetworkImageProvider(context, profile.avatarUrl)
                   : null,
               child: profile.avatarUrl.isEmpty
                   ? Icon(
-                      Icons.person_rounded,
+                      AppIcons.user3Fill,
                       color: const Color(0x99FFFFFF),
                       size: compact ? 30 : 36,
                     )
@@ -106,7 +106,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
         if (!profile.isLoggedIn)
           _TvMineCommand(
             key: const ValueKey<String>('bili-tv-mine-login'),
-            icon: Icons.qr_code_scanner_rounded,
+            icon: AppIcons.qrScanLine,
             label: '扫码登录',
             primary: true,
             onTap: () => unawaited(_openQrLogin()),
@@ -117,7 +117,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               Expanded(
                 child: _TvMineCommand(
                   key: const ValueKey<String>('bili-tv-mine-logout'),
-                  icon: Icons.logout_rounded,
+                  icon: AppIcons.logoutCircleRLine,
                   label: '退出登录',
                   onTap: () => unawaited(_confirmLogout()),
                 ),
@@ -126,7 +126,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               Expanded(
                 child: _TvMineCommand(
                   key: const ValueKey<String>('bili-tv-mine-refresh'),
-                  icon: Icons.refresh_rounded,
+                  icon: AppIcons.refreshLine,
                   label: '刷新状态',
                   onTap: () => unawaited(_viewModel.refreshMine()),
                 ),
@@ -169,7 +169,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               Expanded(
                 child: _TvLibraryAction(
                   key: const ValueKey<String>('bili-tv-mine-favorites'),
-                  icon: Icons.star_outline_rounded,
+                  icon: AppIcons.starLine,
                   label: '我的收藏',
                   compact: compact,
                   onTap: () => unawaited(_openFavorites()),
@@ -179,7 +179,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               Expanded(
                 child: _TvLibraryAction(
                   key: const ValueKey<String>('bili-tv-mine-history'),
-                  icon: Icons.history_rounded,
+                  icon: AppIcons.historyLine,
                   label: '历史播放',
                   compact: compact,
                   onTap: () =>
@@ -190,7 +190,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
               Expanded(
                 child: _TvLibraryAction(
                   key: const ValueKey<String>('bili-tv-mine-watch-later'),
-                  icon: Icons.watch_later_outlined,
+                  icon: AppIcons.timeLine,
                   label: '稍后再看',
                   compact: compact,
                   onTap: () =>
@@ -348,7 +348,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
                           controller,
                           check: true,
                         ),
-                        icon: const Icon(Icons.system_update_rounded),
+                        icon: const Icon(AppIcons.installLine),
                         label: const Text('检查更新'),
                       ),
                     ],
@@ -470,18 +470,18 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
       context: context,
       title: '退出登录？',
       message: '本机保存的登录状态会被清除，正在进行的离线缓存也会暂停。',
-      icon: Icons.logout_rounded,
+      icon: AppIcons.logoutCircleRLine,
       actions: const [
         BiliTvDialogAction(
           label: '取消',
           value: false,
-          icon: Icons.close_rounded,
+          icon: AppIcons.closeFill,
           autofocus: true,
         ),
         BiliTvDialogAction(
           label: '退出登录',
           value: true,
-          icon: Icons.logout_rounded,
+          icon: AppIcons.logoutCircleRLine,
           isDestructive: true,
         ),
       ],
@@ -507,15 +507,15 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
       context: context,
       title: '需要登录',
       message: '分区内容需要登录后才能观看，请先登录 Bilibili 账号。',
-      icon: Icons.lock_outline_rounded,
+      icon: AppIcons.lockLine,
       actions: const [
         BiliTvDialogAction(
           label: '取消',
           value: false,
-          icon: Icons.close_rounded,
+          icon: AppIcons.closeFill,
           autofocus: true,
         ),
-        BiliTvDialogAction(label: '登录', value: true, icon: Icons.login_rounded),
+        BiliTvDialogAction(label: '登录', value: true, icon: AppIcons.loginCircleLine),
       ],
     );
   }

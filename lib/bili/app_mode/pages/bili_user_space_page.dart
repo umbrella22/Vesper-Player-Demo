@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -381,7 +383,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
         leading: IconButton(
           tooltip: '返回',
           onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: const Icon(AppIcons.arrowLeftLine),
         ),
         title: Text(widget.isSelf ? '我的空间' : 'UP 主空间'),
       ),
@@ -398,7 +400,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
     }
     if (_error != null && _videos.isEmpty && _profile == null) {
       return _BiliUserSpaceStatus(
-        icon: Icons.lock_outline_rounded,
+        icon: AppIcons.lockLine,
         message: _error!,
         primaryLabel: _authenticationRequired && widget.onLoginTap != null
             ? '登录'
@@ -464,7 +466,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.expand_more_rounded),
+                    : const Icon(AppIcons.arrowDownSLine),
                 label: Text(_loadingMore ? '加载中' : '加载更多'),
               ),
             ),
@@ -485,7 +487,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
       decoration: InputDecoration(
         hintText: '搜索投稿标题或 BV 号',
         prefixIcon: Icon(
-          Icons.search_rounded,
+          AppIcons.searchLine,
           color: visualTheme.textSecondary,
         ),
         suffixIcon: _videoQueryController.text.isEmpty
@@ -496,7 +498,7 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
                   _videoQueryController.clear();
                   unawaited(_searchVideos());
                 },
-                icon: const Icon(Icons.close_rounded),
+                icon: const Icon(AppIcons.closeFill),
               ),
         filled: true,
         fillColor: visualTheme.surface,
@@ -538,9 +540,9 @@ class _BiliUserSpaceProfileHeader extends StatelessWidget {
               ),
               backgroundImage: profile.avatarUrl.isEmpty
                   ? null
-                  : NetworkImage(profile.avatarUrl),
+                  : appNetworkImageProvider(context, profile.avatarUrl),
               child: profile.avatarUrl.isEmpty
-                  ? const Icon(Icons.person_outline_rounded)
+                  ? const Icon(AppIcons.user3Line)
                   : null,
             ),
             const SizedBox(width: 14),
@@ -571,12 +573,12 @@ class _BiliUserSpaceProfileHeader extends StatelessWidget {
                         if (profile.officialLabel case final String label)
                           _BiliUserSpaceBadge(
                             label: label,
-                            icon: Icons.verified_outlined,
+                            icon: AppIcons.verifiedBadgeLine,
                           ),
                         if (profile.vipLabel case final String label)
                           _BiliUserSpaceBadge(
                             label: label,
-                            icon: Icons.workspace_premium_outlined,
+                            icon: AppIcons.awardLine,
                           ),
                       ],
                     ),
@@ -701,7 +703,7 @@ class _BiliUserSpaceVideoTile extends StatelessWidget {
                     children: [
                       video.coverUrl.isEmpty
                           ? ColoredBox(color: visualTheme.surfaceRaised)
-                          : Image.network(
+                          : AppNetworkImage(
                               video.coverUrl,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) =>
@@ -824,13 +826,13 @@ class _BiliUserSpaceInlineError extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.error_outline_rounded, color: visualTheme.destructive),
+            Icon(AppIcons.errorWarningLine, color: visualTheme.destructive),
             const SizedBox(width: 8),
             Expanded(child: Text(message)),
             IconButton(
               tooltip: '重试',
               onPressed: () => unawaited(onRetry()),
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(AppIcons.refreshLine),
             ),
           ],
         ),
@@ -850,7 +852,7 @@ class _BiliUserSpaceEmpty extends StatelessWidget {
     return Column(
       children: [
         Icon(
-          Icons.video_library_outlined,
+          AppIcons.filmLine,
           size: 42,
           color: visualTheme.textTertiary,
         ),

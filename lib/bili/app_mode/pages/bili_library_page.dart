@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -517,18 +519,18 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         context: context,
         title: '移出稍后再看？',
         message: '“${entry.title}”会从稍后再看列表中移除。',
-        icon: Icons.playlist_remove_rounded,
+        icon: AppIcons.deleteBinLine,
         actions: const [
           BiliTvDialogAction(
             label: '取消',
             value: false,
-            icon: Icons.close_rounded,
+            icon: AppIcons.closeFill,
             autofocus: true,
           ),
           BiliTvDialogAction(
             label: '移出',
             value: true,
-            icon: Icons.delete_outline_rounded,
+            icon: AppIcons.deleteBinLine,
             isDestructive: true,
           ),
         ],
@@ -596,7 +598,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
                     IconButton(
                       tooltip: '返回',
                       onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      icon: const Icon(AppIcons.arrowLeftLine),
                     ),
                     const Expanded(
                       child: Text(
@@ -634,17 +636,17 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
                       },
                       items: const [
                         AppGlassNavigationItem(
-                          icon: Icons.people_alt_outlined,
-                          activeIcon: Icons.people_alt_rounded,
+                          icon: AppIcons.groupLine,
+                          activeIcon: AppIcons.groupFill,
                           label: '关注',
                         ),
                         AppGlassNavigationItem(
-                          icon: Icons.history_rounded,
+                          icon: AppIcons.historyLine,
                           label: '历史播放',
                         ),
                         AppGlassNavigationItem(
-                          icon: Icons.watch_later_outlined,
-                          activeIcon: Icons.watch_later_rounded,
+                          icon: AppIcons.timeLine,
+                          activeIcon: AppIcons.timeFill,
                           label: '稍后再看',
                         ),
                       ],
@@ -709,7 +711,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         children: [
           _TvLibraryHeaderButton(
             key: const ValueKey<String>('bili-tv-library-back'),
-            icon: Icons.arrow_back_rounded,
+            icon: AppIcons.arrowLeftLine,
             tooltip: '返回',
             onTap: () => Navigator.of(context).maybePop(),
           ),
@@ -759,7 +761,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
               final section = _sectionForIndex(_tabController.index);
               return _TvLibraryHeaderButton(
                 key: const ValueKey<String>('bili-tv-library-refresh'),
-                icon: Icons.refresh_rounded,
+                icon: AppIcons.refreshLine,
                 tooltip: '刷新',
                 loading: _stateFor(section).loading,
                 onTap: () => unawaited(_load(section, force: true)),
@@ -788,9 +790,9 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
 
   IconData _tvSectionIcon(BiliLibrarySection section) {
     return switch (section) {
-      BiliLibrarySection.following => Icons.people_alt_outlined,
-      BiliLibrarySection.history => Icons.history_rounded,
-      BiliLibrarySection.watchLater => Icons.watch_later_outlined,
+      BiliLibrarySection.following => AppIcons.groupLine,
+      BiliLibrarySection.history => AppIcons.historyLine,
+      BiliLibrarySection.watchLater => AppIcons.timeLine,
     };
   }
 
@@ -811,16 +813,16 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       final canLogin =
           widget.onLoginTap != null && state.authenticationRequired;
       return _TvLibraryStatusView(
-        icon: Icons.lock_outline_rounded,
+        icon: AppIcons.lockLine,
         title: '暂时无法显示',
         message: state.error!,
         primaryLabel: canLogin ? '登录' : '重试',
-        primaryIcon: canLogin ? Icons.login_rounded : Icons.refresh_rounded,
+        primaryIcon: canLogin ? AppIcons.loginCircleLine : AppIcons.refreshLine,
         onPrimary: canLogin
             ? () => unawaited(_handleLogin())
             : () => unawaited(_load(section, force: true)),
         secondaryLabel: canLogin ? '重试' : null,
-        secondaryIcon: canLogin ? Icons.refresh_rounded : null,
+        secondaryIcon: canLogin ? AppIcons.refreshLine : null,
         onSecondary: canLogin
             ? () => unawaited(_load(section, force: true))
             : null,
@@ -901,11 +903,11 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   Widget _buildTvHistoryGrid(_LibraryLoadState state) {
     if (state.history.isEmpty) {
       return _TvLibraryStatusView(
-        icon: Icons.history_rounded,
+        icon: AppIcons.historyLine,
         title: '还没有播放历史',
         message: '看过的视频会在这里继续播放。',
         primaryLabel: '刷新',
-        primaryIcon: Icons.refresh_rounded,
+        primaryIcon: AppIcons.refreshLine,
         onPrimary: () =>
             unawaited(_load(BiliLibrarySection.history, force: true)),
       );
@@ -947,11 +949,11 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
   Widget _buildTvWatchLaterGrid(_LibraryLoadState state) {
     if (state.watchLater.isEmpty) {
       return _TvLibraryStatusView(
-        icon: Icons.watch_later_outlined,
+        icon: AppIcons.timeLine,
         title: '稍后再看是空的',
         message: '加入的视频会显示在这里。',
         primaryLabel: '刷新',
-        primaryIcon: Icons.refresh_rounded,
+        primaryIcon: AppIcons.refreshLine,
         onPrimary: () =>
             unawaited(_load(BiliLibrarySection.watchLater, force: true)),
       );
@@ -1134,7 +1136,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           trailing: IconButton(
             tooltip: '移出稍后再看',
             onPressed: () => _removeWatchLater(item),
-            icon: const Icon(Icons.remove_circle_outline_rounded),
+            icon: const Icon(AppIcons.indeterminateCircleLine),
           ),
           onTap: () => _openVideo(
             bvid: item.bvid,

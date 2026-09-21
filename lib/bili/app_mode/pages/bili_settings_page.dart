@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:signals/signals_flutter.dart';
 
@@ -296,7 +297,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
                     subtitle: _themePreferenceDescription(preference),
                     trailing: controller.preference == preference
                         ? const Icon(
-                            Icons.check_rounded,
+                            AppIcons.checkFill,
                             color: AppVisualTokens.primaryBlue,
                           )
                         : const SizedBox(width: 24),
@@ -400,7 +401,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         AppGroupedSurface(
           children: [
             AppSettingsRow(
-              icon: Icons.download_done_rounded,
+              icon: AppIcons.checkboxCircleLine,
               title: '离线缓存',
               subtitle: '管理下载、存储占用和导出内容',
               onTap: () => unawaited(_openOfflineCache()),
@@ -411,7 +412,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         AppGroupedSurface(
           children: [
             AppSettingsRow(
-              icon: Icons.play_circle_outline_rounded,
+              icon: AppIcons.playCircleLine,
               title: 'Vesper',
               subtitle: '版本 ${_version.value.isEmpty ? '--' : _version.value}',
               trailing: const SizedBox(width: 24),
@@ -428,8 +429,8 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     final loggingOut = _loggingOut.value;
     return AppSettingsRow(
       icon: loggedIn
-          ? Icons.account_circle_rounded
-          : Icons.account_circle_outlined,
+          ? AppIcons.accountCircleFill
+          : AppIcons.accountCircleLine,
       iconColor: AppVisualTokens.biliSourcePink,
       title: loggedIn ? '已登录' : '未登录',
       subtitle: loggedIn ? '登录信息仅保存在本机' : '可在“我的”页面扫码登录',
@@ -450,7 +451,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   Widget _buildDisplayModeRow(BuildContext context) {
     final forceTvMode = _forceTvMode.value;
     return AppSettingsRow(
-      icon: Icons.tv_rounded,
+      icon: AppIcons.tvLine,
       title: '强制 TV 模式',
       subtitle: forceTvMode ? '返回首页后切换为 TV 界面' : '根据设备自动选择界面',
       onTap: () => unawaited(_toggleForceTvMode(!forceTvMode)),
@@ -469,7 +470,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         width: double.infinity,
         child: AppGlassButton(
           onPressed: _switchHome,
-          icon: Icons.home_rounded,
+          icon: AppIcons.home5Fill,
           label: '返回首页并切换',
         ),
       ),
@@ -500,8 +501,8 @@ String _themePreferenceDescription(AppThemePreference preference) {
 
 IconData _themePreferenceIcon(AppThemePreference preference) {
   return switch (preference) {
-    AppThemePreference.system => Icons.brightness_auto_rounded,
-    AppThemePreference.light => Icons.light_mode_rounded,
-    AppThemePreference.dark => Icons.dark_mode_rounded,
+    AppThemePreference.system => AppIcons.contrastLine,
+    AppThemePreference.light => AppIcons.sunLine,
+    AppThemePreference.dark => AppIcons.moonLine,
   };
 }

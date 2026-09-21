@@ -215,7 +215,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.folder_copy_outlined,
+                        AppIcons.foldersLine,
                         color: visualTheme.textSecondary,
                         size: 18,
                       ),
@@ -261,7 +261,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                                   key: const ValueKey<String>(
                                     'bili-tv-favorites-rail-create',
                                   ),
-                                  icon: Icons.add_rounded,
+                                  icon: AppIcons.addFill,
                                   label: '新建收藏夹',
                                   collapsed: collapsed,
                                   enabled: !_viewModel.isMutating.value,
@@ -312,7 +312,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
             const Padding(padding: EdgeInsets.all(18), child: Text('还没有收藏夹。')),
           _TvFavoritesRailAction(
             key: const ValueKey<String>('bili-tv-favorites-rail-create'),
-            icon: Icons.add_rounded,
+            icon: AppIcons.addFill,
             label: '新建收藏夹',
             collapsed: collapsed,
             autofocus: widget.autofocusRail,
@@ -330,8 +330,8 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
         children: [
           Icon(
             authenticationRequired
-                ? Icons.lock_outline_rounded
-                : Icons.folder_open_rounded,
+                ? AppIcons.lockLine
+                : AppIcons.folderOpenLine,
             size: 36,
             color: visualTheme.textTertiary,
           ),
@@ -413,7 +413,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   context,
                   key: const ValueKey<String>('bili-tv-favorites-select-all'),
                   label: '全选',
-                  icon: Icons.select_all_rounded,
+                  icon: AppIcons.checkboxMultipleLine,
                   onTap: vm.toggleSelectAll,
                 ),
                 const SizedBox(width: 10),
@@ -421,7 +421,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   context,
                   key: const ValueKey<String>('bili-tv-favorites-remove'),
                   label: '移出',
-                  icon: Icons.delete_outline_rounded,
+                  icon: AppIcons.deleteBinLine,
                   destructive: true,
                   enabled: selectedCount > 0 && !vm.isMutating.value,
                   onTap: () => unawaited(_confirmRemoveSelected()),
@@ -431,7 +431,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   context,
                   key: const ValueKey<String>('bili-tv-favorites-cancel'),
                   label: '取消',
-                  icon: Icons.close_rounded,
+                  icon: AppIcons.closeFill,
                   onTap: vm.endSelection,
                 ),
               ] else ...[
@@ -439,7 +439,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   context,
                   key: const ValueKey<String>('bili-tv-favorites-manage'),
                   label: '管理',
-                  icon: Icons.tune_rounded,
+                  icon: AppIcons.equalizer2Line,
                   enabled: items.isNotEmpty,
                   onTap: vm.beginSelection,
                 ),
@@ -448,7 +448,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
                   context,
                   key: const ValueKey<String>('bili-tv-favorites-refresh'),
                   label: '刷新',
-                  icon: Icons.refresh_rounded,
+                  icon: AppIcons.refreshLine,
                   onTap: () => unawaited(vm.refresh()),
                 ),
               ],
@@ -529,14 +529,14 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
     if (vm.errorMessage.value case final String error) {
       return _buildContentStatus(
         context,
-        icon: Icons.cloud_off_rounded,
+        icon: AppIcons.cloudOffLine,
         message: '加载失败：$error',
       );
     }
     if (items.isEmpty) {
       return _buildContentStatus(
         context,
-        icon: Icons.video_library_outlined,
+        icon: AppIcons.filmLine,
         message: vm.keyword.value.isEmpty ? '这个收藏夹还是空的。' : '没有匹配的收藏内容。',
       );
     }
@@ -709,7 +709,7 @@ class _TvFavoritesRailFolder extends StatelessWidget {
                   : MainAxisAlignment.start,
               children: [
                 Icon(
-                  selected ? Icons.folder_rounded : Icons.folder_outlined,
+                  selected ? AppIcons.folderLine : AppIcons.folderLine,
                   size: 20,
                   color: selected ? AppVisualTokens.primaryBlue : foreground,
                 ),

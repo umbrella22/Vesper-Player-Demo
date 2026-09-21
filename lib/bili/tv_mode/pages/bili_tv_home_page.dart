@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -235,13 +237,13 @@ extension on _TvNavItem {
 
   IconData icon() {
     return switch (this) {
-      _TvNavItem.recommend => Icons.home_rounded,
-      _TvNavItem.following => Icons.people_alt_rounded,
-      _TvNavItem.regions => Icons.grid_view_rounded,
-      _TvNavItem.search => Icons.search_rounded,
-      _TvNavItem.history => Icons.history_rounded,
-      _TvNavItem.mine => Icons.person_rounded,
-      _TvNavItem.settings => Icons.settings_rounded,
+      _TvNavItem.recommend => AppIcons.home5Fill,
+      _TvNavItem.following => AppIcons.groupFill,
+      _TvNavItem.regions => AppIcons.gridLine,
+      _TvNavItem.search => AppIcons.searchLine,
+      _TvNavItem.history => AppIcons.historyLine,
+      _TvNavItem.mine => AppIcons.user3Fill,
+      _TvNavItem.settings => AppIcons.settingsFill,
     };
   }
 }

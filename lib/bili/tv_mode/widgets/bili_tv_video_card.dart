@@ -1,4 +1,6 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
@@ -69,11 +71,11 @@ class BiliTvVideoCard extends StatelessWidget {
                         color: const Color(0xFF1A1A24),
                         child: coverUrl.isEmpty
                             ? const Icon(
-                                Icons.video_library_outlined,
+                                AppIcons.filmLine,
                                 color: Color(0x55FFFFFF),
                                 size: 40,
                               )
-                            : Image.network(
+                            : AppNetworkImage(
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,

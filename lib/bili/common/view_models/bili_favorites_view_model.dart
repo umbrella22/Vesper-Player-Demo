@@ -79,9 +79,12 @@ final class BiliFavoritesViewModel {
   var _disposed = false;
   int? _accountSessionRevision;
 
-  Future<void> initialize() => refresh();
+  Future<void> initialize() => _load(reloadFolders: true);
 
-  Future<void> refresh() => _load(reloadFolders: true);
+  Future<void> refresh() {
+    client.favoriteCovers.invalidateEmptyCovers();
+    return _load(reloadFolders: true);
+  }
 
   Future<void> selectFolder(int? folderId) async {
     if (_disposed || folderId == _activeFolderId.value) return;
@@ -166,6 +169,10 @@ final class BiliFavoritesViewModel {
         folderId: folderId,
         resourceIds: keys.toList(growable: false),
       );
+      if (!_isCurrent(generation) || !_checkSession(sessionRevision)) {
+        return null;
+      }
+      await client.favoriteCovers.removeResources(folderId, keys);
       if (!_isCurrent(generation) || !_checkSession(sessionRevision)) {
         return null;
       }
@@ -260,6 +267,8 @@ final class BiliFavoritesViewModel {
         order: _order.value,
       );
       if (!_isCurrent(generation) || !_checkSession(sessionRevision)) return;
+      await _observeCovers(folderId, result.items, result.hasMore);
+      if (!_isCurrent(generation) || !_checkSession(sessionRevision)) return;
       _items.value = _uniqueItems(result.items);
       _hasMore.value = result.hasMore;
     } catch (error) {
@@ -296,6 +305,8 @@ final class BiliFavoritesViewModel {
       if (!_isCurrent(generation) || !_checkSession(sessionRevision)) return;
       final mergedItems = _uniqueItems([..._items.value, ...result.items]);
       final receivedNewItems = mergedItems.length > _items.value.length;
+      await _observeCovers(folderId, mergedItems, result.hasMore);
+      if (!_isCurrent(generation) || !_checkSession(sessionRevision)) return;
       _items.value = mergedItems;
       _page = nextPage;
       _hasMore.value = result.hasMore && receivedNewItems;
@@ -321,6 +332,18 @@ final class BiliFavoritesViewModel {
     _authenticationRequired.value = false;
     return true;
   }
+
+  Future<void> _observeCovers(
+    int folderId,
+    List<BiliFavoriteItem> values,
+    bool hasMore,
+  ) => client.favoriteCovers.observeItems(
+    folderId: folderId,
+    items: values,
+    startsAtNewest:
+        _keyword.value.isEmpty && _order.value == BiliFavoriteOrder.recent,
+    isCompleteFolder: _keyword.value.isEmpty && !hasMore,
+  );
 
   void _handleError(Object error, {required bool loadingMore}) {
     if (isBiliSessionInvalidError(error)) {

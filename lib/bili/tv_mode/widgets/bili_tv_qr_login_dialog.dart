@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -125,7 +126,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
               .toDouble();
           return BiliTvGlassDialogSurface(
             title: '登录 Bilibili 账号',
-            icon: Icons.qr_code_scanner_rounded,
+            icon: AppIcons.qrScanLine,
             scrollController: _scrollController,
             surfaceKey: const ValueKey<String>('bili-tv-qr-login-surface'),
             content: Row(
@@ -141,7 +142,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                 Expanded(
                   child: BiliTvDialogButton(
                     label: '刷新二维码',
-                    icon: Icons.refresh_rounded,
+                    icon: AppIcons.refreshLine,
                     autofocus: true,
                     enabled: !_controller.isLoading.value,
                     debugLabel: 'tv_qr_login_refresh',
@@ -152,7 +153,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                 Expanded(
                   child: BiliTvDialogButton(
                     label: '取消',
-                    icon: Icons.close_rounded,
+                    icon: AppIcons.closeFill,
                     debugLabel: 'tv_qr_login_cancel',
                     onTap: _dismiss,
                   ),
@@ -281,7 +282,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
             child: Row(
               children: [
                 Icon(
-                  error ? Icons.error_outline_rounded : Icons.sync_rounded,
+                  error ? AppIcons.errorWarningLine : AppIcons.refreshLine,
                   color: error
                       ? const Color(0xFFFFA1A7)
                       : const Color(0xB3FFFFFF),

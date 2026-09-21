@@ -25,13 +25,13 @@ class _HubNavigationBar extends StatelessWidget {
       scrollController: scrollController,
       items: const [
         AppGlassNavigationItem(
-          icon: Icons.home_outlined,
-          activeIcon: Icons.home_rounded,
+          icon: AppIcons.home5Line,
+          activeIcon: AppIcons.home5Fill,
           label: '首页',
         ),
         AppGlassNavigationItem(
-          icon: Icons.person_outline_rounded,
-          activeIcon: Icons.person_rounded,
+          icon: AppIcons.user3Line,
+          activeIcon: AppIcons.user3Fill,
           label: '我的',
         ),
       ],
@@ -63,7 +63,7 @@ class _InlineErrorBanner extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.error_outline, color: visualTheme.destructive),
+            Icon(AppIcons.errorWarningLine, color: visualTheme.destructive),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -154,7 +154,7 @@ class _AvatarButton extends StatelessWidget {
               ),
               backgroundImage: avatarUrl.isEmpty
                   ? null
-                  : NetworkImage(avatarUrl),
+                  : appNetworkImageProvider(context, avatarUrl),
               child: avatarUrl.isEmpty
                   ? Text(
                       (name.isEmpty ? 'B' : name.characters.first)

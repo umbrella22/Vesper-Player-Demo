@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
@@ -8,7 +10,7 @@ import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
-/// 概览中的收藏夹卡片。仅在卡片进入列表构建范围时读取首条收藏的封面。
+/// 概览中的收藏夹卡片。封面来源跨页面缓存，由收藏列表校验其有效性。
 class BiliFavoriteFolderCard extends StatefulWidget {
   const BiliFavoriteFolderCard({
     super.key,
@@ -30,6 +32,7 @@ class BiliFavoriteFolderCard extends StatefulWidget {
 class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
   final _coverUrl = signal('');
   int _generation = 0;
+  int? _sessionRevision;
 
   @override
   void initState() {
@@ -43,6 +46,10 @@ class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
     if (oldWidget.client != widget.client ||
         oldWidget.folder.id != widget.folder.id ||
         oldWidget.reloadToken != widget.reloadToken) {
+      if (oldWidget.client != widget.client ||
+          oldWidget.folder.id != widget.folder.id) {
+        _coverUrl.value = '';
+      }
       unawaited(_loadCover());
     }
   }
@@ -51,24 +58,30 @@ class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
     final generation = ++_generation;
     final client = widget.client;
     final sessionRevision = client.sessionRevision;
-    _coverUrl.value = '';
+    if (_sessionRevision != sessionRevision) {
+      _coverUrl.value = '';
+      _sessionRevision = sessionRevision;
+    }
     if (!client.hasAuthenticatedSession || widget.folder.mediaCount == 0) {
+      _coverUrl.value = '';
+      if (client.hasAuthenticatedSession) {
+        await client.favoriteCovers.coverFor(widget.folder);
+      }
       return;
     }
+    final cached = client.favoriteCovers.cachedUrl(widget.folder.id);
+    if (cached.isNotEmpty) _coverUrl.value = cached;
     try {
-      final page = await client.fetchFavoriteItems(
-        folderId: widget.folder.id,
-        pageSize: 1,
-      );
+      final cover = await client.favoriteCovers.coverFor(widget.folder);
       if (!mounted ||
           generation != _generation ||
           !client.hasAuthenticatedSession ||
           sessionRevision != client.sessionRevision) {
         return;
       }
-      _coverUrl.value = page.items.firstOrNull?.coverUrl ?? '';
+      _coverUrl.value = cover;
     } catch (_) {
-      // 封面失败保留占位；收藏夹仍可打开，下次刷新时重新获取。
+      // 网络失败保留已有封面；没有缓存时，下次进入或刷新可重试。
     }
   }
 
@@ -84,7 +97,7 @@ class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
     const radius = BorderRadius.all(Radius.circular(20));
     final placeholder = ColoredBox(
       color: visualTheme.surfaceRaised,
-      child: Icon(Icons.folder_outlined, color: visualTheme.textTertiary),
+      child: Icon(AppIcons.folderLine, color: visualTheme.textTertiary),
     );
     return AppPressScale(
       child: Semantics(
@@ -116,7 +129,7 @@ class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
                               SignalBuilder(
                                 builder: (context) => _coverUrl.value.isEmpty
                                     ? placeholder
-                                    : Image.network(
+                                    : AppNetworkImage(
                                         _coverUrl.value,
                                         fit: BoxFit.cover,
                                         excludeFromSemantics: true,
@@ -163,7 +176,7 @@ class _BiliFavoriteFolderCardState extends State<BiliFavoriteFolderCard> {
                       ),
                       const SizedBox(width: 8),
                       Icon(
-                        Icons.chevron_right_rounded,
+                        AppIcons.arrowRightSLine,
                         size: 20,
                         color: visualTheme.textTertiary,
                       ),

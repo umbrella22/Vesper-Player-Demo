@@ -213,21 +213,21 @@ class _IntroSurfaceState extends State<_IntroSurface> {
           entries: [
             if (detail.playCountLabel != '--')
               _PlaybackMetaEntry(
-                icon: Icons.play_circle_outline_rounded,
+                icon: AppIcons.playCircleLine,
                 label: '${detail.playCountLabel}播放',
               ),
             if (detail.danmakuCountLabel != '--')
               _PlaybackMetaEntry(
-                icon: Icons.subtitles_outlined,
+                icon: AppIcons.closedCaptioningLine,
                 label: detail.danmakuCountLabel,
               ),
             if (detail.publishedAtLabel != null)
               _PlaybackMetaEntry(
-                icon: Icons.schedule_rounded,
+                icon: AppIcons.timeLine,
                 label: detail.publishedAtLabel!,
               ),
             _PlaybackMetaEntry(
-              icon: Icons.confirmation_number_outlined,
+              icon: AppIcons.ticketLine,
               label: selectedPage.bvid ?? detail.bvid,
             ),
           ],
@@ -274,7 +274,7 @@ class _IntroSurfaceState extends State<_IntroSurface> {
             ? null
             : TextButton.icon(
                 onPressed: () => unawaited(vm.loadRelatedVideos()),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
+                icon: const Icon(AppIcons.refreshLine, size: 18),
                 label: const Text('重试'),
                 style: TextButton.styleFrom(
                   minimumSize: const Size(58, 40),
@@ -363,7 +363,7 @@ class DanmakuEntryPill extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Icon(
-                Icons.chat_bubble_outline_rounded,
+                AppIcons.chat3Line,
                 size: 14,
                 color: visualTheme.textSecondary,
               ),
@@ -565,7 +565,7 @@ class _IntroExpandButton extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
           child: Icon(
-            Icons.keyboard_arrow_down_rounded,
+            AppIcons.arrowDownSLine,
             color: visualTheme.textTertiary,
             size: 28,
           ),
@@ -651,15 +651,15 @@ class _PageSelectionButton extends StatelessWidget {
                         ),
                         child: coverUrl.isEmpty
                             ? Icon(
-                                Icons.video_library_outlined,
+                                AppIcons.filmLine,
                                 color: visualTheme.textTertiary,
                               )
-                            : Image.network(
+                            : AppNetworkImage(
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: cacheWidth,
                                 errorBuilder: (_, _, _) => Icon(
-                                  Icons.broken_image_outlined,
+                                  AppIcons.imageLine,
                                   color: visualTheme.textTertiary,
                                 ),
                               ),
@@ -716,7 +716,7 @@ class _PageSelectionButton extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Icon(
-                Icons.keyboard_arrow_up_rounded,
+                AppIcons.arrowUpSLine,
                 size: 28,
                 color: visualTheme.textTertiary,
               ),
@@ -750,7 +750,7 @@ class _OwnerSummary extends StatelessWidget {
     final visualTheme = AppVisualTheme.of(context);
     final imageProvider = avatarUrl.isEmpty
         ? null
-        : ResizeImage.resizeIfNeeded(96, 96, NetworkImage(avatarUrl));
+        : ResizeImage.resizeIfNeeded(96, 96, appNetworkImageProvider(context, avatarUrl));
     return Row(
       children: [
         CircleAvatar(

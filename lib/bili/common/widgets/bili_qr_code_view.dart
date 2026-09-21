@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/bili_models.dart';
@@ -21,7 +22,7 @@ class BiliQrCodeView extends StatelessWidget {
     final ticket = this.ticket;
     if (ticket == null) {
       return const Icon(
-        Icons.qr_code_2_rounded,
+        AppIcons.qrCodeLine,
         size: 88,
         color: Color(0xFF7B8CA1),
       );

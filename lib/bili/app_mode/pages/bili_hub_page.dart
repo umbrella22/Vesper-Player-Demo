@@ -4,6 +4,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';

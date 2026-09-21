@@ -762,8 +762,8 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   TvBarButton(
                     label: isPlaying ? '暂停' : '播放',
                     icon: isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
+                        ? AppIcons.pauseFill
+                        : AppIcons.playFill,
                     autofocus: !_tvPanelOpen,
                     onTap: () {
                       if (isPlaying) {
@@ -776,13 +776,13 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '听视频',
-                    icon: Icons.headphones_rounded,
+                    icon: AppIcons.headphoneLine,
                     onTap: _enterListenMode,
                   ),
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '快退 10s',
-                    icon: Icons.replay_10_rounded,
+                    icon: AppIcons.replay10Line,
                     onTap: () {
                       final newPosMs = (positionMs - 10000).clamp(
                         0,
@@ -798,7 +798,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '快进 10s',
-                    icon: Icons.forward_10_rounded,
+                    icon: AppIcons.forward10Line,
                     onTap: () {
                       final newPosMs = (positionMs + 10000).clamp(
                         0,
@@ -814,21 +814,21 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '清晰度',
-                    icon: Icons.hd_rounded,
+                    icon: AppIcons.hdLine,
                     focusNode: _tvPanelButtonNode(TvPlaybackPanelType.quality),
                     onTap: () => _openTvPanel(TvPlaybackPanelType.quality),
                   ),
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '倍速',
-                    icon: Icons.speed_rounded,
+                    icon: AppIcons.speedLine,
                     focusNode: _tvPanelButtonNode(TvPlaybackPanelType.speed),
                     onTap: () => _openTvPanel(TvPlaybackPanelType.speed),
                   ),
                   const SizedBox(width: 14),
                   TvBarButton(
                     label: '字幕',
-                    icon: Icons.subtitles_outlined,
+                    icon: AppIcons.closedCaptioningLine,
                     focusNode: _tvPanelButtonNode(
                       TvPlaybackPanelType.subtitles,
                     ),
@@ -838,7 +838,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                     const SizedBox(width: 14),
                     TvBarButton(
                       label: '分P',
-                      icon: Icons.playlist_play_rounded,
+                      icon: AppIcons.playListLine,
                       focusNode: _tvPanelButtonNode(TvPlaybackPanelType.pages),
                       onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
                     ),
@@ -849,15 +849,15 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                       key: const ValueKey<String>('toggle-danmaku'),
                       label: _danmakuEnabled ? '弹幕已开' : '弹幕已关',
                       icon: _danmakuEnabled
-                          ? Icons.chat_bubble_rounded
-                          : Icons.chat_bubble_outline_rounded,
+                          ? AppIcons.chat3Fill
+                          : AppIcons.chat3Line,
                       onTap: _toggleDanmaku,
                     ),
                     const SizedBox(width: 14),
                     TvBarButton(
                       key: const ValueKey<String>('open-danmaku-settings'),
                       label: '弹幕设置',
-                      icon: Icons.tune_rounded,
+                      icon: AppIcons.equalizer2Line,
                       focusNode: _tvPanelButtonNode(
                         TvPlaybackPanelType.danmaku,
                       ),
@@ -871,7 +871,7 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                         'open-performance-diagnostics',
                       ),
                       label: '性能诊断',
-                      icon: Icons.monitor_heart_outlined,
+                      icon: AppIcons.heartPulseLine,
                       onTap: () =>
                           unawaited(_openPerformanceDiagnosticsSurface()),
                     ),

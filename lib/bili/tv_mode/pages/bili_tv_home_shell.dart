@@ -13,18 +13,18 @@ extension _BiliTvHomeShell on _BiliTvHomePageState {
         maxWidth: 690,
         title: '退出 Vesper？',
         message: '播放进度已经保存，下次打开时可以继续观看。',
-        icon: Icons.logout_rounded,
+        icon: AppIcons.logoutCircleRLine,
         actions: const [
           BiliTvDialogAction(
             label: '继续观看',
             value: false,
-            icon: Icons.play_arrow_rounded,
+            icon: AppIcons.playFill,
             autofocus: true,
           ),
           BiliTvDialogAction(
             label: '退出应用',
             value: true,
-            icon: Icons.power_settings_new_rounded,
+            icon: AppIcons.shutDownLine,
             isDestructive: true,
           ),
         ],
@@ -66,7 +66,7 @@ extension _BiliTvHomeShell on _BiliTvHomePageState {
                     key: ValueKey<String>('tv-hero-empty'),
                     color: AppVisualTokens.tvBackground,
                   )
-                : Image.network(
+                : AppNetworkImage(
                     hero.coverUrl,
                     key: ValueKey<String>('tv-hero-${hero.identity}'),
                     fit: BoxFit.cover,
@@ -154,7 +154,7 @@ extension _BiliTvHomeShell on _BiliTvHomePageState {
                     width: 40,
                     child: Center(
                       child: Icon(
-                        Icons.help_outline_rounded,
+                        AppIcons.questionLine,
                         size: 16,
                         color: Color(0x73FFFFFF),
                       ),
@@ -260,7 +260,7 @@ extension _BiliTvHomeShell on _BiliTvHomePageState {
                         child: const Padding(
                           padding: EdgeInsets.only(left: 2),
                           child: Icon(
-                            Icons.play_arrow_rounded,
+                            AppIcons.playFill,
                             color: Color(0xFF111318),
                             size: 25,
                           ),
@@ -301,13 +301,13 @@ extension _BiliTvHomeShell on _BiliTvHomePageState {
                         radius: compact ? 17 : 19,
                         backgroundColor: const Color(0x33FFFFFF),
                         backgroundImage: profile.avatarUrl.isNotEmpty
-                            ? NetworkImage(profile.avatarUrl)
+                            ? appNetworkImageProvider(context, profile.avatarUrl)
                             : null,
                         child: profile.avatarUrl.isEmpty
                             ? Icon(
                                 profile.isLoggedIn
-                                    ? Icons.person_rounded
-                                    : Icons.person_outline_rounded,
+                                    ? AppIcons.user3Fill
+                                    : AppIcons.user3Line,
                                 color: const Color(0xB3FFFFFF),
                                 size: compact ? 18 : 20,
                               )

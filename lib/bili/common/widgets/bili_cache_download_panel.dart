@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -144,7 +145,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
           width: double.infinity,
           child: FilledButton.icon(
             onPressed: () => unawaited(_openOfflineCachePage()),
-            icon: const Icon(Icons.folder_open_rounded, size: 19),
+            icon: const Icon(AppIcons.folderOpenLine, size: 19),
             label: const Text('查看缓存'),
           ),
         ),
@@ -440,7 +441,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(
-                        Icons.download_rounded,
+                        AppIcons.downloadLine,
                         size: 21,
                         color: AppVisualTokens.primaryBlue,
                       ),
@@ -475,7 +476,7 @@ class _CacheInlineError extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              Icons.error_outline_rounded,
+              AppIcons.errorWarningLine,
               size: 19,
               color: visualTheme.destructive,
             ),

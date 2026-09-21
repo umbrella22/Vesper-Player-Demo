@@ -60,7 +60,7 @@ class _TvHeroAction extends StatelessWidget {
             children: [
               Padding(
                 padding: EdgeInsets.only(
-                  left: icon == Icons.play_arrow_rounded ? 2 : 0,
+                  left: icon == AppIcons.playFill ? 2 : 0,
                 ),
                 child: Icon(icon, color: Colors.white, size: 22),
               ),

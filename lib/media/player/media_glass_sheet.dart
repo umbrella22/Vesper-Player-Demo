@@ -17,8 +17,6 @@ Future<T?> showMediaGlassSheet<T>({
   bool barrierDismissible = true,
 }) {
   assert(maxContentHeightFactor > 0 && maxContentHeightFactor <= 1);
-  final maxContentHeight =
-      MediaQuery.sizeOf(context).height * maxContentHeightFactor;
   final readable = appearance == MediaGlassSheetAppearance.readable;
   final visualTheme = AppVisualTheme.of(context);
 
@@ -53,44 +51,55 @@ Future<T?> showMediaGlassSheet<T>({
       );
     },
     pageBuilder: (sheetContext, animation, secondaryAnimation) {
-      if (readable) {
-        return SafeArea(
-          top: false,
-          child: Align(
-            alignment: Alignment.bottomCenter,
+      // Consume the IME before aligning and constraining the sheet. Padding
+      // follows the platform's inset animation, keeping caret reveal in sync.
+      return Padding(
+        padding: MediaQuery.viewInsetsOf(sheetContext),
+        child: MediaQuery.removeViewInsets(
+          context: sheetContext,
+          removeLeft: true,
+          removeTop: true,
+          removeRight: true,
+          removeBottom: true,
+          child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: _ReadableMediaSheet(
-                maxContentHeight: maxContentHeight,
-                contentPadding: contentPadding,
-                child: builder(sheetContext),
-              ),
-            ),
-          ),
-        );
-      }
-      return SafeArea(
-        top: false,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: GlassSheet(
-            quality: quality,
-            topBorderRadius: AppVisualTokens.sheetRadius,
-            bottomBorderRadius: AppVisualTokens.sheetRadius,
-            margin: const EdgeInsets.all(8),
-            padding: EdgeInsets.zero,
-            isScrollable: false,
-            suppressInteractionOnChildren: true,
-            enableSaturationGlow: false,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxContentHeight),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: contentPadding,
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: GlassInteractionSilence(child: builder(sheetContext)),
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxContentHeight =
+                      (MediaQuery.sizeOf(context).height *
+                              maxContentHeightFactor)
+                          .clamp(0.0, constraints.maxHeight);
+                  return Align(
+                    alignment: Alignment.bottomCenter,
+                    child: readable
+                        ? _ReadableMediaSheet(
+                            maxContentHeight: maxContentHeight,
+                            contentPadding: contentPadding,
+                            child: builder(context),
+                          )
+                        : ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: maxContentHeight,
+                            ),
+                            child: GlassSheet(
+                              quality: quality,
+                              topBorderRadius: AppVisualTokens.sheetRadius,
+                              bottomBorderRadius: AppVisualTokens.sheetRadius,
+                              margin: EdgeInsets.zero,
+                              padding: contentPadding,
+                              suppressInteractionOnChildren: true,
+                              enableSaturationGlow: false,
+                              child: Material(
+                                type: MaterialType.transparency,
+                                child: GlassInteractionSilence(
+                                  child: builder(context),
+                                ),
+                              ),
+                            ),
+                          ),
+                  );
+                },
               ),
             ),
           ),

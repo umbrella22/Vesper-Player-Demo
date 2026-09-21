@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/media/capabilities/media_engagement.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
@@ -203,7 +204,7 @@ class CacheEntryButton extends StatelessWidget {
           child: Row(
             children: [
               const Icon(
-                Icons.download_for_offline_outlined,
+                AppIcons.download2Line,
                 size: 20,
                 color: AppVisualTokens.primaryBlue,
               ),
@@ -218,7 +219,7 @@ class CacheEntryButton extends StatelessWidget {
                 ),
               ),
               Icon(
-                Icons.chevron_right_rounded,
+                AppIcons.arrowRightSLine,
                 size: 22,
                 color: visualTheme.textTertiary,
               ),
@@ -380,8 +381,8 @@ class CollapsedPlaybackBar extends StatelessWidget {
           height: 64,
           child: Row(
             children: [
-              CollapsedBarIcon(icon: Icons.arrow_back_rounded, onTap: onBack),
-              CollapsedBarIcon(icon: Icons.home_outlined, onTap: onHome),
+              CollapsedBarIcon(icon: AppIcons.arrowLeftLine, onTap: onBack),
+              CollapsedBarIcon(icon: AppIcons.home5Line, onTap: onHome),
               const Spacer(),
               Material(
                 color: Colors.transparent,
@@ -398,8 +399,8 @@ class CollapsedPlaybackBar extends StatelessWidget {
                       children: [
                         Icon(
                           isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                              ? AppIcons.pauseFill
+                              : AppIcons.playFill,
                           color: AppVisualTokens.primaryBlue,
                           size: 34,
                         ),
@@ -421,7 +422,7 @@ class CollapsedPlaybackBar extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              CollapsedBarIcon(icon: Icons.more_vert_rounded, onTap: onMore),
+              CollapsedBarIcon(icon: AppIcons.more2Fill, onTap: onMore),
             ],
           ),
         ),
@@ -488,7 +489,7 @@ class PlaybackBottomSheetScaffold extends StatelessWidget {
                     minHeight: 48,
                   ),
                   icon: Icon(
-                    Icons.close_rounded,
+                    AppIcons.closeFill,
                     size: 30,
                     color: visualTheme.textTertiary,
                   ),
@@ -584,20 +585,20 @@ class _MediaEngagementActionButtonState
   IconData get _icon => switch (widget.action.id) {
     MediaEngagementActionId.like =>
       widget.action.selected
-          ? Icons.thumb_up_alt_rounded
-          : Icons.thumb_up_alt_outlined,
-    MediaEngagementActionId.coin => Icons.paid_outlined,
+          ? AppIcons.thumbUpFill
+          : AppIcons.thumbUpLine,
+    MediaEngagementActionId.coin => AppIcons.moneyCnyCircleLine,
     MediaEngagementActionId.favorite =>
-      widget.action.selected ? Icons.star_rounded : Icons.star_outline_rounded,
-    MediaEngagementActionId.share => Icons.share_outlined,
+      widget.action.selected ? AppIcons.starFill : AppIcons.starLine,
+    MediaEngagementActionId.share => AppIcons.shareLine,
     MediaEngagementActionId.follow =>
       widget.action.selected
-          ? Icons.person_add_alt_1_rounded
-          : Icons.person_add_alt_1_outlined,
+          ? AppIcons.userAddFill
+          : AppIcons.userAddLine,
     MediaEngagementActionId.watchLater =>
       widget.action.selected
-          ? Icons.bookmark_rounded
-          : Icons.bookmark_border_rounded,
+          ? AppIcons.bookmarkFill
+          : AppIcons.bookmarkLine,
   };
 
   Future<void> _handleTap() async {

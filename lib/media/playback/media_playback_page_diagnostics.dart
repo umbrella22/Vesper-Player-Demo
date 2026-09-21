@@ -140,7 +140,7 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                   child: Row(
                     children: [
                       const Icon(
-                        Icons.monitor_heart_outlined,
+                        AppIcons.heartPulseLine,
                         color: Colors.white,
                         size: 23,
                       ),
@@ -158,7 +158,7 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                       IconButton(
                         tooltip: '关闭',
                         onPressed: onClose,
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(AppIcons.closeFill),
                         color: Colors.white,
                       ),
                     ],
@@ -198,7 +198,7 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () => onCopy(report.toJson()),
-                                icon: const Icon(Icons.copy_rounded),
+                                icon: const Icon(AppIcons.fileCopyLine),
                                 label: const Text('复制 JSON'),
                               ),
                             ),
@@ -208,8 +208,8 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                                 onPressed: () => onShare(report.toJson()),
                                 icon: Icon(
                                   isTv
-                                      ? Icons.content_copy_rounded
-                                      : Icons.ios_share_rounded,
+                                      ? AppIcons.fileCopyLine
+                                      : AppIcons.shareLine,
                                 ),
                                 label: Text(isTv ? '复制报告' : '系统分享'),
                               ),
@@ -307,28 +307,28 @@ class _DiagnosticsActions extends StatelessWidget {
           FilledButton.icon(
             key: const ValueKey<String>('start-performance-diagnostics'),
             onPressed: state.busy ? null : onStart,
-            icon: const Icon(Icons.play_arrow_rounded),
+            icon: const Icon(AppIcons.playFill),
             label: const Text('开始'),
           )
         else
           FilledButton.icon(
             key: const ValueKey<String>('stop-performance-diagnostics'),
             onPressed: state.busy ? null : onStop,
-            icon: const Icon(Icons.stop_rounded),
+            icon: const Icon(AppIcons.stopLine),
             label: const Text('停止'),
           ),
         if (state.guidedActive)
           OutlinedButton.icon(
             key: const ValueKey<String>('cancel-guided-diagnostics'),
             onPressed: onCancelGuided,
-            icon: const Icon(Icons.close_rounded),
+            icon: const Icon(AppIcons.closeFill),
             label: const Text('取消 A/B'),
           )
         else
           OutlinedButton.icon(
             key: const ValueKey<String>('start-guided-diagnostics'),
             onPressed: state.busy ? null : onRunGuidedAb,
-            icon: const Icon(Icons.compare_arrows_rounded),
+            icon: const Icon(AppIcons.arrowLeftRightLine),
             label: const Text('引导 A/B'),
           ),
       ],

@@ -22,32 +22,43 @@ Future<T?> showMediaPlaybackSideDrawer<T>(
     pageBuilder: (dialogContext, _, _) {
       final visualTheme = AppVisualTheme.of(dialogContext);
       final drawerWidth = MediaQuery.sizeOf(dialogContext).width * 0.42;
-      return Align(
-        alignment: appearsFromLeading
-            ? Alignment.centerLeft
-            : Alignment.centerRight,
-        child: Material(
-          key: surfaceKey,
-          color: visualTheme.background,
-          borderRadius: BorderRadius.horizontal(
-            left: appearsFromLeading ? Radius.zero : const Radius.circular(22),
-            right: appearsFromLeading ? const Radius.circular(22) : Radius.zero,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            left: appearsFromLeading,
-            right: !appearsFromLeading,
-            child: SizedBox(
-              width: drawerWidth,
-              height: double.infinity,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  18,
-                  20,
-                  22 + MediaQuery.viewInsetsOf(dialogContext).bottom,
+      // The scroll viewport must shrink with the IME so focused fields can
+      // scroll into the visible area, instead of behind the keyboard.
+      return Padding(
+        padding: MediaQuery.viewInsetsOf(dialogContext),
+        child: MediaQuery.removeViewInsets(
+          context: dialogContext,
+          removeLeft: true,
+          removeTop: true,
+          removeRight: true,
+          removeBottom: true,
+          child: Align(
+            alignment: appearsFromLeading
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            child: Material(
+              key: surfaceKey,
+              color: visualTheme.background,
+              borderRadius: BorderRadius.horizontal(
+                left: appearsFromLeading
+                    ? Radius.zero
+                    : const Radius.circular(22),
+                right: appearsFromLeading
+                    ? const Radius.circular(22)
+                    : Radius.zero,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SafeArea(
+                left: appearsFromLeading,
+                right: !appearsFromLeading,
+                child: SizedBox(
+                  width: drawerWidth,
+                  height: double.infinity,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                    child: Builder(builder: builder),
+                  ),
                 ),
-                child: builder(dialogContext),
               ),
             ),
           ),

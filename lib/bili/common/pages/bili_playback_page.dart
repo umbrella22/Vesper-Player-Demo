@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -192,8 +193,8 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     return TvBarButton(
       label: inWatchLater ? '已加入稍后再看' : '稍后再看',
       icon: inWatchLater
-          ? Icons.watch_later_rounded
-          : Icons.watch_later_outlined,
+          ? AppIcons.timeFill
+          : AppIcons.timeLine,
       onTap: loading ? () {} : () => unawaited(_toggleWatchLater()),
     );
   }
@@ -356,18 +357,18 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
         context: dialogContext,
         title: notice.title,
         message: notice.message,
-        icon: Icons.sync_problem_rounded,
+        icon: AppIcons.alarmWarningLine,
         actions: const [
           BiliTvDialogAction(
             label: '知道了',
             value: false,
-            icon: Icons.close_rounded,
+            icon: AppIcons.closeFill,
             autofocus: true,
           ),
           BiliTvDialogAction(
             label: '重新解析',
             value: true,
-            icon: Icons.refresh_rounded,
+            icon: AppIcons.refreshLine,
           ),
         ],
       );

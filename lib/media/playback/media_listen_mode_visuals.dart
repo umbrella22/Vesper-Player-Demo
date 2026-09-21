@@ -1,6 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import '../design/app_visual_theme.dart';
 
@@ -31,7 +33,7 @@ final class MediaListenAmbientBackground extends StatelessWidget {
                 opacity: 0.18,
                 child: ImageFiltered(
                   imageFilter: ui.ImageFilter.blur(sigmaX: 52, sigmaY: 52),
-                  child: Image.network(
+                  child: AppNetworkImage(
                     coverUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => const SizedBox.shrink(),
@@ -68,7 +70,7 @@ final class MediaListenPhoneHeader extends StatelessWidget {
                 key: const ValueKey<String>('listen-return-video'),
                 tooltip: '退出听视频',
                 onPressed: onReturnToVideo,
-                icon: const Icon(Icons.arrow_back_rounded, size: 26),
+                icon: const Icon(AppIcons.arrowLeftLine, size: 26),
                 color: visualTheme.textPrimary,
               ),
             ),
@@ -123,16 +125,16 @@ final class MediaListenCover extends StatelessWidget {
         ),
         child: url.isEmpty
             ? Icon(
-                Icons.graphic_eq_rounded,
+                AppIcons.soundModuleLine,
                 size: size * 0.28,
                 color: visualTheme.textTertiary,
               )
-            : Image.network(
+            : AppNetworkImage(
                 url,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.medium,
                 errorBuilder: (_, _, _) => Icon(
-                  Icons.graphic_eq_rounded,
+                  AppIcons.soundModuleLine,
                   size: size * 0.28,
                   color: visualTheme.textTertiary,
                 ),

@@ -165,7 +165,7 @@ class _CommentTimeChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.play_arrow_rounded,
+                AppIcons.playFill,
                 size: 16,
                 color: AppVisualTokens.primaryBlue,
               ),
@@ -260,12 +260,12 @@ class _CommentPicture extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(color: visualTheme.surfaceRaised),
-            child: Image.network(
+            child: AppNetworkImage(
               picture.url,
               fit: BoxFit.cover,
               cacheWidth: cacheWidth,
               errorBuilder: (_, _, _) => Icon(
-                Icons.broken_image_outlined,
+                AppIcons.imageLine,
                 color: visualTheme.textTertiary,
               ),
             ),
@@ -304,7 +304,7 @@ class _CommentActionRow extends StatelessWidget {
       children: [
         _CommentPassiveAction(
           key: const ValueKey<String>('comment-like-action'),
-          icon: liked ? Icons.thumb_up_rounded : Icons.thumb_up_alt_outlined,
+          icon: liked ? AppIcons.thumbUpFill : AppIcons.thumbUpLine,
           label: likeLabel,
           selected: liked,
           // 写请求进行中时禁用，避免快速连点重复提交。
@@ -312,19 +312,19 @@ class _CommentActionRow extends StatelessWidget {
         ),
         const SizedBox(width: 14),
         const _CommentPassiveAction(
-          icon: Icons.thumb_down_alt_outlined,
+          icon: AppIcons.thumbDownLine,
           label: '',
         ),
         const SizedBox(width: 14),
-        const _CommentPassiveAction(icon: Icons.ios_share_rounded, label: ''),
+        const _CommentPassiveAction(icon: AppIcons.shareLine, label: ''),
         const SizedBox(width: 14),
         const _CommentPassiveAction(
-          icon: Icons.mode_comment_outlined,
+          icon: AppIcons.chat1Line,
           label: '',
         ),
         const Spacer(),
         Icon(
-          Icons.more_vert_rounded,
+          AppIcons.more2Fill,
           size: 20,
           color: visualTheme.textTertiary,
         ),

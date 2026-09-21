@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
@@ -63,8 +64,8 @@ class DanmakuEventSheet extends StatelessWidget {
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-like'),
               icon: interaction.liked
-                  ? Icons.thumb_up_rounded
-                  : Icons.thumb_up_outlined,
+                  ? AppIcons.thumbUpFill
+                  : AppIcons.thumbUpLine,
               label: switch ((interaction.pending, interaction.liked)) {
                 (true, _) => '处理中…',
                 (false, true) => '取消点赞',
@@ -79,7 +80,7 @@ class DanmakuEventSheet extends StatelessWidget {
           if (event.hasServerId && interaction.canRetract)
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-retract'),
-              icon: Icons.undo_rounded,
+              icon: AppIcons.arrowGoBackLine,
               label: '撤回我的弹幕',
               onTap: interaction.pending
                   ? null
@@ -87,7 +88,7 @@ class DanmakuEventSheet extends StatelessWidget {
             ),
           DanmakuSheetAction(
             key: const ValueKey<String>('danmaku-action-copy'),
-            icon: Icons.copy_rounded,
+            icon: AppIcons.fileCopyLine,
             label: '复制内容',
             onTap: () => Navigator.of(context).pop(DanmakuEventAction.copyText),
           ),
@@ -95,8 +96,8 @@ class DanmakuEventSheet extends StatelessWidget {
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-block-sender'),
               icon: senderBlocked
-                  ? Icons.visibility_rounded
-                  : Icons.visibility_off_rounded,
+                  ? AppIcons.eyeLine
+                  : AppIcons.eyeOffLine,
               label: senderBlocked ? '取消屏蔽该发送者' : '屏蔽该发送者',
               onTap: () => Navigator.of(
                 context,
@@ -239,7 +240,7 @@ class _BiliDanmakuComposerState extends State<BiliDanmakuComposer> {
           children: [
             Text('点我发弹幕'),
             SizedBox(width: 6),
-            Icon(Icons.chat_bubble_outline_rounded, size: 14),
+            Icon(AppIcons.chat3Line, size: 14),
           ],
         ),
       ),
@@ -385,7 +386,7 @@ class _DanmakuInputSheetState extends State<_DanmakuInputSheet> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.send_rounded),
+                              : const Icon(AppIcons.sendPlaneLine),
                         ),
                       ),
                     ],

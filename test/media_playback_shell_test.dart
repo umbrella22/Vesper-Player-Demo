@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/bili/common/services/bili_quality_mapping.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/models/media_hdr_status.dart';
@@ -233,6 +234,7 @@ void main() {
     MediaPlaybackTarget? playbackTarget,
     MediaPlaybackBinding binding = const MediaPlaybackBinding(),
     Size surfaceSize = const Size(1200, 900),
+    BorderRadius? displayCornerRadii,
     MediaPlaybackPresentationMode presentationMode =
         MediaPlaybackPresentationMode.phone,
     MediaPlayerDeviceControls? deviceControls,
@@ -270,6 +272,14 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: displayCornerRadii == null
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).applyDisplayCornerRadii(displayCornerRadii),
+                child: child!,
+              ),
         home: MediaPlaybackPage(
           viewModel: viewModel,
           presentationMode: presentationMode,
@@ -378,6 +388,36 @@ void main() {
       });
     }
 
+    testWidgets('大圆角 Android 手机的内嵌播放区保持可用宽度和视频比例', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 48, bottom: 24);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      await pumpShell(
+        tester,
+        surfaceSize: const Size(390, 844),
+        displayCornerRadii: BorderRadius.circular(44),
+        binding: MediaPlaybackBinding(
+          contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+        ),
+      );
+
+      final stageRect = tester.getRect(stageFinder);
+      expect(stageRect.left, 10);
+      expect(stageRect.top, 54);
+      expect(stageRect.width, 370);
+      expect(stageRect.height, closeTo(370 / (16 / 9), 0.01));
+      expect(tester.getRect(find.byType(VesperPlayerView)), stageRect);
+      expect(tester.getRect(find.byType(AndroidViewSurface)), stageRect);
+      expect(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('playback-bottom-surface')))
+            .dy,
+        closeTo(stageRect.bottom + 12, 0.01),
+      );
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
     testWidgets('内嵌竖屏限制高度并为简介保留空间，原生尺寸可校正比例', (tester) async {
       final harness = await pumpShell(
         tester,
@@ -467,7 +507,7 @@ void main() {
         stage(tester).controlLayout,
         vesper_ui.VesperStageControlLayout.compact,
       );
-      expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+      expect(find.byIcon(AppIcons.fullscreenExitFill), findsOneWidget);
       expect(find.byKey(const ValueKey('enter-listen-mode')), findsNothing);
 
       harness.platform.emitSnapshot(
@@ -891,7 +931,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byTooltip('退出听视频'), findsOneWidget);
-      expect(find.byIcon(Icons.ondemand_video_rounded), findsNothing);
+      expect(find.byIcon(AppIcons.videoLine), findsNothing);
       expect(find.text('正在播放'), findsOneWidget);
       expect(harness.platform.createCalls, initialCreateCalls);
       expect(harness.platform.selectSourceCalls, 1);
@@ -1711,7 +1751,7 @@ void main() {
       );
       await pumpShell(tester, adapter: adapter);
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded).first);
+      await tester.tap(find.byIcon(AppIcons.more2Fill).first);
       await tester.pumpAndSettle();
       expect(find.text('Dolby Vision'), findsOneWidget);
       expect(find.text('hevc-main'), findsNothing);
@@ -1743,7 +1783,7 @@ void main() {
       );
       await pumpShell(tester, adapter: adapter);
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded).first);
+      await tester.tap(find.byIcon(AppIcons.more2Fill).first);
       await tester.pumpAndSettle();
       expect(find.text('HEVC'), findsOneWidget);
       expect(find.text('hevc-main'), findsNothing);
@@ -2495,7 +2535,7 @@ void main() {
         initialSnapshot: snapshot,
       );
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded).first);
+      await tester.tap(find.byIcon(AppIcons.more2Fill).first);
       await tester.pumpAndSettle();
 
       expect(find.text('自动'), findsOneWidget);
@@ -2685,7 +2725,7 @@ void main() {
       harness.viewModel.setFullscreen(true);
       await tester.pumpAndSettle();
 
-      final play = find.byIcon(Icons.play_arrow_rounded);
+      final play = find.byIcon(AppIcons.playFill);
       final toggle = find.byKey(const ValueKey<String>('toggle-danmaku'));
       final danmakuSettings = find.byKey(
         const ValueKey<String>('open-danmaku-settings'),
@@ -2694,7 +2734,7 @@ void main() {
         const ValueKey<String>('open-subtitle-settings'),
       );
       final pills = find.byType(vesper_ui.VesperStagePillButton);
-      final fullscreen = find.byIcon(Icons.fullscreen_exit_rounded);
+      final fullscreen = find.byIcon(AppIcons.fullscreenExitFill);
 
       expect(
         find.byKey(const ValueKey<String>('landscape-control-bar-leading')),

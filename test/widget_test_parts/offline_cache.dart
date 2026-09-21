@@ -108,7 +108,7 @@ void _registerOfflineCacheWidgetTests() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('offline-task-action-2')),
-        matching: find.byIcon(Icons.pause_rounded),
+        matching: find.byIcon(AppIcons.pauseFill),
       ),
       findsOneWidget,
     );
@@ -214,7 +214,7 @@ void _registerOfflineCacheWidgetTests() {
     );
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byIcon(AppIcons.more2Fill));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('导出到相册'), findsOneWidget);

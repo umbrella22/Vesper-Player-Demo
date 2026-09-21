@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
@@ -13,55 +14,55 @@ final class BiliRegionVisual {
 BiliRegionVisual biliRegionVisualFor(BiliRegionSection section) {
   return switch (section.id) {
     'bangumi' => const BiliRegionVisual(
-      icon: Icons.live_tv_outlined,
+      icon: AppIcons.liveLine,
       color: Color(0xFF00A1D6),
     ),
     'guochuang' => const BiliRegionVisual(
-      icon: Icons.auto_awesome_motion_outlined,
+      icon: AppIcons.stackLine,
       color: AppVisualTokens.primaryBlue,
     ),
     'movie' => const BiliRegionVisual(
-      icon: Icons.movie_outlined,
+      icon: AppIcons.movieLine,
       color: Color(0xFF7C6BEA),
     ),
     'tv' => const BiliRegionVisual(
-      icon: Icons.connected_tv_outlined,
+      icon: AppIcons.tv2Line,
       color: Color(0xFF22A06B),
     ),
     'documentary' => const BiliRegionVisual(
-      icon: Icons.camera_alt_outlined,
+      icon: AppIcons.cameraLine,
       color: Color(0xFFE78A1E),
     ),
     'variety' => const BiliRegionVisual(
-      icon: Icons.theater_comedy_outlined,
+      icon: AppIcons.movie2Line,
       color: Color(0xFFD756A9),
     ),
     'douga' => const BiliRegionVisual(
-      icon: Icons.palette_outlined,
+      icon: AppIcons.paletteLine,
       color: Color(0xFF27A8E0),
     ),
     'music' => const BiliRegionVisual(
-      icon: Icons.music_note_outlined,
+      icon: AppIcons.music2Line,
       color: Color(0xFFF05D5E),
     ),
     'game' => const BiliRegionVisual(
-      icon: Icons.sports_esports_outlined,
+      icon: AppIcons.gamepadLine,
       color: Color(0xFF5A7CF6),
     ),
     'knowledge' => const BiliRegionVisual(
-      icon: Icons.school_outlined,
+      icon: AppIcons.schoolLine,
       color: Color(0xFF19A58B),
     ),
     'tech' => const BiliRegionVisual(
-      icon: Icons.memory_outlined,
+      icon: AppIcons.cpuLine,
       color: Color(0xFF4C8DFF),
     ),
     'life' => const BiliRegionVisual(
-      icon: Icons.home_outlined,
+      icon: AppIcons.home5Line,
       color: Color(0xFFFF8A4C),
     ),
     _ => const BiliRegionVisual(
-      icon: Icons.video_library_outlined,
+      icon: AppIcons.filmLine,
       color: Color(0xFF00A1D6),
     ),
   };

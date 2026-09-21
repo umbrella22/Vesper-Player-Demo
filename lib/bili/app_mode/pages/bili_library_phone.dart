@@ -20,7 +20,7 @@ class _LibraryLoadMoreButton extends StatelessWidget {
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.expand_more_rounded),
+            : const Icon(AppIcons.arrowDownSLine),
         label: Text(loading ? '加载中' : '加载更多'),
       ),
     );
@@ -50,10 +50,10 @@ class _FollowingTile extends StatelessWidget {
           ),
           backgroundImage: user.avatarUrl.isEmpty
               ? null
-              : NetworkImage(user.avatarUrl),
+              : appNetworkImageProvider(context, user.avatarUrl),
           child: user.avatarUrl.isEmpty
               ? const Icon(
-                  Icons.person_outline_rounded,
+                  AppIcons.user3Line,
                   color: AppVisualTokens.primaryBlue,
                 )
               : null,
@@ -119,7 +119,7 @@ class _LibraryVideoTile extends StatelessWidget {
                     children: [
                       coverUrl.isEmpty
                           ? ColoredBox(color: visualTheme.surfaceRaised)
-                          : Image.network(
+                          : AppNetworkImage(
                               coverUrl,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) =>
@@ -202,7 +202,7 @@ class _LibraryErrorView extends StatelessWidget {
       padding: const EdgeInsets.all(28),
       children: [
         const Icon(
-          Icons.lock_outline_rounded,
+          AppIcons.lockLine,
           size: 44,
           color: AppVisualTokens.primaryBlue,
         ),
@@ -230,7 +230,7 @@ class _LibraryEmptyView extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         const SizedBox(height: 120),
-        Icon(Icons.inbox_outlined, size: 42, color: visualTheme.textTertiary),
+        Icon(AppIcons.inboxLine, size: 42, color: visualTheme.textTertiary),
         const SizedBox(height: 12),
         Text(
           message,

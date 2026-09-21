@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
@@ -236,7 +237,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
               children: [
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.ios_share_rounded),
+                  leading: const Icon(AppIcons.shareLine),
                   title: const Text('导出到相册'),
                   subtitle: const Text('导出为可在任意播放器中播放的 MP4'),
                   enabled: canExport,
@@ -250,7 +251,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
                   contentPadding: EdgeInsets.zero,
                   textColor: AppVisualTheme.of(context).destructive,
                   iconColor: AppVisualTheme.of(context).destructive,
-                  leading: const Icon(Icons.delete_outline_rounded),
+                  leading: const Icon(AppIcons.deleteBinLine),
                   title: const Text('删除'),
                   onTap: () =>
                       Navigator.of(context).pop(_OfflineEntryAction.delete),

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -18,6 +19,7 @@ import 'app/updates/app_update_widgets.dart';
 import 'bili/common/services/bili_client.dart';
 import 'bili/common/services/bili_platform_info.dart';
 import 'bili/common/services/bili_ui_mode_resolver.dart';
+import 'common/widgets/app_network_image.dart';
 import 'download/services/offline_download_controller.dart';
 import 'danmaku/danmaku.dart';
 
@@ -38,6 +40,7 @@ class PlatformApp extends StatefulWidget {
     this.client,
     this.offlineController,
     this.updateController,
+    this.imageCacheManager,
   });
 
   final AppSettingsStore appSettings;
@@ -48,6 +51,7 @@ class PlatformApp extends StatefulWidget {
   final BiliClient? client;
   final BiliOfflineDownloadController? offlineController;
   final AppUpdateController? updateController;
+  final BaseCacheManager? imageCacheManager;
 
   @override
   State<PlatformApp> createState() => _PlatformAppState();
@@ -57,6 +61,10 @@ class _PlatformAppState extends State<PlatformApp> {
   late final BiliUiModeController _uiModeController;
   late final DanmakuSettingsController _danmakuSettingsController;
   late final AppUpdateController _updateController;
+  BaseCacheManager? _imageCacheManager;
+
+  BaseCacheManager _getImageCacheManager() => _imageCacheManager ??=
+      widget.imageCacheManager ?? createAppImageCacheManager();
 
   @override
   void initState() {
@@ -77,6 +85,10 @@ class _PlatformAppState extends State<PlatformApp> {
 
   @override
   void dispose() {
+    final imageCache = _imageCacheManager;
+    if (widget.imageCacheManager == null && imageCache != null) {
+      unawaited(imageCache.dispose());
+    }
     if (widget.updateController == null) {
       _updateController.dispose();
     }
@@ -91,26 +103,29 @@ class _PlatformAppState extends State<PlatformApp> {
 
   @override
   Widget build(BuildContext context) {
-    return AppUpdateScope(
-      controller: _updateController,
-      child: DanmakuSettingsScope(
-        controller: _danmakuSettingsController,
-        child: VesperApp(
-          appSettings: widget.appSettings,
-          initialThemePreference: widget.initialThemePreference,
-          host: VesperAppHost(
-            tvModeListenable: _uiModeController.tvModeListenable,
-            refreshPreferredOrientations:
-                refreshBiliAppPreferredOrientationsIfActive,
-            tvSystemUiStyle: biliTvSystemUiStyle,
-            systemUiStyleForBrightness: appSystemUiStyleForBrightness,
-            homeBuilder: (_) => AppUpdateStartupCheck(
-              controller: _updateController,
-              child: HomePage(
-                uiModeController: _uiModeController,
-                client: widget.client,
-                offlineController: widget.offlineController,
-                appSettings: widget.appSettings,
+    return AppImageCacheScope(
+      getCacheManager: _getImageCacheManager,
+      child: AppUpdateScope(
+        controller: _updateController,
+        child: DanmakuSettingsScope(
+          controller: _danmakuSettingsController,
+          child: VesperApp(
+            appSettings: widget.appSettings,
+            initialThemePreference: widget.initialThemePreference,
+            host: VesperAppHost(
+              tvModeListenable: _uiModeController.tvModeListenable,
+              refreshPreferredOrientations:
+                  refreshBiliAppPreferredOrientationsIfActive,
+              tvSystemUiStyle: biliTvSystemUiStyle,
+              systemUiStyleForBrightness: appSystemUiStyleForBrightness,
+              homeBuilder: (_) => AppUpdateStartupCheck(
+                controller: _updateController,
+                child: HomePage(
+                  uiModeController: _uiModeController,
+                  client: widget.client,
+                  offlineController: widget.offlineController,
+                  appSettings: widget.appSettings,
+                ),
               ),
             ),
           ),

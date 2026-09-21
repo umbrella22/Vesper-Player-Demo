@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/app/app.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
@@ -137,11 +138,11 @@ void main() {
                 items: const [
                   AppGlassNavigationItem(
                     label: '首页',
-                    icon: Icons.home_outlined,
+                    icon: AppIcons.home5Line,
                   ),
                   AppGlassNavigationItem(
                     label: '我的',
-                    icon: Icons.person_outline_rounded,
+                    icon: AppIcons.user3Line,
                   ),
                 ],
               ),
@@ -232,13 +233,13 @@ void main() {
                         items: const [
                           AppGlassNavigationItem(
                             label: '首页',
-                            icon: Icons.home_outlined,
-                            activeIcon: Icons.home_rounded,
+                            icon: AppIcons.home5Line,
+                            activeIcon: AppIcons.home5Fill,
                           ),
                           AppGlassNavigationItem(
                             label: '我的',
-                            icon: Icons.person_outline_rounded,
-                            activeIcon: Icons.person_rounded,
+                            icon: AppIcons.user3Line,
+                            activeIcon: AppIcons.user3Fill,
                           ),
                         ],
                       ),
@@ -270,7 +271,7 @@ void main() {
       }
       final selectedLabel = tester.widget<Text>(find.text('首页'));
       expect(selectedLabel.style?.color, const Color(0xFF0060C7));
-      final selectedIcon = find.byIcon(Icons.home_rounded);
+      final selectedIcon = find.byIcon(AppIcons.home5Fill);
       expect(
         tester.widget<Icon>(selectedIcon).color,
         selectedLabel.style?.color,
@@ -380,11 +381,11 @@ void main() {
                       items: const [
                         AppGlassNavigationItem(
                           label: '首页',
-                          icon: Icons.home_outlined,
+                          icon: AppIcons.home5Line,
                         ),
                         AppGlassNavigationItem(
                           label: '我的',
-                          icon: Icons.person_outline_rounded,
+                          icon: AppIcons.user3Line,
                         ),
                       ],
                     ),
@@ -448,10 +449,10 @@ void main() {
                 onClear: () {},
               ),
               items: const [
-                AppGlassNavigationItem(label: '首页', icon: Icons.home_outlined),
+                AppGlassNavigationItem(label: '首页', icon: AppIcons.home5Line),
                 AppGlassNavigationItem(
                   label: '我的',
-                  icon: Icons.person_outline_rounded,
+                  icon: AppIcons.user3Line,
                 ),
               ],
             ),

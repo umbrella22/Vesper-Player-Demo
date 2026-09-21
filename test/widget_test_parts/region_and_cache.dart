@@ -320,7 +320,7 @@ void _registerRegionAndCacheWidgetTests() {
         of: find
             .ancestor(of: find.text('花絮'), matching: find.byType(InkWell))
             .first,
-        matching: find.byIcon(Icons.download_rounded),
+        matching: find.byIcon(AppIcons.downloadLine),
       ),
       findsOneWidget,
     );

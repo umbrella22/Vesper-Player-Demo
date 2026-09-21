@@ -76,7 +76,7 @@ class _EpisodePreviewTile extends StatelessWidget {
                   height: 104,
                   child: (page.coverUrl ?? coverUrl).isEmpty
                       ? ColoredBox(color: visualTheme.surfaceRaised)
-                      : Image.network(
+                      : AppNetworkImage(
                           page.coverUrl ?? coverUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) =>
@@ -273,15 +273,15 @@ class _RelatedVideoTile extends StatelessWidget {
                             ),
                             child: item.coverUrl.isEmpty
                                 ? Icon(
-                                    Icons.video_library_outlined,
+                                    AppIcons.filmLine,
                                     color: visualTheme.textTertiary,
                                   )
-                                : Image.network(
+                                : AppNetworkImage(
                                     item.coverUrl,
                                     fit: BoxFit.cover,
                                     cacheWidth: cacheWidth,
                                     errorBuilder: (_, _, _) => Icon(
-                                      Icons.broken_image_outlined,
+                                      AppIcons.imageLine,
                                       color: visualTheme.textTertiary,
                                     ),
                                   ),
@@ -370,7 +370,7 @@ class _RelatedVideoTile extends StatelessWidget {
                           Row(
                             children: [
                               Icon(
-                                Icons.play_circle_outline_rounded,
+                                AppIcons.playCircleLine,
                                 size: 15,
                                 color: visualTheme.textTertiary,
                               ),
@@ -391,7 +391,7 @@ class _RelatedVideoTile extends StatelessWidget {
                               ),
                               const SizedBox(width: 10),
                               Icon(
-                                Icons.subtitles_outlined,
+                                AppIcons.closedCaptioningLine,
                                 size: 15,
                                 color: visualTheme.textTertiary,
                               ),

@@ -1,14 +1,83 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_favorites_page.dart';
 import 'package:vesper_media/bili/common/models/bili_favorites_models.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 void main() {
+  for (final dark in [false, true]) {
+    testWidgets(
+      'new folder form is opaque and usable above the keyboard (dark: $dark)',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetViewInsets);
+        final client = _FavoritesClient();
+        await _pumpPage(
+          tester,
+          client,
+          openFirstFolder: false,
+          theme: dark
+              ? AppVisualTokens.mobileDarkTheme()
+              : AppVisualTokens.mobileLightTheme(),
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('bili-favorites-create-folder')),
+        );
+        await tester.pumpAndSettle();
+        tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+        await tester.pumpAndSettle();
+        final surface = find.byKey(
+          const ValueKey<String>('media-readable-glass-sheet'),
+        );
+        expect(surface, findsOneWidget);
+        expect(tester.widget<Material>(surface).color!.a, 1);
+        expect(find.byType(GlassSheet), findsNothing);
+        expect(
+          find.descendant(of: surface, matching: find.byType(GlassButton)),
+          findsNothing,
+        );
+        for (final control in [
+          find.byKey(const ValueKey('bili-favorites-folder-title')),
+          find.text('取消'),
+          find.text('创建'),
+        ]) {
+          expect(tester.getRect(control).bottom, lessThan(544));
+        }
+        await tester.enterText(
+          find.byKey(const ValueKey('bili-favorites-folder-title')),
+          '草稿',
+        );
+        for (final keyboardHeight in [0.0, 340.0]) {
+          tester.view.viewInsets = FakeViewPadding(bottom: keyboardHeight);
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<TextField>(
+                  find.byKey(const ValueKey('bili-favorites-folder-title')),
+                )
+                .controller!
+                .text,
+            '草稿',
+          );
+        }
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(client.createdTitles, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
   testWidgets('folder cards open contents and back returns to the overview', (
     tester,
   ) async {
@@ -390,30 +459,66 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('late preview after refresh cannot replace the new cover', (
-    tester,
-  ) async {
-    final pending = Completer<BiliFavoritePage>();
-    final client = _FavoritesClient()..loadPreview = (_) => pending.future;
-    await _pumpPage(tester, client, openFirstFolder: false);
-    client.loadPreview = (_) async => _page(
-      items: [_item(2, title: '新首条', coverUrl: 'https://example.test/new.jpg')],
-    );
-    await tester.tap(find.byTooltip('刷新收藏'));
-    await tester.pumpAndSettle();
-    pending.complete(
-      _page(
+  testWidgets(
+    'refresh shares an in-flight preview instead of requesting again',
+    (tester) async {
+      final pending = Completer<BiliFavoritePage>();
+      final client = _FavoritesClient()..loadPreview = (_) => pending.future;
+      await _pumpPage(tester, client, openFirstFolder: false);
+      client.loadPreview = (_) async => _page(
         items: [
-          _item(1, title: '旧首条', coverUrl: 'https://example.test/old.jpg'),
+          _item(2, title: '新首条', coverUrl: 'https://example.test/new.jpg'),
         ],
-      ),
-    );
-    await tester.pumpAndSettle();
-    for (final image in tester.widgetList<Image>(find.byType(Image))) {
-      expect((image.image as NetworkImage).url, 'https://example.test/new.jpg');
-    }
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+      );
+      await tester.tap(find.byTooltip('刷新收藏'));
+      await tester.pumpAndSettle();
+      pending.complete(
+        _page(
+          items: [
+            _item(1, title: '旧首条', coverUrl: 'https://example.test/old.jpg'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(client.previewRequests, hasLength(2));
+      for (final image in tester.widgetList<Image>(find.byType(Image))) {
+        expect(
+          (image.image as NetworkImage).url,
+          'https://example.test/old.jpg',
+        );
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'folder covers survive returning, refreshing and reopening the route',
+    (tester) async {
+      final client = _FavoritesClient()
+        ..loadPreview = (request) async => _page(
+          items: [
+            _item(
+              1,
+              title: '首条',
+              coverUrl: 'https://example.test/first-${request.folderId}.jpg',
+            ),
+          ],
+          hasMore: false,
+        );
+      await _pumpPage(tester, client, openFirstFolder: false);
+      expect(client.previewRequests, hasLength(2));
+      await tester.tap(find.byKey(const ValueKey('favorite-folder-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('返回收藏夹'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('刷新收藏'));
+      await tester.pumpAndSettle();
+      expect(client.previewRequests, hasLength(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpPage(tester, client, openFirstFolder: false);
+      expect(client.previewRequests, hasLength(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
 
 Future<void> _pumpPage(
@@ -422,10 +527,12 @@ Future<void> _pumpPage(
   Future<void> Function()? onLogin,
   Future<void> Function(BiliVideoDetail detail)? openPlayback,
   MediaQueryData? mediaQuery,
+  ThemeData? theme,
   bool openFirstFolder = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      theme: theme,
       builder: mediaQuery == null
           ? null
           : (context, child) => MediaQuery(data: mediaQuery, child: child!),
@@ -511,7 +618,7 @@ class _FavoritesClient extends BiliClient {
     if (pageSize == 1) {
       previewRequests.add(request);
       return loadPreview?.call(request) ??
-          _page(items: [_item(1, title: '封面视频')]);
+          _page(items: [_item(1, title: '封面视频')], hasMore: false);
     }
     requests.add(request);
     return loadItems?.call(request) ??

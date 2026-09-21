@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.16.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.15.0...vesper_media-v1.16.0) (2026-09-21)
+
+### Features
+
+* Use a shared Remix Icon set across mobile, TV, and playback controls, including a custom Vesper Stage skin.
+* Add a shared disk image cache for covers and avatars.
+* Persist favorite-folder cover selections per account, reuse preview requests, and refresh covers when their source becomes unavailable or is removed.
+
+### Bug Fixes
+
+* Keep inline playback at its intended width on Android devices with large display corner radii, including the layout issue reported on Xiaomi 15.
+* Keep sheets and playback drawers above the keyboard so focused inputs remain visible and scrollable.
+* Improve the readability and keyboard layout of the favorite-folder creation sheet.
+
+### Dependencies
+
+* Upgrade the resolved Vesper Flutter packages to 0.6.4 and require vesper_player_ui 0.6.4 for Stage skin support.
+* Add cached_network_image and flutter_cache_manager for shared image caching.
+
 ## [1.15.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.14.0...vesper_media-v1.15.0) (2026-09-20)
 
 

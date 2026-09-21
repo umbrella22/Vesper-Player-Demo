@@ -1,6 +1,7 @@
 import 'package:flutter/widget_previews.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
@@ -128,7 +129,7 @@ class _MobilePlaybackPreview extends StatelessWidget {
                   children: [
                     const Center(
                       child: Icon(
-                        Icons.play_circle_fill_rounded,
+                        AppIcons.playCircleFill,
                         color: Color(0xCCFFFFFF),
                         size: 58,
                       ),
@@ -140,7 +141,7 @@ class _MobilePlaybackPreview extends StatelessWidget {
                         onPressed: _noop,
                         tooltip: '返回',
                         icon: const Icon(
-                          Icons.arrow_back_rounded,
+                          AppIcons.arrowLeftLine,
                           color: Colors.white,
                         ),
                       ),
@@ -190,7 +191,7 @@ class _MobilePlaybackPreview extends StatelessWidget {
                             ),
                             const Spacer(),
                             Icon(
-                              Icons.chat_bubble_outline_rounded,
+                              AppIcons.chat3Line,
                               color: visualTheme.textTertiary,
                               size: 18,
                             ),
@@ -277,31 +278,31 @@ class _MobilePlaybackPreview extends StatelessWidget {
                               children: const [
                                 Expanded(
                                   child: _PlaybackPreviewAction(
-                                    icon: Icons.thumb_up_alt_outlined,
+                                    icon: AppIcons.thumbUpLine,
                                     label: '2.8万',
                                   ),
                                 ),
                                 Expanded(
                                   child: _PlaybackPreviewAction(
-                                    icon: Icons.monetization_on_outlined,
+                                    icon: AppIcons.moneyCnyCircleLine,
                                     label: '1,204',
                                   ),
                                 ),
                                 Expanded(
                                   child: _PlaybackPreviewAction(
-                                    icon: Icons.star_border_rounded,
+                                    icon: AppIcons.starLine,
                                     label: '8,642',
                                   ),
                                 ),
                                 Expanded(
                                   child: _PlaybackPreviewAction(
-                                    icon: Icons.ios_share_rounded,
+                                    icon: AppIcons.shareLine,
                                     label: '326',
                                   ),
                                 ),
                                 Expanded(
                                   child: _PlaybackPreviewAction(
-                                    icon: Icons.bookmark_border_rounded,
+                                    icon: AppIcons.bookmarkLine,
                                   ),
                                 ),
                               ],
@@ -329,7 +330,7 @@ class _MobilePlaybackPreview extends StatelessWidget {
                                     ),
                                   ),
                                   child: Icon(
-                                    Icons.movie_outlined,
+                                    AppIcons.movieLine,
                                     color: visualTheme.textTertiary,
                                   ),
                                 ),
@@ -444,7 +445,7 @@ class _MobilePreviewPageState extends State<_MobilePreviewPage> {
         leading: nested
             ? const IconButton(
                 onPressed: _noop,
-                icon: Icon(Icons.arrow_back_ios_new_rounded),
+                icon: Icon(AppIcons.arrowLeftSLine),
               )
             : null,
         title: Text(pageTitle),
@@ -453,7 +454,7 @@ class _MobilePreviewPageState extends State<_MobilePreviewPage> {
                 IconButton(
                   onPressed: _noop,
                   tooltip: '搜索',
-                  icon: Icon(Icons.search_rounded),
+                  icon: Icon(AppIcons.searchLine),
                 ),
               ]
             : null,
@@ -467,13 +468,13 @@ class _MobilePreviewPageState extends State<_MobilePreviewPage> {
               items: const [
                 AppGlassNavigationItem(
                   label: '首页',
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home_rounded,
+                  icon: AppIcons.home5Line,
+                  activeIcon: AppIcons.home5Fill,
                 ),
                 AppGlassNavigationItem(
                   label: '我的',
-                  icon: Icons.person_outline_rounded,
-                  activeIcon: Icons.person_rounded,
+                  icon: AppIcons.user3Line,
+                  activeIcon: AppIcons.user3Fill,
                 ),
               ],
             ),
@@ -531,7 +532,7 @@ class _MobileHomeContent extends StatelessWidget {
                   color: visualTheme.surfaceRaised,
                   alignment: Alignment.center,
                   child: Icon(
-                    Icons.play_circle_fill_rounded,
+                    AppIcons.playCircleFill,
                     color: visualTheme.textTertiary,
                     size: 46,
                   ),
@@ -619,7 +620,7 @@ class _MobileVideoCard extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Icon(
-              Icons.movie_outlined,
+              AppIcons.movieLine,
               color: visualTheme.textTertiary,
               size: 38,
             ),
@@ -692,7 +693,7 @@ class _MobileMineContent extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: visualTheme.textTertiary),
+            Icon(AppIcons.arrowRightSLine, color: visualTheme.textTertiary),
           ],
         ),
         const SizedBox(height: 22),
@@ -711,14 +712,14 @@ class _MobileMineContent extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _PreviewShortcut(icon: Icons.download_rounded, label: '离线缓存'),
-                _PreviewShortcut(icon: Icons.history_rounded, label: '历史记录'),
+                _PreviewShortcut(icon: AppIcons.downloadLine, label: '离线缓存'),
+                _PreviewShortcut(icon: AppIcons.historyLine, label: '历史记录'),
                 _PreviewShortcut(
-                  icon: Icons.people_outline_rounded,
+                  icon: AppIcons.groupLine,
                   label: '关注列表',
                 ),
                 _PreviewShortcut(
-                  icon: Icons.watch_later_outlined,
+                  icon: AppIcons.timeLine,
                   label: '稍后再看',
                 ),
               ],
@@ -728,7 +729,7 @@ class _MobileMineContent extends StatelessWidget {
         const AppSectionLabel('更多服务'),
         const AppGroupedSurface(
           children: [
-            AppSettingsRow(icon: Icons.tune_rounded, title: '设置', onTap: _noop),
+            AppSettingsRow(icon: AppIcons.equalizer2Line, title: '设置', onTap: _noop),
           ],
         ),
       ],
@@ -799,14 +800,14 @@ class _MobileSettingsContent extends StatelessWidget {
         AppGroupedSurface(
           children: [
             AppSettingsRow(
-              icon: Icons.brightness_auto_rounded,
+              icon: AppIcons.contrastLine,
               title: '显示主题',
               subtitle: '跟随系统明暗模式',
               trailing: _PreviewTrailingLabel('自动'),
               onTap: _noop,
             ),
             AppSettingsRow(
-              icon: Icons.tv_rounded,
+              icon: AppIcons.tvLine,
               title: '强制 TV 模式',
               subtitle: '在手机和平板使用 TV 界面',
               trailing: Switch(value: true, onChanged: _noopBool),
@@ -817,7 +818,7 @@ class _MobileSettingsContent extends StatelessWidget {
         AppGroupedSurface(
           children: [
             AppSettingsRow(
-              icon: Icons.account_circle_outlined,
+              icon: AppIcons.accountCircleLine,
               title: 'Bilibili 账号',
               subtitle: '登录状态已保存在本机',
               iconColor: AppVisualTokens.biliSourcePink,
@@ -829,7 +830,7 @@ class _MobileSettingsContent extends StatelessWidget {
         AppGroupedSurface(
           children: [
             AppSettingsRow(
-              icon: Icons.info_outline_rounded,
+              icon: AppIcons.informationLine,
               title: 'Vesper',
               subtitle: 'Vesper 媒体客户端',
               trailing: _PreviewTrailingLabel('1.2.0'),
@@ -876,15 +877,15 @@ class _MobileLibraryContent extends StatelessWidget {
             items: const [
               AppGlassNavigationItem(
                 label: '关注',
-                icon: Icons.people_alt_outlined,
+                icon: AppIcons.groupLine,
               ),
               AppGlassNavigationItem(
                 label: '历史播放',
-                icon: Icons.history_rounded,
+                icon: AppIcons.historyLine,
               ),
               AppGlassNavigationItem(
                 label: '稍后再看',
-                icon: Icons.watch_later_outlined,
+                icon: AppIcons.timeLine,
               ),
             ],
           ),
@@ -926,7 +927,7 @@ class _PreviewLibraryRow extends StatelessWidget {
                 border: Border.all(color: visualTheme.imageOutline),
               ),
               child: Icon(
-                Icons.movie_outlined,
+                AppIcons.movieLine,
                 color: visualTheme.textTertiary,
               ),
             ),
@@ -1133,12 +1134,12 @@ class _TvRailContents extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = <(IconData, String)>[
-      (Icons.home_rounded, '为你推荐'),
-      (Icons.grid_view_rounded, '分区'),
-      (Icons.search_rounded, '搜索'),
-      (Icons.history_rounded, '历史记录'),
-      (Icons.person_outline_rounded, '我的'),
-      (Icons.settings_outlined, '设置'),
+      (AppIcons.home5Fill, '为你推荐'),
+      (AppIcons.gridLine, '分区'),
+      (AppIcons.searchLine, '搜索'),
+      (AppIcons.historyLine, '历史记录'),
+      (AppIcons.user3Line, '我的'),
+      (AppIcons.settingsLine, '设置'),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1156,7 +1157,7 @@ class _TvRailContents extends StatelessWidget {
                 borderRadius: BorderRadius.circular(9),
               ),
               child: const Icon(
-                Icons.play_arrow_rounded,
+                AppIcons.playFill,
                 color: Color(0xFF111318),
               ),
             ),
@@ -1270,7 +1271,7 @@ class _TvShelfCard extends StatelessWidget {
               ),
               child: const Center(
                 child: Icon(
-                  Icons.movie_outlined,
+                  AppIcons.movieLine,
                   color: Color(0x99FFFFFF),
                   size: 34,
                 ),
@@ -1321,7 +1322,7 @@ class _TvFocusedContentPreview extends StatelessWidget {
                       ),
                       alignment: Alignment.center,
                       child: const Icon(
-                        Icons.movie_outlined,
+                        AppIcons.movieLine,
                         color: Color(0xB3FFFFFF),
                         size: 58,
                       ),

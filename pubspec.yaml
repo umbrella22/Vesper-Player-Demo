@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.15.0
+version: 1.16.0
 
 environment:
   sdk: ^3.12.0
@@ -32,7 +32,7 @@ dependencies:
   flutter:
     sdk: flutter
   vesper_player: ^0.6.2
-  vesper_player_ui: ^0.6.2
+  vesper_player_ui: ^0.6.4
   vesper_player_external_playback: ^0.6.2
   vesper_player_source_normalizer_ffmpeg: ^0.6.2
   vesper_player_remux_ffmpeg: ^0.6.2
@@ -48,6 +48,8 @@ dependencies:
   liquid_glass_widgets: ^1.6.2
   package_info_plus: ^10.2.1
   pub_semver: ^2.2.1
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
 
 dev_dependencies:
   flutter_test:
@@ -57,3 +59,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  fonts:
+    - family: RemixIcon
+      fonts:
+        - asset: asset/icons/remixicon.ttf

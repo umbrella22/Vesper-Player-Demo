@@ -96,7 +96,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.wifi_off_rounded,
+                    AppIcons.wifiOffLine,
                     color: const Color(0x66FFFFFF),
                     size: 48,
                   ),
@@ -350,7 +350,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
                         label: item.source == _TvHeroSource.history
                             ? '继续播放'
                             : '开始播放',
-                        icon: Icons.play_arrow_rounded,
+                        icon: AppIcons.playFill,
                         primary: true,
                         focusNode: _heroPlayFocusNode,
                         debugLabel: 'tv_hero_play',
@@ -359,7 +359,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
                       const SizedBox(width: 12),
                       _TvHeroAction(
                         label: '详情',
-                        icon: Icons.info_outline_rounded,
+                        icon: AppIcons.informationLine,
                         debugLabel: 'tv_hero_details',
                         onTap: () => unawaited(_openHeroDetails(item)),
                       ),

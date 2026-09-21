@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../design/app_visual_theme.dart';
@@ -82,7 +83,7 @@ final class MediaListenTransport extends StatelessWidget {
           children: [
             _MediaListenControlButton(
               semanticLabel: '上一集',
-              icon: Icons.skip_previous_rounded,
+              icon: AppIcons.skipBackLine,
               isTv: isTv,
               onTap: onPrevious,
             ),
@@ -90,7 +91,7 @@ final class MediaListenTransport extends StatelessWidget {
             _MediaListenControlButton(
               key: const ValueKey<String>('listen-play-pause'),
               semanticLabel: isPlaying ? '暂停' : '播放',
-              icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              icon: isPlaying ? AppIcons.pauseFill : AppIcons.playFill,
               isTv: isTv,
               primary: true,
               autofocus: isTv,
@@ -99,7 +100,7 @@ final class MediaListenTransport extends StatelessWidget {
             SizedBox(width: isTv ? 22 : 24),
             _MediaListenControlButton(
               semanticLabel: '下一集',
-              icon: Icons.skip_next_rounded,
+              icon: AppIcons.skipForwardLine,
               isTv: isTv,
               onTap: onNext,
             ),
@@ -111,7 +112,7 @@ final class MediaListenTransport extends StatelessWidget {
             tooltip: '字幕设置',
             onPressed: onSubtitles,
             color: visualTheme.textSecondary,
-            icon: const Icon(Icons.subtitles_outlined, size: 21),
+            icon: const Icon(AppIcons.closedCaptioningLine, size: 21),
           ),
         ],
       ],

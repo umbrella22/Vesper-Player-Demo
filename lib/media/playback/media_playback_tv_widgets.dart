@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
@@ -453,13 +454,13 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
               const SizedBox(width: 10),
               if (selected)
                 const Icon(
-                  Icons.play_arrow_rounded,
+                  AppIcons.playFill,
                   color: Colors.white,
                   size: 24,
                 )
               else if (focused)
                 const Icon(
-                  Icons.radio_button_unchecked_rounded,
+                  AppIcons.checkboxBlankCircleLine,
                   color: Color(0xCCFFFFFF),
                   size: 18,
                 ),

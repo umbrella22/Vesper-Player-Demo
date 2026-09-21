@@ -660,7 +660,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
                   hintText: '搜索关注的 UP 或 UID',
                   hintStyle: const TextStyle(color: Color(0x77FFFFFF)),
                   prefixIcon: const Icon(
-                    Icons.search_rounded,
+                    AppIcons.searchLine,
                     color: Color(0xAA409EFF),
                     size: 21,
                   ),
@@ -673,7 +673,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
                             _handleFollowingQueryChanged();
                           },
                           icon: const Icon(
-                            Icons.close_rounded,
+                            AppIcons.closeFill,
                             color: Color(0xBBFFFFFF),
                             size: 19,
                           ),
@@ -703,7 +703,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
               child: Row(
                 children: [
                   const Icon(
-                    Icons.people_alt_outlined,
+                    AppIcons.groupLine,
                     color: Color(0xAAFFFFFF),
                     size: 18,
                   ),
@@ -805,7 +805,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            hasQuery ? Icons.search_off_rounded : Icons.people_alt_outlined,
+            hasQuery ? AppIcons.searchEyeLine : AppIcons.groupLine,
             color: const Color(0x88FFFFFF),
             size: collapsed ? 28 : 36,
           ),
@@ -830,7 +830,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
           ] else ...[
             SizedBox(height: collapsed ? 8 : 14),
             _TvFollowingRailRefresh(
-              icon: hasQuery ? Icons.close_rounded : Icons.refresh_rounded,
+              icon: hasQuery ? AppIcons.closeFill : AppIcons.refreshLine,
               debugLabel: hasQuery
                   ? 'tv_following_clear_search'
                   : 'tv_following_refresh',
@@ -854,7 +854,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
     final selected = _selectedUser;
     if (selected == null) {
       return const _TvFollowingSpaceStatus(
-        icon: Icons.arrow_back_rounded,
+        icon: AppIcons.arrowLeftLine,
         title: '选择一位 UP 主',
         message: '从左侧关注列表选择后，可浏览该 UP 主的投稿视频。',
       );
@@ -934,7 +934,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
           hintText: '搜索当前 UP 的投稿标题或 BV 号',
           hintStyle: const TextStyle(color: Color(0x77FFFFFF)),
           prefixIcon: const Icon(
-            Icons.search_rounded,
+            AppIcons.searchLine,
             color: Color(0xAA409EFF),
           ),
           suffixIcon: _videoQueryController.text.isEmpty
@@ -946,7 +946,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
                     unawaited(_searchVideos());
                   },
                   icon: const Icon(
-                    Icons.close_rounded,
+                    AppIcons.closeFill,
                     color: Color(0xBBFFFFFF),
                   ),
                 ),
@@ -969,7 +969,7 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
     }
     if (_spaceAuthenticationRequired) {
       return _TvFollowingSpaceStatus(
-        icon: Icons.lock_outline_rounded,
+        icon: AppIcons.lockLine,
         title: '需要重新登录',
         message: _spaceError ?? '登录状态已失效，请重新登录后再试。',
         primaryLabel: widget.onLogin == null ? null : '登录',
@@ -981,8 +981,8 @@ class _TvFollowingSpaceBrowserState extends State<_TvFollowingSpaceBrowser> {
     if (_videos.isEmpty) {
       return _TvFollowingSpaceStatus(
         icon: _spaceError == null
-            ? Icons.video_library_outlined
-            : Icons.error_outline_rounded,
+            ? AppIcons.filmLine
+            : AppIcons.errorWarningLine,
         title: _spaceError == null ? '没有匹配的视频' : '暂时无法显示投稿',
         message: _spaceError ?? '这个 UP 主还没有符合条件的投稿视频。',
         primaryLabel: _spaceError == null ? null : '重试',
@@ -1102,17 +1102,17 @@ class _TvFollowingRailUser extends StatelessWidget {
                     color: const Color(0xFF272833),
                     child: user.avatarUrl.isEmpty
                         ? const Icon(
-                            Icons.person_outline_rounded,
+                            AppIcons.user3Line,
                             color: Color(0x99FFFFFF),
                             size: 28,
                           )
-                        : Image.network(
+                        : AppNetworkImage(
                             user.avatarUrl,
                             fit: BoxFit.cover,
                             cacheWidth: avatarCacheWidth,
                             gaplessPlayback: true,
                             errorBuilder: (_, _, _) => const Icon(
-                              Icons.person_outline_rounded,
+                              AppIcons.user3Line,
                               color: Color(0x99FFFFFF),
                               size: 28,
                             ),
@@ -1251,14 +1251,14 @@ class _TvFollowingRailLoadMore extends StatelessWidget {
                         )
                       : compact
                       ? const Icon(
-                          Icons.expand_more_rounded,
+                          AppIcons.arrowDownSLine,
                           color: Color(0xCCFFFFFF),
                         )
                       : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.expand_more_rounded,
+                              AppIcons.arrowDownSLine,
                               color: Color(0xCCFFFFFF),
                             ),
                             SizedBox(width: 5),
@@ -1354,17 +1354,17 @@ class _TvFollowingSpaceProfileHeader extends StatelessWidget {
                 color: const Color(0xFF292A34),
                 child: profile.avatarUrl.isEmpty
                     ? const Icon(
-                        Icons.person_outline_rounded,
+                        AppIcons.user3Line,
                         color: Color(0xAAFFFFFF),
                         size: 38,
                       )
-                    : Image.network(
+                    : AppNetworkImage(
                         profile.avatarUrl,
                         fit: BoxFit.cover,
                         cacheWidth: avatarCacheWidth,
                         gaplessPlayback: true,
                         errorBuilder: (_, _, _) => const Icon(
-                          Icons.person_outline_rounded,
+                          AppIcons.user3Line,
                           color: Color(0xAAFFFFFF),
                           size: 38,
                         ),
@@ -1455,7 +1455,7 @@ class _TvFollowingSpaceProfileHeader extends StatelessWidget {
                             color: Color(0xCCFFFFFF),
                           ),
                         )
-                      : const Icon(Icons.refresh_rounded, color: Colors.white),
+                      : const Icon(AppIcons.refreshLine, color: Colors.white),
                 ),
               ),
             ),
@@ -1500,7 +1500,7 @@ class _TvFollowingSpaceRetryButton extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.refresh_rounded, color: Colors.white),
+          child: const Icon(AppIcons.refreshLine, color: Colors.white),
         ),
       ),
     );

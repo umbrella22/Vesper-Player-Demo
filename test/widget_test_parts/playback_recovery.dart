@@ -410,7 +410,7 @@ void _registerPlaybackRecoveryWidgetTests() {
       );
       final iconFinder = find.descendant(
         of: expandFinder,
-        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+        matching: find.byIcon(AppIcons.arrowDownSLine),
       );
       final iconButtonFinder = find.descendant(
         of: expandFinder,

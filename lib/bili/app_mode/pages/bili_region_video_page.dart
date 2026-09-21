@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
 
@@ -211,7 +213,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
-              Icons.lock_outline_rounded,
+              AppIcons.lockLine,
               size: 42,
               color: AppVisualTokens.primaryBlue,
             ),
@@ -235,7 +237,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             const SizedBox(height: 16),
             AppGlassButton(
               onPressed: _loadPage,
-              icon: Icons.refresh_rounded,
+              icon: AppIcons.refreshLine,
               label: '重新检查登录状态',
             ),
           ],
@@ -543,7 +545,7 @@ class _RegionCacheError extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.error_outline_rounded,
+            AppIcons.errorWarningLine,
             color: visualTheme.destructive,
             size: 28,
           ),
@@ -688,7 +690,7 @@ class _RegionCoverOverlay extends StatelessWidget {
             child: Row(
               children: [
                 const Icon(
-                  Icons.play_circle_outline_rounded,
+                  AppIcons.playCircleLine,
                   color: Colors.white,
                   size: 15,
                 ),
@@ -761,7 +763,7 @@ class _RegionCardMenuButton extends StatelessWidget {
       child: IconButton(
         onPressed: onTap,
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.more_vert_rounded, size: 20),
+        icon: const Icon(AppIcons.more2Fill, size: 20),
         color: visualTheme.textTertiary,
         tooltip: '缓存',
       ),
@@ -792,7 +794,7 @@ class _CoverImage extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           uri != null
-              ? Image.network(
+              ? AppNetworkImage(
                   uri.toString(),
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) =>

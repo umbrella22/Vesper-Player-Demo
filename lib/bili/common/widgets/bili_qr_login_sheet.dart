@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -106,7 +107,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
                 ),
                 IconButton(
                   onPressed: _dismiss,
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const Icon(AppIcons.closeFill),
                   tooltip: '关闭',
                 ),
               ],

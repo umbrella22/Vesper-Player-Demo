@@ -76,13 +76,13 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
                   SignalBuilder(
                     builder: (context) => vesper_ui.VesperStageIconButton(
                       key: const ValueKey<String>('toggle-danmaku'),
-                      icon: _danmakuEnabled
-                          ? Icons.chat_bubble_rounded
-                          : Icons.chat_bubble_outline_rounded,
+                      icon: Icon(
+                        _danmakuEnabled
+                            ? AppIcons.chat3Fill
+                            : AppIcons.chat3Line,
+                      ),
                       label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
-                      size: 40,
-                      iconSize: 22,
-                      containerAlpha: 0,
+                      variant: vesper_ui.VesperStageButtonVariant.toolbar,
                       onPressed: _toggleDanmaku,
                     ),
                   ),
@@ -92,11 +92,9 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
                     mediaPerformanceDiagnosticsAvailable) ...[
                   vesper_ui.VesperStageIconButton(
                     key: const ValueKey<String>('open-performance-diagnostics'),
-                    icon: Icons.monitor_heart_outlined,
+                    icon: const Icon(AppIcons.heartPulseLine),
                     label: '性能诊断',
-                    size: 38,
-                    iconSize: 22,
-                    containerAlpha: 0,
+                    variant: vesper_ui.VesperStageButtonVariant.toolbar,
                     onPressed: () =>
                         unawaited(_openPerformanceDiagnosticsSurface()),
                   ),
@@ -113,17 +111,16 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
                   const SizedBox(width: 4),
                   vesper_ui.VesperStageIconButton(
                     key: const ValueKey<String>('enter-picture-in-picture'),
-                    icon: Icons.picture_in_picture_alt_rounded,
+                    icon: const Icon(AppIcons.pictureInPictureLine),
                     label: '小窗',
-                    size: 38,
-                    iconSize: 23,
-                    containerAlpha: 0,
+                    variant: vesper_ui.VesperStageButtonVariant.toolbar,
                     onPressed: () => unawaited(_requestPictureInPicture()),
                   ),
                 ],
               ],
             ),
             strings: const vesper_ui.VesperPlayerStageStrings.zhHans(),
+            skin: appPlayerStageSkin,
             onOpenSheet: (sheet) => unawaited(
               _openStageSheet(controller, sheet, usesCompactControls),
             ),
@@ -153,13 +150,13 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           SignalBuilder(
             builder: (context) => vesper_ui.VesperStageIconButton(
               key: const ValueKey<String>('toggle-danmaku'),
-              icon: _danmakuEnabled
-                  ? Icons.chat_bubble_rounded
-                  : Icons.chat_bubble_outline_rounded,
+              icon: Icon(
+                _danmakuEnabled
+                    ? AppIcons.chat3Fill
+                    : AppIcons.chat3Line,
+              ),
               label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
-              size: 36,
-              iconSize: 20,
-              containerAlpha: 0,
+              variant: vesper_ui.VesperStageButtonVariant.expanded,
               onPressed: _toggleDanmaku,
             ),
           ),
@@ -168,11 +165,9 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           const SizedBox(width: 2),
           vesper_ui.VesperStageIconButton(
             key: const ValueKey<String>('open-danmaku-settings'),
-            icon: Icons.tune_rounded,
+            icon: const Icon(AppIcons.equalizer2Line),
             label: '弹幕设置',
-            size: 36,
-            iconSize: 20,
-            containerAlpha: 0,
+            variant: vesper_ui.VesperStageButtonVariant.expanded,
             onPressed: () => unawaited(_openDanmakuSettingsSurface()),
           ),
         ],
@@ -180,11 +175,9 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           const SizedBox(width: 2),
           vesper_ui.VesperStageIconButton(
             key: const ValueKey<String>('open-subtitle-settings'),
-            icon: Icons.subtitles_rounded,
+            icon: const Icon(AppIcons.closedCaptioningFill),
             label: '字幕设置',
-            size: 36,
-            iconSize: 20,
-            containerAlpha: 0,
+            variant: vesper_ui.VesperStageButtonVariant.expanded,
             onPressed: () => unawaited(
               _openStageSheet(
                 controller,
@@ -205,25 +198,11 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
   }) {
     return ColoredBox(
       color: Colors.black,
+      // Display corner radii describe the screen shape, not extra safe insets.
       child: SafeArea(
         bottom: safeBottom,
         child: Padding(padding: padding, child: stage),
       ),
-    );
-  }
-
-  EdgeInsets _displayCornerPadding(BuildContext context) {
-    final corners = MediaQuery.maybeDisplayCornerRadiiOf(context);
-    if (corners == null) {
-      return EdgeInsets.zero;
-    }
-    final topPadding = corners.topLeft.x > corners.topRight.x
-        ? corners.topLeft.x
-        : corners.topRight.x;
-    return EdgeInsets.only(
-      left: corners.topLeft.x,
-      top: topPadding,
-      right: corners.topRight.x,
     );
   }
 
@@ -691,7 +670,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           OutlinedButton.icon(
             key: const ValueKey<String>('enter-listen-mode'),
             onPressed: () => onSelected(_PlaybackMenuAction.listen),
-            icon: const Icon(Icons.headphones_rounded),
+            icon: const Icon(AppIcons.headphoneLine),
             label: const Text('听视频'),
           ),
         if (!kIsWeb &&
@@ -700,7 +679,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           OutlinedButton.icon(
             key: const ValueKey<String>('settings-projection'),
             onPressed: () => onSelected(_PlaybackMenuAction.projection),
-            icon: const Icon(Icons.cast_rounded),
+            icon: const Icon(AppIcons.castLine),
             label: const Text('投屏'),
           ),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
@@ -723,7 +702,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
           OutlinedButton.icon(
             key: const ValueKey<String>('settings-performance-diagnostics'),
             onPressed: () => onSelected(_PlaybackMenuAction.diagnostics),
-            icon: const Icon(Icons.monitor_heart_outlined),
+            icon: const Icon(AppIcons.heartPulseLine),
             label: const Text('性能诊断'),
           ),
       ],

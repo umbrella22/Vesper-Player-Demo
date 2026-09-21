@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../design/app_visual_theme.dart';
@@ -196,14 +197,14 @@ final class _MediaListenModeViewState extends State<MediaListenModeView> {
                 MediaListenTvAction(
                   key: const ValueKey<String>('listen-return-video'),
                   debugLabel: 'tv_listen_return_video',
-                  icon: Icons.arrow_back_rounded,
+                  icon: AppIcons.arrowLeftLine,
                   label: '退出听视频',
                   iconOnly: true,
                   onTap: widget.onReturnToVideo,
                 ),
                 const SizedBox(width: 14),
                 Icon(
-                  Icons.headphones_rounded,
+                  AppIcons.headphoneLine,
                   size: 28,
                   color: visualTheme.textPrimary,
                 ),

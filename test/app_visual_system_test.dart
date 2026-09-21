@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -180,18 +181,18 @@ void main() {
                 context: context,
                 title: '确认操作',
                 message: '请选择接下来要执行的操作。',
-                icon: Icons.warning_amber_rounded,
+                icon: AppIcons.alertLine,
                 actions: const [
                   BiliTvDialogAction(
                     label: '删除',
                     value: true,
-                    icon: Icons.delete_outline_rounded,
+                    icon: AppIcons.deleteBinLine,
                     isDestructive: true,
                   ),
                   BiliTvDialogAction(
                     label: '保留',
                     value: false,
-                    icon: Icons.close_rounded,
+                    icon: AppIcons.closeFill,
                   ),
                 ],
               );
@@ -390,15 +391,15 @@ void main() {
             items: const [
               AppGlassNavigationItem(
                 label: '关注',
-                icon: Icons.people_alt_outlined,
+                icon: AppIcons.groupLine,
               ),
               AppGlassNavigationItem(
                 label: '历史播放',
-                icon: Icons.history_rounded,
+                icon: AppIcons.historyLine,
               ),
               AppGlassNavigationItem(
                 label: '稍后再看',
-                icon: Icons.watch_later_outlined,
+                icon: AppIcons.timeLine,
               ),
             ],
           ),
@@ -690,7 +691,7 @@ void main() {
                   padding: EdgeInsets.all(16),
                   child: AppGlassButton(
                     label: '下载到本地',
-                    icon: Icons.download_rounded,
+                    icon: AppIcons.downloadLine,
                     onPressed: _noop,
                   ),
                 ),

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/app/design/app_glass_controls.dart';
@@ -115,7 +117,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                 title: Text(order.label),
                 selected: order == _viewModel.order.value,
                 trailing: order == _viewModel.order.value
-                    ? const Icon(Icons.check_rounded)
+                    ? const Icon(AppIcons.checkFill)
                     : null,
                 onTap: () => Navigator.of(context).pop(order),
               ),
@@ -218,6 +220,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
   Future<void> _createFolder() async {
     final title = await showMediaGlassSheet<String>(
       context: context,
+      appearance: MediaGlassSheetAppearance.readable,
       builder: (context) => _FolderCreateSheet(
         isBusy: () => _viewModel.isMutating.value,
         onCreate: (title, isPrivate) =>
@@ -274,9 +277,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                     ? () => _selectFolder(null)
                     : () => Navigator.of(context).maybePop(),
                 icon: Icon(
-                  selectionMode
-                      ? Icons.close_rounded
-                      : Icons.arrow_back_rounded,
+                  selectionMode ? AppIcons.closeFill : AppIcons.arrowLeftLine,
                 ),
               ),
             ),
@@ -297,7 +298,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                   child: IconButton(
                     tooltip: '全选',
                     onPressed: _viewModel.toggleSelectAll,
-                    icon: const Icon(Icons.select_all_rounded),
+                    icon: const Icon(AppIcons.checkboxMultipleLine),
                   ),
                 ),
                 AppPressScale(
@@ -311,7 +312,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                             dimension: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.delete_outline_rounded),
+                        : const Icon(AppIcons.deleteBinLine),
                     label: const Text('移出'),
                     style: TextButton.styleFrom(
                       minimumSize: const Size(44, 44),
@@ -330,7 +331,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                       onPressed: _viewModel.isMutating.value
                           ? null
                           : () => unawaited(_createFolder()),
-                      icon: const Icon(Icons.add_rounded),
+                      icon: const Icon(AppIcons.addFill),
                     ),
                   ),
                 AppPressScale(
@@ -339,7 +340,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                     onPressed: _viewModel.isLoading.value
                         ? null
                         : () => unawaited(_viewModel.refresh()),
-                    icon: const Icon(Icons.refresh_rounded),
+                    icon: const Icon(AppIcons.refreshLine),
                   ),
                 ),
               ],
@@ -368,7 +369,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
     if (vm.authenticationRequired.value) {
       return [
         _FavoriteStatus(
-          icon: Icons.lock_outline_rounded,
+          icon: AppIcons.lockLine,
           message: '登录后查看收藏',
           detail: vm.errorMessage.value,
           actionLabel: widget.onLoginTap == null ? null : '登录',
@@ -389,7 +390,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
       final onAction = error == null ? _createFolder : vm.refresh;
       return [
         _FavoriteStatus(
-          icon: Icons.folder_open_rounded,
+          icon: AppIcons.folderOpenLine,
           message: error == null ? '还没有收藏夹。' : '加载失败：$error',
           actionKey: error == null
               ? const ValueKey('bili-favorites-create-folder')
@@ -440,14 +441,14 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
         )
       else if (vm.errorMessage.value case final String error)
         _FavoriteStatus(
-          icon: Icons.cloud_off_rounded,
+          icon: AppIcons.cloudOffLine,
           message: '加载失败：$error',
           actionLabel: '重试',
           onAction: vm.refresh,
         )
       else if (items.isEmpty)
         _FavoriteStatus(
-          icon: Icons.video_library_outlined,
+          icon: AppIcons.filmLine,
           message: vm.keyword.value.isEmpty ? '这个收藏夹还是空的。' : '没有匹配的收藏内容。',
         )
       else
@@ -506,7 +507,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.expand_more_rounded),
+                      : const Icon(AppIcons.arrowDownSLine),
                   label: Text(
                     vm.isLoadingMore.value
                         ? '加载中'
@@ -543,7 +544,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                 hintText: '搜索当前收藏夹',
                 filled: true,
                 fillColor: visualTheme.surface,
-                prefixIcon: const Icon(Icons.search_rounded),
+                prefixIcon: const Icon(AppIcons.searchLine),
                 suffixIcon: value.text.isEmpty
                     ? null
                     : AppPressScale(
@@ -553,7 +554,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                             _queryController.clear();
                             _submitSearch();
                           },
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(AppIcons.closeFill),
                         ),
                       ),
                 border: OutlineInputBorder(
@@ -572,7 +573,7 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
                 key: const ValueKey('bili-favorites-sort'),
                 onPressed: () => unawaited(_selectOrder()),
                 style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
-                icon: const Icon(Icons.sort_rounded, size: 18),
+                icon: const Icon(AppIcons.sortDesc, size: 18),
                 label: Text(_viewModel.order.value.label),
               ),
             ),
@@ -688,8 +689,8 @@ class _FavoriteVideoTile extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 2, right: 6),
                         child: Icon(
                           selected
-                              ? Icons.check_circle_rounded
-                              : Icons.radio_button_unchecked_rounded,
+                              ? AppIcons.checkboxCircleFill
+                              : AppIcons.checkboxBlankCircleLine,
                           size: 22,
                           color: selected
                               ? AppVisualTokens.primaryBlue
@@ -706,14 +707,12 @@ class _FavoriteVideoTile extends StatelessWidget {
                           fit: StackFit.expand,
                           children: [
                             if (item.coverUrl.isNotEmpty)
-                              Image.network(
+                              AppNetworkImage(
                                 item.coverUrl,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => ColoredBox(
                                   color: visualTheme.surfaceRaised,
-                                  child: const Icon(
-                                    Icons.video_library_outlined,
-                                  ),
+                                  child: const Icon(AppIcons.filmLine),
                                 ),
                               )
                             else
@@ -721,8 +720,8 @@ class _FavoriteVideoTile extends StatelessWidget {
                                 color: visualTheme.surfaceRaised,
                                 child: Icon(
                                   item.isAvailable
-                                      ? Icons.video_library_outlined
-                                      : Icons.videocam_off_outlined,
+                                      ? AppIcons.filmLine
+                                      : AppIcons.videoOffLine,
                                   color: visualTheme.textTertiary,
                                 ),
                               ),
@@ -819,7 +818,7 @@ class _FavoriteVideoTile extends StatelessWidget {
                             minHeight: AppVisualTokens.minimumTapTarget,
                           ),
                           icon: Icon(
-                            Icons.more_horiz_rounded,
+                            AppIcons.moreFill,
                             color: visualTheme.textTertiary,
                           ),
                         ),
@@ -886,81 +885,80 @@ class _FolderCreateSheetState extends State<_FolderCreateSheet> {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '新建收藏夹',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: visualTheme.textPrimary,
-              fontWeight: FontWeight.w800,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '新建收藏夹',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: visualTheme.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey('bili-favorites-folder-title'),
+          controller: _controller,
+          autofocus: true,
+          maxLength: 40,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => unawaited(_submit()),
+          decoration: InputDecoration(
+            hintText: '收藏夹名称',
+            filled: true,
+            fillColor: visualTheme.surfaceRaised,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(
+                AppVisualTokens.controlRadius,
+              ),
+              borderSide: BorderSide.none,
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey('bili-favorites-folder-title'),
-            controller: _controller,
-            autofocus: true,
-            maxLength: 40,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => unawaited(_submit()),
-            decoration: InputDecoration(
-              hintText: '收藏夹名称',
-              filled: true,
-              fillColor: visualTheme.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(
-                  AppVisualTokens.controlRadius,
-                ),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          SwitchListTile(
-            key: const ValueKey('bili-favorites-folder-private'),
-            value: _isPrivate,
-            onChanged: _submitting
-                ? null
-                : (value) => setState(() => _isPrivate = value),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('设为私密'),
-            subtitle: const Text('私密收藏夹只有自己可见'),
-          ),
-          if (_error case final String message) ...[
-            const SizedBox(height: 4),
-            Text(message, style: TextStyle(color: visualTheme.destructive)),
-          ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: _submitting
-                      ? null
-                      : () => Navigator.of(context).pop(),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(
-                      44,
-                      AppVisualTokens.minimumTapTarget,
-                    ),
-                  ),
-                  child: const Text('取消'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: AppGlassButton(
-                  label: _submitting ? '创建中' : '创建',
-                  enabled: !_submitting && !widget.isBusy(),
-                  onPressed: () => unawaited(_submit()),
-                ),
-              ),
-            ],
-          ),
+        ),
+        SwitchListTile(
+          key: const ValueKey('bili-favorites-folder-private'),
+          value: _isPrivate,
+          onChanged: _submitting
+              ? null
+              : (value) => setState(() => _isPrivate = value),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('设为私密'),
+          subtitle: const Text('私密收藏夹只有自己可见'),
+        ),
+        if (_error case final String message) ...[
+          const SizedBox(height: 4),
+          Text(message, style: TextStyle(color: visualTheme.destructive)),
         ],
-      ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: _submitting
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(44, AppVisualTokens.minimumTapTarget),
+                ),
+                child: const Text('取消'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: _submitting || widget.isBusy()
+                    ? null
+                    : () => unawaited(_submit()),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(44, AppVisualTokens.minimumTapTarget),
+                ),
+                child: Text(_submitting ? '创建中' : '创建'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

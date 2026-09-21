@@ -135,15 +135,15 @@ class _HomeVideoCard extends StatelessWidget {
                         color: visualTheme.surfaceRaised,
                         child: item.coverUrl.isEmpty
                             ? Icon(
-                                Icons.video_library_outlined,
+                                AppIcons.filmLine,
                                 color: visualTheme.textTertiary,
                               )
-                            : Image.network(
+                            : AppNetworkImage(
                                 item.coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,
                                 errorBuilder: (_, _, _) => Icon(
-                                  Icons.broken_image_outlined,
+                                  AppIcons.imageLine,
                                   color: visualTheme.textTertiary,
                                 ),
                               ),
@@ -181,7 +181,7 @@ class _HomeVideoCard extends StatelessWidget {
                         child: Row(
                           children: [
                             const Icon(
-                              Icons.play_circle_outline_rounded,
+                              AppIcons.playCircleLine,
                               color: Colors.white,
                               size: 16,
                             ),
@@ -262,7 +262,7 @@ class _HomeVideoCard extends StatelessWidget {
                                   minHeight: AppVisualTokens.minimumTapTarget,
                                 ),
                                 icon: Icon(
-                                  Icons.more_vert_rounded,
+                                  AppIcons.more2Fill,
                                   color: visualTheme.textTertiary,
                                   size: 20,
                                 ),
@@ -298,7 +298,7 @@ class _RegionMenuButton extends StatelessWidget {
         child: IconButton(
           onPressed: onTap,
           padding: EdgeInsets.zero,
-          icon: const Icon(Icons.grid_view_rounded, size: 22),
+          icon: const Icon(AppIcons.gridLine, size: 22),
           color: visualTheme.textPrimary,
           tooltip: '分区',
         ),

@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_external_playback/vesper_player_external_playback.dart';
@@ -25,17 +26,15 @@ class StageDlnaProjectionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = switch (state) {
-      MediaDlnaState.connected => Icons.cast_connected_rounded,
+      MediaDlnaState.connected => AppIcons.castFill,
       MediaDlnaState.connecting ||
-      MediaDlnaState.discovering => Icons.cast_rounded,
-      _ => Icons.cast_outlined,
+      MediaDlnaState.discovering => AppIcons.castLine,
+      _ => AppIcons.castLine,
     };
     return vesper_ui.VesperStageIconButton(
-      icon: icon,
+      icon: Icon(icon),
       label: '投屏',
-      size: 38,
-      iconSize: 22,
-      containerAlpha: 0,
+      variant: vesper_ui.VesperStageButtonVariant.toolbar,
       onPressed: onTap,
     );
   }
@@ -71,7 +70,7 @@ class ProjectionPickerContent extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ProjectionOptionCard(
-                    icon: Icons.cast_outlined,
+                    icon: AppIcons.castLine,
                     label: 'DLNA',
                     onTap: onDlna,
                   ),
@@ -389,8 +388,8 @@ class DlnaStatusMessage extends StatelessWidget {
           children: [
             Icon(
               isError
-                  ? Icons.error_outline_rounded
-                  : Icons.info_outline_rounded,
+                  ? AppIcons.errorWarningLine
+                  : AppIcons.informationLine,
               size: 18,
               color: color,
             ),
@@ -441,7 +440,7 @@ class DlnaRouteTile extends StatelessWidget {
             child: Row(
               children: [
                 const Icon(
-                  Icons.tv_rounded,
+                  AppIcons.tvLine,
                   size: 24,
                   color: AppVisualTokens.primaryBlue,
                 ),
@@ -477,7 +476,7 @@ class DlnaRouteTile extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  Icons.chevron_right_rounded,
+                  AppIcons.arrowRightSLine,
                   size: 22,
                   color: visualTheme.textTertiary,
                 ),

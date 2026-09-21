@@ -365,7 +365,7 @@ void _registerPlaybackCommentsWidgetTests() {
   ) async {
     await _pumpPlaybackPage(tester);
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byIcon(AppIcons.more2Fill));
     await tester.pumpAndSettle();
 
     expect(find.text('播放设置'), findsOneWidget);
@@ -401,7 +401,7 @@ void _registerPlaybackCommentsWidgetTests() {
       initialSnapshot: subtitleSnapshot,
     );
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byIcon(AppIcons.more2Fill));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('中文（中国大陆）'));
     await tester.pumpAndSettle();
@@ -439,7 +439,7 @@ void _registerPlaybackCommentsWidgetTests() {
         ),
       );
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded).first);
+      await tester.tap(find.byIcon(AppIcons.more2Fill).first);
       await tester.pumpAndSettle();
 
       expect(find.text('当前播放链路无可选清晰度。'), findsOneWidget);
@@ -453,7 +453,7 @@ void _registerPlaybackCommentsWidgetTests() {
   ) async {
     final harness = await _pumpPlaybackPage(tester);
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byIcon(AppIcons.more2Fill));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('1.25x'));
@@ -471,7 +471,7 @@ void _registerPlaybackCommentsWidgetTests() {
     await _pumpPlaybackPage(tester, surfaceSize: const Size(360, 640));
 
     expect(find.text('播放页测试视频'), findsOneWidget);
-    expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+    expect(find.byIcon(AppIcons.more2Fill), findsWidgets);
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
@@ -481,7 +481,7 @@ void _registerPlaybackCommentsWidgetTests() {
       await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 844));
 
       expect(find.text('播放页测试视频'), findsOneWidget);
-      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+      expect(find.byIcon(AppIcons.more2Fill), findsWidgets);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
@@ -493,7 +493,7 @@ void _registerPlaybackCommentsWidgetTests() {
       await _pumpPlaybackPage(tester, surfaceSize: const Size(1920, 1080));
 
       expect(find.text('播放页测试视频'), findsOneWidget);
-      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+      expect(find.byIcon(AppIcons.more2Fill), findsWidgets);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
@@ -530,10 +530,10 @@ void _registerPlaybackCommentsWidgetTests() {
 
       expect(orientationCalls().last, <String>['DeviceOrientation.portraitUp']);
 
-      await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+      await tester.tap(find.byIcon(AppIcons.fullscreenLine));
       await tester.pump();
 
-      expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+      expect(find.byIcon(AppIcons.fullscreenExitFill), findsOneWidget);
       expect(orientationCalls().last, <String>[
         'DeviceOrientation.landscapeLeft',
         'DeviceOrientation.landscapeRight',
@@ -542,7 +542,7 @@ void _registerPlaybackCommentsWidgetTests() {
       await tester.binding.handlePopRoute();
       await tester.pump();
 
-      expect(find.byIcon(Icons.fullscreen_rounded), findsOneWidget);
+      expect(find.byIcon(AppIcons.fullscreenLine), findsOneWidget);
       expect(find.text('播放页测试视频'), findsWidgets);
       expect(orientationCalls().last, <String>['DeviceOrientation.portraitUp']);
     },
@@ -593,7 +593,7 @@ void _registerPlaybackCommentsWidgetTests() {
 
     await _pumpPlaybackPage(tester, externalPlaybackMockInstalled: true);
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byIcon(AppIcons.more2Fill));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('settings-projection')));
     await tester.pump();

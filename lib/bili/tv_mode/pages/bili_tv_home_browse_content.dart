@@ -54,7 +54,7 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.wifi_off_rounded,
+                AppIcons.wifiOffLine,
                 color: Color(0x66FFFFFF),
                 size: 48,
               ),
@@ -183,7 +183,7 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
                       filled: true,
                       fillColor: Colors.transparent,
                       prefixIcon: const Icon(
-                        Icons.search_rounded,
+                        AppIcons.searchLine,
                         color: Color(0xAA409EFF),
                         size: 22,
                       ),
@@ -325,7 +325,7 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.history_rounded,
+                AppIcons.historyLine,
                 color: const Color(0x66FFFFFF),
                 size: 48,
               ),

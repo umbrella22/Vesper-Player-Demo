@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
@@ -54,7 +56,7 @@ class OfflineStorageSummary extends StatelessWidget {
             Row(
               children: [
                 const Icon(
-                  Icons.storage_rounded,
+                  AppIcons.database2Line,
                   size: 18,
                   color: AppVisualTokens.primaryBlue,
                 ),
@@ -231,7 +233,7 @@ class OfflineInvalidCacheSummary extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 1),
               child: Icon(
-                Icons.warning_amber_rounded,
+                AppIcons.alertLine,
                 size: 20,
                 color: visualTheme.destructive,
               ),
@@ -379,7 +381,7 @@ class OfflineCacheTile extends StatelessWidget {
               height: 78,
               child: metadata.coverUrl.isEmpty
                   ? ColoredBox(color: visualTheme.surfaceRaised)
-                  : Image.network(
+                  : AppNetworkImage(
                       metadata.coverUrl,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) =>
@@ -493,7 +495,7 @@ class OfflineDeleteBackground extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.delete_outline_rounded,
+                AppIcons.deleteBinLine,
                 color: Colors.white,
                 size: 22,
               ),
@@ -530,10 +532,10 @@ class OfflineTaskAction extends StatelessWidget {
     final icon = switch (task.state) {
       VesperDownloadState.downloading ||
       VesperDownloadState.preparing ||
-      VesperDownloadState.queued => Icons.pause_rounded,
+      VesperDownloadState.queued => AppIcons.pauseFill,
       VesperDownloadState.paused ||
-      VesperDownloadState.failed => Icons.play_arrow_rounded,
-      _ => Icons.more_horiz_rounded,
+      VesperDownloadState.failed => AppIcons.playFill,
+      _ => AppIcons.moreFill,
     };
     final action = switch (task.state) {
       VesperDownloadState.downloading ||
@@ -600,7 +602,7 @@ class OfflineEntryMoreButton extends StatelessWidget {
         ),
         visualDensity: VisualDensity.compact,
         icon: Icon(
-          Icons.more_vert_rounded,
+          AppIcons.more2Fill,
           size: 20,
           color: visualTheme.textSecondary,
         ),
@@ -632,7 +634,7 @@ class OfflineInlineError extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              Icons.error_outline_rounded,
+              AppIcons.errorWarningLine,
               size: 19,
               color: visualTheme.destructive,
             ),
@@ -667,7 +669,7 @@ class OfflineEmptyState extends StatelessWidget {
       child: Column(
         children: [
           Icon(
-            Icons.download_for_offline_outlined,
+            AppIcons.download2Line,
             size: 46,
             color: visualTheme.textTertiary,
           ),

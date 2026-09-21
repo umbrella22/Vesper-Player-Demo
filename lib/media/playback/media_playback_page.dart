@@ -8,6 +8,8 @@ import 'package:signals/signals_flutter.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
+import 'package:vesper_media/media/design/app_icons.dart';
+import 'package:vesper_media/media/design/app_stage_skin.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';

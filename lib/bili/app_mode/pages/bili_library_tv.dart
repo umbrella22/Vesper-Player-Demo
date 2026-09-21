@@ -251,14 +251,14 @@ class _TvLibraryStatusView extends StatelessWidget {
                   children: [
                     _TvLibraryActionButton(
                       autofocus: autofocusPrimary,
-                      icon: primaryIcon ?? Icons.check_rounded,
+                      icon: primaryIcon ?? AppIcons.checkFill,
                       label: primaryLabel!,
                       primary: true,
                       onTap: onPrimary!,
                     ),
                     if (onSecondary != null && secondaryLabel != null)
                       _TvLibraryActionButton(
-                        icon: secondaryIcon ?? Icons.more_horiz_rounded,
+                        icon: secondaryIcon ?? AppIcons.moreFill,
                         label: secondaryLabel!,
                         onTap: onSecondary!,
                       ),
@@ -424,11 +424,11 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                   color: visualTheme.surfaceRaised,
                                   child: coverUrl.isEmpty
                                       ? Icon(
-                                          Icons.video_library_outlined,
+                                          AppIcons.filmLine,
                                           color: visualTheme.textTertiary,
                                           size: 42,
                                         )
-                                      : Image.network(
+                                      : AppNetworkImage(
                                           coverUrl,
                                           fit: BoxFit.cover,
                                           cacheWidth: cacheWidth,
@@ -436,7 +436,7 @@ class _TvLibraryVideoCard extends StatelessWidget {
                                           errorBuilder: (_, _, _) => ColoredBox(
                                             color: visualTheme.surfaceRaised,
                                             child: Icon(
-                                              Icons.broken_image_outlined,
+                                              AppIcons.imageLine,
                                               color: visualTheme.textTertiary,
                                               size: 36,
                                             ),
@@ -543,7 +543,7 @@ class _TvLibraryRemoveButton extends StatelessWidget {
                 ),
               ),
               child: const Icon(
-                Icons.remove_circle_outline_rounded,
+                AppIcons.indeterminateCircleLine,
                 color: Colors.white,
                 size: 22,
               ),
@@ -611,7 +611,7 @@ class _TvLibraryLoadMoreTile extends StatelessWidget {
                     )
                   else
                     Icon(
-                      Icons.expand_more_rounded,
+                      AppIcons.arrowDownSLine,
                       color: visualTheme.textSecondary,
                       size: 32,
                     ),

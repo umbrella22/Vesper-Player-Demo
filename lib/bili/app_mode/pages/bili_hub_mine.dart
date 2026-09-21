@@ -88,28 +88,28 @@ class _MineTab extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _MineShortcut(
-                              icon: Icons.download_for_offline_outlined,
+                              icon: AppIcons.download2Line,
                               label: '离线缓存',
                               onTap: onCacheTap,
                             ),
                           ),
                           Expanded(
                             child: _MineShortcut(
-                              icon: Icons.history_rounded,
+                              icon: AppIcons.historyLine,
                               label: '历史记录',
                               onTap: onHistoryTap,
                             ),
                           ),
                           Expanded(
                             child: _MineShortcut(
-                              icon: Icons.people_alt_outlined,
+                              icon: AppIcons.groupLine,
                               label: '关注列表',
                               onTap: onFollowingTap,
                             ),
                           ),
                           Expanded(
                             child: _MineShortcut(
-                              icon: Icons.play_circle_outline_rounded,
+                              icon: AppIcons.playCircleLine,
                               label: '稍后再看',
                               onTap: onWatchLaterTap,
                             ),
@@ -118,7 +118,7 @@ class _MineTab extends StatelessWidget {
                       ),
                       AppSettingsRow(
                         key: const ValueKey<String>('bili-mine-favorites'),
-                        icon: Icons.star_outline_rounded,
+                        icon: AppIcons.starLine,
                         title: '我的收藏',
                         subtitle: '收藏夹与收藏的视频',
                         onTap: onFavoritesTap,
@@ -140,7 +140,7 @@ class _MineTab extends StatelessWidget {
                         key: const ValueKey<String>(
                           'bili-mine-settings-surface',
                         ),
-                        icon: Icons.settings_outlined,
+                        icon: AppIcons.settingsLine,
                         title: '设置',
                         subtitle: '外观、TV 模式、账号与离线数据',
                         onTap: onSettingsTap,
@@ -279,12 +279,12 @@ class _MineAvatar extends StatelessWidget {
             ),
             backgroundImage: profile.avatarUrl.isEmpty
                 ? null
-                : NetworkImage(profile.avatarUrl),
+                : appNetworkImageProvider(context, profile.avatarUrl),
             child: profile.avatarUrl.isEmpty
                 ? Icon(
                     profile.isLoggedIn
-                        ? Icons.person_rounded
-                        : Icons.qr_code_2_rounded,
+                        ? AppIcons.user3Fill
+                        : AppIcons.qrCodeLine,
                     color: AppVisualTokens.biliSourcePink,
                     size: 27,
                   )
@@ -449,7 +449,7 @@ class _MineSpaceAction extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  Icons.chevron_right_rounded,
+                  AppIcons.arrowRightSLine,
                   color: visualTheme.textTertiary,
                   size: 17,
                 ),

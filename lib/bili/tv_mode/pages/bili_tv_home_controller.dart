@@ -204,7 +204,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
       return;
     }
     unawaited(
-      precacheImage(NetworkImage(item.coverUrl), context, onError: (_, _) {}),
+      precacheImage(appNetworkImageProvider(context, item.coverUrl), context, onError: (_, _) {}),
     );
   }
 
@@ -277,18 +277,18 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
       message: detail.description.isEmpty
           ? '${detail.ownerName} · ${detail.playCountLabel} 播放'
           : detail.description,
-      icon: Icons.info_outline_rounded,
+      icon: AppIcons.informationLine,
       actions: const [
         BiliTvDialogAction(
           label: '返回',
           value: false,
-          icon: Icons.arrow_back_rounded,
+          icon: AppIcons.arrowLeftLine,
           autofocus: true,
         ),
         BiliTvDialogAction(
           label: '开始播放',
           value: true,
-          icon: Icons.play_arrow_rounded,
+          icon: AppIcons.playFill,
         ),
       ],
     );
@@ -350,7 +350,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
           child: IconButton(
             tooltip: '返回',
             onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(AppIcons.arrowLeftLine),
           ),
         ),
         title: Text(

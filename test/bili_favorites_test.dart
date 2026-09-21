@@ -309,6 +309,29 @@ void main() {
     });
 
     test(
+      'explicit refresh retries missing covers before cards are rebuilt',
+      () async {
+        model.dispose();
+        model = BiliFavoritesViewModel(
+          client: client,
+          autoSelectFirstFolder: false,
+        );
+        final emptyPage = Completer<BiliFavoritePage>()..complete(_page([]));
+        client.nextFirstPage = emptyPage;
+        expect(await client.favoriteCovers.coverFor(_folder1), isEmpty);
+        expect(client.requests, hasLength(1));
+        await model.initialize();
+        expect(await client.favoriteCovers.coverFor(_folder1), isEmpty);
+        expect(client.requests, hasLength(1));
+        await model.refresh();
+        final restoredPage = Completer<BiliFavoritePage>()..complete(_page([]));
+        client.nextFirstPage = restoredPage;
+        await client.favoriteCovers.coverFor(_folder1);
+        expect(client.requests, hasLength(2));
+      },
+    );
+
+    test(
       'logged out and empty folder states do not request contents',
       () async {
         client.authenticated = false;

@@ -156,7 +156,7 @@ class _CommentComposerBar extends StatelessWidget {
                             ),
                           )
                         : Icon(
-                            Icons.sentiment_satisfied_alt_rounded,
+                            AppIcons.emotionHappyLine,
                             color: visualTheme.textTertiary,
                           ),
                   ),
@@ -169,7 +169,7 @@ class _CommentComposerBar extends StatelessWidget {
                     : () => onSubmitted(controller.text),
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                 icon: const Icon(
-                  Icons.send_rounded,
+                  AppIcons.sendPlaneLine,
                   color: AppVisualTokens.primaryBlue,
                 ),
               ),
@@ -208,7 +208,7 @@ class _CommentReplySummary extends StatelessWidget {
                 ),
               ),
               Icon(
-                Icons.sort_rounded,
+                AppIcons.sortDesc,
                 size: 20,
                 color: visualTheme.textTertiary,
               ),
@@ -289,7 +289,7 @@ class _CommentReplyPanel extends StatelessWidget {
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: '关闭评论详情',
                 icon: Icon(
-                  Icons.close_rounded,
+                  AppIcons.closeFill,
                   size: 28,
                   color: visualTheme.textTertiary,
                 ),
@@ -426,7 +426,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
             const SizedBox(height: 6),
             TextButton.icon(
               onPressed: () => unawaited(onRetry()),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
+              icon: const Icon(AppIcons.refreshLine, size: 18),
               label: const Text('重试'),
             ),
           ],
@@ -453,7 +453,7 @@ class _CommentReplyLoadFooter extends StatelessWidget {
         child: Center(
           child: TextButton.icon(
             onPressed: () => unawaited(onLoadMore()),
-            icon: const Icon(Icons.expand_more_rounded, size: 20),
+            icon: const Icon(AppIcons.arrowDownSLine, size: 20),
             label: const Text('加载更多回复'),
           ),
         ),

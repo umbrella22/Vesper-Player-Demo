@@ -1,4 +1,6 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_network_image.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -126,15 +128,15 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
                         color: const Color(0xFF0F1623),
                         child: detail.coverUrl.isEmpty
                             ? const Icon(
-                                Icons.video_library_outlined,
+                                AppIcons.filmLine,
                                 color: Colors.white70,
                                 size: 72,
                               )
-                            : Image.network(
+                            : AppNetworkImage(
                                 detail.coverUrl,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => const Icon(
-                                  Icons.broken_image_outlined,
+                                  AppIcons.imageLine,
                                   color: Colors.white70,
                                   size: 72,
                                 ),
@@ -355,7 +357,7 @@ class _PageLine extends StatelessWidget {
                 const SizedBox(width: 12),
                 FilledButton.icon(
                   onPressed: onPlay,
-                  icon: const Icon(Icons.play_arrow_rounded),
+                  icon: const Icon(AppIcons.playFill),
                   label: const Text('播放'),
                 ),
               ],

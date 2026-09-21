@@ -15,6 +15,7 @@ import 'bili_dash_api.dart';
 import 'bili_dash_manifest_builder.dart';
 import 'bili_dash_manifest_parser.dart';
 import 'bili_endpoints.dart';
+import 'bili_favorite_cover_cache.dart';
 import 'bili_listen_audio_selector.dart';
 import 'bili_text.dart';
 import 'bili_transport.dart';
@@ -54,14 +55,25 @@ class BiliClient {
     BiliWbiSigner? signer,
     BiliDashManifestBuilder? manifestBuilder,
     BiliTransport? transport,
+    BiliFavoriteCoverStore? favoriteCoverStore,
   }) : _transport =
            transport ?? BiliTransport(httpClient: httpClient, signer: signer),
-       _manifestBuilder = manifestBuilder ?? const BiliDashManifestBuilder();
+       _manifestBuilder = manifestBuilder ?? const BiliDashManifestBuilder(),
+       _favoriteCoverStore = favoriteCoverStore ?? BiliFavoriteCoverStore();
 
   static final BiliClient instance = BiliClient();
 
   final BiliTransport _transport;
   final BiliDashManifestBuilder _manifestBuilder;
+  final BiliFavoriteCoverStore _favoriteCoverStore;
+  late final favoriteCovers = BiliFavoriteCoverCache(
+    accountId: () => _currentUserMid,
+    sessionRevision: () => sessionRevision,
+    isAuthenticated: () => hasAuthenticatedSession,
+    loadPage: ({required folderId, required page, required pageSize}) =>
+        fetchFavoriteItems(folderId: folderId, page: page, pageSize: pageSize),
+    store: _favoriteCoverStore,
+  );
   // Subtitle materialization is shared by all DASH request variants for the
   // same page. Keep the in-flight/completed Future so concurrent resolution
   // cannot issue duplicate player-v2 and subtitle-body requests.
@@ -186,10 +198,14 @@ class BiliClient {
   Future<void> removeFavoriteItems({
     required int folderId,
     required List<String> resourceIds,
-  }) {
-    return _BiliClientFavoritesImplementation(
+  }) async {
+    final revision = sessionRevision;
+    await _BiliClientFavoritesImplementation(
       this,
     ).removeFavoriteItems(folderId: folderId, resourceIds: resourceIds);
+    if (hasAuthenticatedSession && revision == sessionRevision) {
+      await favoriteCovers.removeResources(folderId, resourceIds);
+    }
   }
 
   Future<int> createFavoriteFolder({
@@ -218,12 +234,43 @@ class BiliClient {
     required BiliVideoDetail detail,
     required BiliFavoriteSelection selection,
     BiliVideoEngagement? current,
-  }) {
-    return _BiliClientFavoritesImplementation(this).applyVideoFavoriteSelection(
+  }) async {
+    final revision = sessionRevision;
+    final result = await _BiliClientFavoritesImplementation(this)
+        .applyVideoFavoriteSelection(
+          detail: detail,
+          selection: selection,
+          current: current,
+        );
+    await _updateFavoriteCoversAfterSelection(
       detail: detail,
       selection: selection,
-      current: current,
+      result: result,
+      revision: revision,
     );
+    return result;
+  }
+
+  Future<void> _updateFavoriteCoversAfterSelection({
+    required BiliVideoDetail detail,
+    required BiliFavoriteSelection selection,
+    required BiliVideoEngagement result,
+    required int revision,
+  }) async {
+    for (final folderId in selection.removeFolderIds) {
+      if (revision != sessionRevision || !hasAuthenticatedSession) return;
+      if (!result.favoriteMediaIds.contains(folderId)) {
+        await favoriteCovers.removeResources(folderId, [
+          '${detail.aid}:$biliVideoFavoriteType',
+        ]);
+      }
+    }
+    for (final folderId in selection.addFolderIds) {
+      if (revision != sessionRevision || !hasAuthenticatedSession) return;
+      if (result.favoriteMediaIds.contains(folderId)) {
+        await favoriteCovers.resourcesAdded(folderId);
+      }
+    }
   }
 
   Future<List<BiliFollowingUser>> fetchFollowing({
@@ -1116,6 +1163,7 @@ class BiliClient {
     required bool favorited,
     BiliVideoEngagement? current,
   }) async {
+    final revision = sessionRevision;
     final base = current ?? await fetchVideoEngagement(detail);
     final folders = await _fetchFavoriteFolders(detail);
     final currentFavoriteIds = folders
@@ -1154,7 +1202,7 @@ class BiliClient {
       referer: biliVideoReferer(detail.bvid),
     );
 
-    return _refreshEngagementAfterMutation(
+    final result = await _refreshEngagementAfterMutation(
       detail: detail,
       fallback: base.copyWith(
         isAuthenticated: true,
@@ -1167,6 +1215,16 @@ class BiliClient {
         defaultFavoriteMediaId: defaultFavoriteId,
       ),
     );
+    await _updateFavoriteCoversAfterSelection(
+      detail: detail,
+      selection: BiliFavoriteSelection(
+        addFolderIds: addIds,
+        removeFolderIds: delIds,
+      ),
+      result: result,
+      revision: revision,
+    );
+    return result;
   }
 
   Future<BiliVideoEngagement> setOwnerFollow({

@@ -167,7 +167,7 @@ class _TvSearchSuffixIcon extends StatelessWidget {
                     height: 40,
                   ),
                   icon: const Icon(
-                    Icons.close_rounded,
+                    AppIcons.closeFill,
                     color: Color(0x88FFFFFF),
                     size: 20,
                   ),
@@ -356,11 +356,11 @@ class _TvHistoryCard extends StatelessWidget {
                         color: const Color(0xFF1A1A24),
                         child: coverUrl.isEmpty
                             ? const Icon(
-                                Icons.video_library_outlined,
+                                AppIcons.filmLine,
                                 color: Color(0x55FFFFFF),
                                 size: 40,
                               )
-                            : Image.network(
+                            : AppNetworkImage(
                                 coverUrl,
                                 fit: BoxFit.cover,
                                 cacheWidth: coverCacheWidth,

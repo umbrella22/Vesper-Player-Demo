@@ -11,7 +11,7 @@ void _registerPlaybackPlatformWidgetTests() {
 
       expect(find.byType(vesper_ui.VesperPlayerStage), findsNothing);
       expect(find.byType(VesperPlayerView), findsOneWidget);
-      expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
+      expect(find.byIcon(AppIcons.more2Fill), findsNothing);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -167,7 +167,7 @@ void _registerPlaybackPlatformWidgetTests() {
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_自动');
       expect(find.text('自动'), findsOneWidget);
       expect(find.text('1080P'), findsOneWidget);
-      expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+      expect(find.byIcon(AppIcons.playFill), findsWidgets);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -304,8 +304,8 @@ void _registerPlaybackPlatformWidgetTests() {
       await tester.pump();
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_panel_P2');
 
-      expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsOneWidget);
+      expect(find.byIcon(AppIcons.playFill), findsWidgets);
+      expect(find.byIcon(AppIcons.checkboxBlankCircleLine), findsOneWidget);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
