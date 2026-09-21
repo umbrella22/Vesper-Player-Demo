@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.0...vesper_media-v1.16.1) (2026-09-21)
+
+### Bug Fixes
+
+* Restore the bottom search bar's expand and collapse animations by preserving the glass tab bar's animation state when switching modes.
+* Fix iOS release builds by aligning the performance diagnostics host's VesperPlayerKit dependency and SwiftPM locks with the resolved 0.6.4 player packages.
+
 ## [1.16.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.15.0...vesper_media-v1.16.0) (2026-09-21)
 
 ### Features

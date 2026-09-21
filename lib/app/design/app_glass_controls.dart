@@ -331,14 +331,32 @@ class AppGlassBottomNavigation extends StatelessWidget {
         quality ?? GlassAdaptiveScopeData.maybeOf(context)?.effectiveQuality;
     final tabs = _buildTabs();
     final searchConfig = search;
-    if (searchConfig != null &&
-        (searchConfig.isActive || minimizeController == null)) {
-      return _buildSearchableBar(
-        context,
-        visualTheme: visualTheme,
-        inheritedQuality: inheritedQuality,
-        tabs: tabs,
-        search: searchConfig,
+    if (searchConfig != null) {
+      final scaffoldHandlesKeyboard =
+          MediaQuery.viewInsetsOf(context).bottom ==
+          AppGlassScaffold._keyboardVisibilityInset;
+      final tabBar = searchConfig.isActive || minimizeController == null
+          ? _buildSearchableBar(
+              context,
+              visualTheme: visualTheme,
+              inheritedQuality: inheritedQuality,
+              tabs: tabs,
+              search: searchConfig,
+              scaffoldHandlesKeyboard: scaffoldHandlesKeyboard,
+            )
+          : _buildMinimizableBar(
+              context,
+              visualTheme: visualTheme,
+              inheritedQuality: inheritedQuality,
+              tabs: tabs,
+              search: searchConfig,
+            );
+      // Both modes share the library's morph engine. Keep its parent stable so
+      // switching modes retargets the springs instead of recreating their state.
+      return MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: scaffoldHandlesKeyboard,
+        child: tabBar,
       );
     }
     if (minimizeController != null) {
@@ -468,13 +486,11 @@ class AppGlassBottomNavigation extends StatelessWidget {
     required GlassQuality? inheritedQuality,
     required List<GlassTab> tabs,
     required AppGlassNavigationSearchConfig search,
+    required bool scaffoldHandlesKeyboard,
   }) {
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final scaffoldHandlesKeyboard =
-        keyboardInset == AppGlassScaffold._keyboardVisibilityInset;
     final showsKeyboardDismiss =
         scaffoldHandlesKeyboard && search.focusNode.hasFocus;
-    final tabBar = GlassTabBar.searchable(
+    return GlassTabBar.searchable(
       key: navigationKey,
       tabs: tabs,
       selectedIndex: selectedIndex,
@@ -557,11 +573,6 @@ class AppGlassBottomNavigation extends StatelessWidget {
         AppVisualTokens.pressedScale,
       ),
       tabWidth: tabItemWidth,
-    );
-    return MediaQuery.removeViewInsets(
-      context: context,
-      removeBottom: scaffoldHandlesKeyboard,
-      child: tabBar,
     );
   }
 

@@ -8,7 +8,7 @@ configs:
 packages:
   VesperPlayerKit:
     url: https://github.com/umbrella22/VesperPlayerKit.git
-    exactVersion: 0.6.2
+    exactVersion: 0.6.4
 targets:
   VesperPerformanceDiagnosticsHost:
     type: framework

@@ -79,6 +79,71 @@ void _registerAppShellWidgetTests() {
     semantics.dispose();
   });
 
+  for (final startMinimized in [false, true]) {
+    testWidgets(
+      'mobile search animates both directions from minimized=$startMinimized',
+      (tester) async {
+        await _pumpMobileHub(tester, feedItems: _tvFeedItems(40));
+        if (startMinimized) {
+          await tester.drag(
+            find.byType(CustomScrollView),
+            const Offset(0, -140),
+          );
+          await _pumpBottomBarMorph(tester);
+        }
+
+        final bar = find.byType(GlassTabBar);
+        expect(
+          tester.widget<GlassTabBar>(bar).minimizeController!.minimized,
+          startMinimized,
+        );
+        final barState = tester.state(bar);
+        final searchButton = find.byKey(
+          AppGlassBottomNavigation.searchButtonKey,
+        );
+        final closedCenter = tester.getCenter(searchButton).dx;
+
+        await tester.tap(searchButton);
+        await tester.pump();
+        expect(tester.state(bar), same(barState));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        final openingWidth = tester.getSize(find.byType(EditableText)).width;
+        await _pumpBottomBarMorph(tester);
+        final expandedWidth = tester.getSize(find.byType(EditableText)).width;
+        expect(openingWidth, greaterThan(0));
+        expect(openingWidth, lessThan(expandedWidth - 1));
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .focusNode
+              .hasFocus,
+          isFalse,
+        );
+
+        await tester.tap(
+          find.byKey(AppGlassBottomNavigation.searchExitButtonKey),
+        );
+        await tester.pump();
+        expect(tester.state(bar), same(barState));
+        final closingStart = tester.getCenter(searchButton).dx;
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        final closingCenter = tester.getCenter(searchButton).dx;
+        expect(closingCenter, greaterThan(closingStart));
+        expect(closingCenter, lessThan(closedCenter - 1));
+        await _pumpBottomBarMorph(tester);
+        expect(tester.getCenter(searchButton).dx, closeTo(closedCenter, 0.5));
+        expect(tester.state(bar), same(barState));
+        expect(
+          tester.widget<GlassTabBar>(bar).minimizeController!.minimized,
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'mobile search expands before focus and swaps content on submit',
     (WidgetTester tester) async {
