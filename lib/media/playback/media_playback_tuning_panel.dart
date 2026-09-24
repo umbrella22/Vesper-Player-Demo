@@ -1,10 +1,15 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../models/media_hdr_status.dart';
 import '../models/resolved_media.dart';
 import 'media_playback_widgets.dart';
+import 'media_playback_settings_widgets.dart';
+import '../design/app_icons.dart';
+
+enum MediaPlaybackTuningSection { quality, advanced, speed, subtitles }
 
 /// codec 子选项（播放策略区）：标签 + 当前清晰度下是否可用。
 /// [id] 是策略身份（同一策略组的轨道共享），选择与匹配按 id 进行；
@@ -55,6 +60,8 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     this.debugPath,
     this.cacheEntry,
     this.quickActions,
+    this.currentQualityLabel,
+    this.initialSection = MediaPlaybackTuningSection.quality,
     required this.onSelectQuality,
     required this.onSelectCodec,
     required this.onSetRate,
@@ -89,13 +96,18 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
 
   /// Secondary playback actions hosted in the settings surface.
   final Widget? quickActions;
-  final ValueChanged<String?> onSelectQuality;
+  final String? currentQualityLabel;
+  final MediaPlaybackTuningSection initialSection;
+  final Future<bool> Function(String?) onSelectQuality;
   final ValueChanged<String?> onSelectCodec;
   final ValueChanged<double> onSetRate;
   final ValueChanged<VesperTrackSelection> onSelectSubtitle;
 
   @override
   Widget build(BuildContext context) {
+    if (MediaPlaybackDrawerScope.isActive(context)) {
+      return _FullscreenTuningPanel(panel: this);
+    }
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
 
@@ -117,71 +129,82 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         _buildQualitySelector(context),
-        if (codecOptions.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Text(
-            '播放策略',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: visualTheme.textPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildCodecStrategySelector(),
-        ],
-        const SizedBox(height: 18),
-        Text(
-          '倍速',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _buildPlaybackRateSelector(),
-        const SizedBox(height: 18),
-        Text(
-          '字幕',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _buildSubtitleSelector(context),
-        if (cacheEntry != null) ...[
-          const SizedBox(height: 18),
-          Text(
-            '离线缓存',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: visualTheme.textPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          cacheEntry!,
-        ],
-        const SizedBox(height: 18),
-        _InfoBlock(
-          title: '会话信息',
-          children: [
-            _SnapshotRow(label: '播放状态', value: playbackStateLabel),
-            _SnapshotRow(label: '时间线', value: timelineLabel),
-            _SnapshotRow(label: '当前链路', value: transportLabel ?? '未知'),
-            _SnapshotRow(label: '资源地址', value: resolvedUri ?? '未知'),
-            if ((debugPath ?? '').isNotEmpty)
-              _SnapshotRow(label: 'Manifest', value: debugPath!),
-            if (snapshot.effectiveVideoTrackId != null)
-              _SnapshotRow(
-                label: '实际轨道',
-                value: snapshot.effectiveVideoTrackId!,
-              ),
-            if ((hdrLabel ?? '').isNotEmpty)
-              _SnapshotRow(label: 'HDR', value: hdrLabel!),
-          ],
-        ),
+        ..._buildAdvancedSettings(context),
       ],
     );
+  }
+
+  List<Widget> _buildAdvancedSettings(
+    BuildContext context, {
+    Key? speedKey,
+    Key? subtitlesKey,
+  }) {
+    final theme = Theme.of(context);
+    final visualTheme = AppVisualTheme.of(context);
+    return [
+      if (codecOptions.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        Text(
+          '播放策略',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: visualTheme.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildCodecStrategySelector(),
+      ],
+      const SizedBox(height: 18),
+      Text(
+        '倍速',
+        key: speedKey,
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: visualTheme.textPrimary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 10),
+      _buildPlaybackRateSelector(),
+      const SizedBox(height: 18),
+      Text(
+        '字幕',
+        key: subtitlesKey,
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: visualTheme.textPrimary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 10),
+      _buildSubtitleSelector(context),
+      if (cacheEntry != null) ...[
+        const SizedBox(height: 18),
+        Text(
+          '离线缓存',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: visualTheme.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        cacheEntry!,
+      ],
+      const SizedBox(height: 18),
+      _InfoBlock(
+        title: '会话信息',
+        children: [
+          _SnapshotRow(label: '播放状态', value: playbackStateLabel),
+          _SnapshotRow(label: '时间线', value: timelineLabel),
+          _SnapshotRow(label: '当前链路', value: transportLabel ?? '未知'),
+          _SnapshotRow(label: '资源地址', value: resolvedUri ?? '未知'),
+          if ((debugPath ?? '').isNotEmpty)
+            _SnapshotRow(label: 'Manifest', value: debugPath!),
+          if (snapshot.effectiveVideoTrackId != null)
+            _SnapshotRow(label: '实际轨道', value: snapshot.effectiveVideoTrackId!),
+          if ((hdrLabel ?? '').isNotEmpty)
+            _SnapshotRow(label: 'HDR', value: hdrLabel!),
+        ],
+      ),
+    ];
   }
 
   Widget _buildQualitySelector(BuildContext context) {
@@ -325,6 +348,251 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     }
     final language = track.language?.trim();
     return language == null || language.isEmpty ? '字幕' : language;
+  }
+}
+
+class _FullscreenTuningPanel extends StatefulWidget {
+  const _FullscreenTuningPanel({required this.panel});
+
+  final MediaPlaybackTuningPanel panel;
+
+  @override
+  State<_FullscreenTuningPanel> createState() => _FullscreenTuningPanelState();
+}
+
+class _FullscreenTuningPanelState extends State<_FullscreenTuningPanel> {
+  late final _advanced = signal(
+    widget.panel.initialSection != MediaPlaybackTuningSection.quality,
+  );
+  final _selecting = signal(false);
+  final _speedKey = GlobalKey();
+  final _subtitlesKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = switch (widget.panel.initialSection) {
+        MediaPlaybackTuningSection.speed => _speedKey.currentContext,
+        MediaPlaybackTuningSection.subtitles => _subtitlesKey.currentContext,
+        _ => null,
+      };
+      if (target != null) Scrollable.ensureVisible(target);
+    });
+  }
+
+  @override
+  void dispose() {
+    _advanced.dispose();
+    _selecting.dispose();
+    super.dispose();
+  }
+
+  Future<void> _select(String? id) async {
+    if (_selecting.value) return;
+    _selecting.value = true;
+    try {
+      final succeeded = await widget.panel.onSelectQuality(id);
+      if (mounted && succeeded && ModalRoute.of(context)?.isCurrent == true) {
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) _selecting.value = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SignalBuilder(
+    builder: (context) {
+      final panel = widget.panel;
+      final advanced = _advanced.value;
+      final busy = _selecting.value;
+      return MediaPlaybackSettingsPage(
+        title: advanced ? '高级设置' : '清晰度',
+        onBack: advanced ? () => _advanced.value = false : null,
+        scrollKey: ValueKey(
+          advanced ? 'advanced-settings-scroll' : 'quality-settings-scroll',
+        ),
+        actions: [
+          if (!advanced)
+            TextButton(
+              key: const ValueKey('open-advanced-playback-settings'),
+              onPressed: () => _advanced.value = true,
+              style: TextButton.styleFrom(
+                foregroundColor: AppVisualTheme.of(context).textSecondary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(44, 44),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('高级设置', style: TextStyle(fontSize: 12)),
+                  Icon(AppIcons.arrowRightSLine, size: 16),
+                ],
+              ),
+            ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: advanced
+              ? [
+                  ?panel.quickActions,
+                  ...panel._buildAdvancedSettings(
+                    context,
+                    speedKey: _speedKey,
+                    subtitlesKey: _subtitlesKey,
+                  ),
+                ]
+              : [
+                  _QualityRow(
+                    key: const ValueKey('tuning-quality-auto'),
+                    label: '自动',
+                    detail: panel.currentQualityLabel == null
+                        ? null
+                        : '当前 ${panel.currentQualityLabel}',
+                    inlineDetail: true,
+                    selected: panel.selectedQualityOptionId == null,
+                    enabled: !busy,
+                    onTap: () => _select(null),
+                  ),
+                  for (final option in panel.qualityOptions) ...[
+                    const SizedBox(height: 8),
+                    _QualityRow(
+                      key: ValueKey('tuning-quality-${option.id}'),
+                      label: option.label,
+                      selected: panel.selectedQualityOptionId == option.id,
+                      enabled: option.canSelect && !busy,
+                      detail: panel.qualitySupportingTextFor(option),
+                      badge: panel.qualityHdrBadgeFor?.call(option),
+                      onTap: () => _select(option.id),
+                    ),
+                  ],
+                  if (panel.qualityOptions.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text('当前播放链路无可选清晰度。'),
+                    ),
+                ],
+        ),
+      );
+    },
+  );
+}
+
+class _QualityRow extends StatelessWidget {
+  const _QualityRow({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+    this.detail,
+    this.inlineDetail = false,
+    this.badge,
+  });
+
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+  final String? detail;
+  final bool inlineDetail;
+  final TuningQualityHdrBadge? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = AppVisualTheme.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      selected: selected,
+      label: detail == null ? label : '$label，$detail',
+      child: ExcludeSemantics(
+        child: Material(
+          color: selected
+              ? Color.alphaBlend(
+                  accent.withValues(alpha: 0.12),
+                  visual.surfaceRaised,
+                )
+              : visual.surfaceRaised,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 54),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: !enabled
+                                      ? visual.textTertiary
+                                      : selected
+                                      ? accent
+                                      : visual.textPrimary,
+                                ),
+                              ),
+                              if (badge case final badge?)
+                                TuningOptionBadge(
+                                  label: badge.label,
+                                  confirmed: badge.confirmed,
+                                  enabled: enabled,
+                                ),
+                              if (inlineDetail && detail != null)
+                                Text(
+                                  '（$detail）',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: visual.textSecondary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (!inlineDetail && detail != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              detail!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: visual.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (selected) ...[
+                      const SizedBox(width: 12),
+                      Icon(AppIcons.checkFill, color: accent, size: 22),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

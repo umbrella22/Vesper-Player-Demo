@@ -672,6 +672,12 @@ final class MediaPlaybackViewModel {
         const <MediaQualityOption>[];
   }
 
+  /// Only describe an effective track reported by the player, including in ABR.
+  String? effectiveQualityLabel(VesperPlayerSnapshot snapshot) {
+    final trackId = snapshot.effectiveVideoTrackId;
+    return trackId == null ? null : _qualityLabelForTrackId(snapshot, trackId);
+  }
+
   /// 将解析阶段的清晰度分组与最新 SDK track catalog 能力合并。
   List<MediaQualitySelectionOption> qualitySelectionOptions(
     VesperPlayerSnapshot snapshot, {

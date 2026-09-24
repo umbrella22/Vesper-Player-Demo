@@ -19,6 +19,7 @@ import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_history_entries.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/bili/common/services/bili_ui_mode_resolver.dart';

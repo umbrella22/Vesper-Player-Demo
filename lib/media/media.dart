@@ -18,6 +18,7 @@ export 'playback/media_playback_dlna_widgets.dart';
 export 'playback/media_playback_errors.dart';
 export 'playback/media_playback_tv_widgets.dart';
 export 'playback/media_playback_settings_surface.dart';
+export 'playback/media_playback_settings_widgets.dart';
 export 'playback/media_playback_tuning_panel.dart';
 export 'playback/media_playback_widgets.dart';
 export 'playback/media_playback_view_model.dart';

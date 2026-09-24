@@ -7,6 +7,62 @@ enum MediaGlassSheetAppearance { translucent, readable }
 
 enum MediaGlassDialogAppearance { translucent, readable }
 
+/// Shared landscape container for the app's cache panels.
+Future<T?> showMediaReadableSideDrawer<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  Key? surfaceKey,
+  EdgeInsetsGeometry contentPadding = const EdgeInsets.fromLTRB(20, 18, 20, 22),
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: AppVisualTheme.of(context).scrim,
+    transitionDuration: AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.overlayDuration,
+    ),
+    pageBuilder: (drawerContext, _, _) => Padding(
+      padding: MediaQuery.viewInsetsOf(drawerContext),
+      child: MediaQuery.removeViewInsets(
+        context: drawerContext,
+        removeLeft: true,
+        removeTop: true,
+        removeRight: true,
+        removeBottom: true,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: MediaReadableSurface(
+            surfaceKey: surfaceKey,
+            child: SafeArea(
+              right: false,
+              child: SizedBox(
+                width: MediaQuery.sizeOf(drawerContext).width * 0.42,
+                height: double.infinity,
+                child: SingleChildScrollView(
+                  padding: contentPadding,
+                  child: Builder(builder: builder),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+    transitionBuilder: (context, animation, _, child) => SlideTransition(
+      position: Tween(begin: const Offset(-1, 0), end: Offset.zero).animate(
+        CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        ),
+      ),
+      child: child,
+    ),
+  );
+}
+
 Future<T?> showMediaGlassSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,

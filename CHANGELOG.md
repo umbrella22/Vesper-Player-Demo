@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.16.3](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.2...vesper_media-v1.16.3) (2026-09-24)
+
+### Bug Fixes
+
+* Open fullscreen quality and danmaku settings from the right, with fixed headers and theme-blue controls.
+* Match library tabs to the home page's liquid-glass appearance through shared tab styling.
+* Refresh portrait playback selections immediately when quality or codec settings change while playback is paused.
+* Continue history pagination when cloud records overlap with local history, using shared identity and merge rules on mobile and TV.
+* Restore the last successfully saved theme and danmaku settings after failed writes without overwriting newer edits or notifying disposed controllers.
+* Respect reduced-motion preferences in all cache drawers through a shared readable drawer container.
+
 ## [1.16.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.1...vesper_media-v1.16.2) (2026-09-21)
 
 ### Bug Fixes

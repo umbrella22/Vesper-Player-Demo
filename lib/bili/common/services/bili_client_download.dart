@@ -198,20 +198,6 @@ extension _BiliClientDownloadImplementation on BiliClient {
     return prepared;
   }
 
-  String _codecIdPart(String codecs) {
-    final buffer = StringBuffer();
-    for (final codeUnit in codecs.codeUnits) {
-      final isNumber = codeUnit >= 48 && codeUnit <= 57;
-      final isUpper = codeUnit >= 65 && codeUnit <= 90;
-      final isLower = codeUnit >= 97 && codeUnit <= 122;
-      if (isNumber || isUpper || isLower) {
-        buffer.writeCharCode(codeUnit);
-      }
-    }
-    final value = buffer.toString();
-    return value.isEmpty ? 'codec' : value;
-  }
-
   List<BiliDownloadQualityOption> _buildDownloadQualityOptions(
     List<BiliDashStream> streams,
   ) {
@@ -517,7 +503,7 @@ extension _BiliClientDownloadImplementation on BiliClient {
     if (_streamMatchesCodecPreference(stream, BiliVideoCodecPreference.avc)) {
       return 'avc';
     }
-    return 'codec${stream.codecid ?? _codecIdPart(stream.codecs)}';
+    return 'codec${stream.codecid ?? biliDashCodecToken(stream.codecs)}';
   }
 
   String _downloadAudioKey(BiliDashStream stream) {

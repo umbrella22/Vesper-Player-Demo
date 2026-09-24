@@ -1,5 +1,6 @@
 import '../models/bili_models.dart';
 import 'bili_api_core.dart';
+import 'bili_dash_identity.dart';
 
 /// Parses the DASH response shape shared by playback and offline downloads.
 final class BiliDashManifestParser {
@@ -198,21 +199,7 @@ final class BiliDashManifestParser {
     required int index,
   }) {
     final kind = mimeType.startsWith('audio/') ? 'audio' : 'video';
-    final codecKey = codecid?.toString() ?? _codecIdPart(codecs);
+    final codecKey = codecid?.toString() ?? biliDashCodecToken(codecs);
     return '$kind-$qualityId-$codecKey-$bandwidth-$index';
-  }
-
-  String _codecIdPart(String codecs) {
-    final buffer = StringBuffer();
-    for (final codeUnit in codecs.codeUnits) {
-      final isNumber = codeUnit >= 48 && codeUnit <= 57;
-      final isUpper = codeUnit >= 65 && codeUnit <= 90;
-      final isLower = codeUnit >= 97 && codeUnit <= 122;
-      if (isNumber || isUpper || isLower) {
-        buffer.writeCharCode(codeUnit);
-      }
-    }
-    final value = buffer.toString();
-    return value.isEmpty ? 'codec' : value;
   }
 }

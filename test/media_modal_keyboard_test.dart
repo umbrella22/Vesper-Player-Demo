@@ -6,6 +6,76 @@ import 'package:vesper_media/media/playback/media_playback_settings_surface.dart
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 
 void main() {
+  for (final accessibility in [false, true]) {
+    testWidgets(
+      'shared cache drawer respects motion and IME (accessible=$accessibility)',
+      (tester) async {
+        _setViewport(tester, const Size(900, 600));
+        const drawerKey = ValueKey('readable-cache-drawer');
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppVisualTokens.mobileDarkTheme(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                disableAnimations: !accessibility,
+                accessibleNavigation: accessibility,
+              ),
+              child: child!,
+            ),
+            home: Builder(
+              builder: (context) => FilledButton(
+                onPressed: () => showMediaReadableSideDrawer<void>(
+                  context: context,
+                  surfaceKey: drawerKey,
+                  builder: (_) => const Column(
+                    children: [
+                      Text('缓存面板'),
+                      TextField(),
+                      SizedBox(height: 700),
+                      Text('底部操作'),
+                    ],
+                  ),
+                ),
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('打开'));
+        await tester.pumpAndSettle();
+        final route = ModalRoute.of(tester.element(find.text('缓存面板')))!;
+        expect(route.transitionDuration, Duration.zero);
+        expect(tester.getRect(find.byKey(drawerKey)).left, 0);
+        expect(
+          tester.getRect(find.byKey(drawerKey)).width,
+          closeTo(900 * 0.42, 0.01),
+        );
+        tester.view.viewInsets = const FakeViewPadding(bottom: 250);
+        await tester.pumpAndSettle();
+        expect(tester.getRect(find.byKey(drawerKey)).bottom, 350);
+        await tester.scrollUntilVisible(
+          find.text('底部操作'),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byKey(drawerKey),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(
+          tester.getRect(find.text('底部操作')).bottom,
+          lessThanOrEqualTo(350),
+        );
+        await tester.tapAt(const Offset(800, 100));
+        await tester.pumpAndSettle();
+        expect(find.byKey(drawerKey), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
   for (final appearance in MediaGlassSheetAppearance.values) {
     testWidgets('$appearance sheet follows keyboard opening and resizing', (
       tester,
@@ -117,7 +187,6 @@ void main() {
           builder: (context) => FilledButton(
             onPressed: () => showMediaPlaybackSideDrawer<void>(
               context,
-              side: MediaPlaybackDrawerSide.trailing,
               surfaceKey: drawerKey,
               builder: (_) => const Column(
                 mainAxisSize: MainAxisSize.min,

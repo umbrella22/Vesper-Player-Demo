@@ -505,8 +505,8 @@ void main() {
     expect(find.byType(AppGlassSectionTabs), findsOneWidget);
     final tabs = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
     expect(tabs.quality, isNull);
-    expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
-    expect(tabs.selectedLabelColor, AppVisualTokens.textPrimary);
+    expect(tabs.indicatorColor, const Color(0x14000000));
+    expect(tabs.selectedLabelColor, const Color(0xFF0060C7));
 
     final toolbarRect = tester.getRect(
       find.byKey(const ValueKey<String>('bili-library-phone-toolbar')),

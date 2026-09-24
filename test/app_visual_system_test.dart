@@ -377,7 +377,7 @@ void main() {
     expect(find.text('0'), findsOneWidget);
   });
 
-  testWidgets('section tabs match bottom glass with a neutral selection', (
+  testWidgets('section tabs use the home glass selection and remain tappable', (
     tester,
   ) async {
     var selectedIndex = 0;
@@ -389,18 +389,9 @@ void main() {
             selectedIndex: selectedIndex,
             onSelected: (index) => selectedIndex = index,
             items: const [
-              AppGlassNavigationItem(
-                label: '关注',
-                icon: AppIcons.groupLine,
-              ),
-              AppGlassNavigationItem(
-                label: '历史播放',
-                icon: AppIcons.historyLine,
-              ),
-              AppGlassNavigationItem(
-                label: '稍后再看',
-                icon: AppIcons.timeLine,
-              ),
+              AppGlassNavigationItem(label: '关注', icon: AppIcons.groupLine),
+              AppGlassNavigationItem(label: '历史播放', icon: AppIcons.historyLine),
+              AppGlassNavigationItem(label: '稍后再看', icon: AppIcons.timeLine),
             ],
           ),
         ),
@@ -412,9 +403,9 @@ void main() {
     // ignore: experimental_member_use
     expect(find.byType(GlassAdaptiveScope), findsNothing);
     expect(tabs.quality, isNull);
-    expect(tabs.indicatorColor, AppVisualTokens.neutralSelection);
-    expect(tabs.selectedIconColor, AppVisualTokens.textPrimary);
-    expect(tabs.selectedLabelColor, AppVisualTokens.textPrimary);
+    expect(tabs.indicatorColor, const Color(0x14000000));
+    expect(tabs.selectedIconColor, const Color(0xFF0060C7));
+    expect(tabs.selectedLabelColor, const Color(0xFF0060C7));
     expect(tabs.magnification, 1.12);
     expect(tabs.innerBlur, 0.5);
     expect(tabs.glowOpacity, 0.38);

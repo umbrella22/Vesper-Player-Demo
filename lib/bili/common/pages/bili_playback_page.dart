@@ -5,7 +5,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
 
-import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/danmaku_settings_controller.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/services/bili_device_controls.dart';
@@ -192,9 +191,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
     final loading = _viewModel.watchLaterLoading;
     return TvBarButton(
       label: inWatchLater ? '已加入稍后再看' : '稍后再看',
-      icon: inWatchLater
-          ? AppIcons.timeFill
-          : AppIcons.timeLine,
+      icon: inWatchLater ? AppIcons.timeFill : AppIcons.timeLine,
       onTap: loading ? () {} : () => unawaited(_toggleWatchLater()),
     );
   }
@@ -429,65 +426,22 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
   }
 
   Future<void> _showCacheDrawer() {
-    return showGeneralDialog<void>(
+    return showMediaReadableSideDrawer<void>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black.withValues(alpha: 0.40),
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (dialogContext, _, _) {
-        final visualTheme = AppVisualTheme.of(dialogContext);
-        final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
-            .clamp(
-              MediaQuery.sizeOf(dialogContext).width * 0.28,
-              MediaQuery.sizeOf(dialogContext).width * 0.42,
-            )
-            .toDouble();
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: Material(
-            color: visualTheme.background,
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(22),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SafeArea(
-              right: false,
-              child: SizedBox(
-                width: drawerWidth,
-                height: double.infinity,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-                  child: BiliCacheDownloadPanel(
-                    detail: widget.detail,
-                    currentPage: _viewModel.selectedPage,
-                    selectedQualityId: _viewModel.selectedBiliQualityId,
-                    codecPreference: _currentDownloadCodecPreference(),
-                    controller: _viewModel.offlineController,
-                    onMessage: _showMessage,
-                    client: widget.client,
-                    historyStore: widget.historyStore,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(-1, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        );
-      },
+      surfaceKey: const ValueKey<String>(
+        'media-readable-playback-cache-drawer',
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+      builder: (_) => BiliCacheDownloadPanel(
+        detail: widget.detail,
+        currentPage: _viewModel.selectedPage,
+        selectedQualityId: _viewModel.selectedBiliQualityId,
+        codecPreference: _currentDownloadCodecPreference(),
+        controller: _viewModel.offlineController,
+        onMessage: _showMessage,
+        client: widget.client,
+        historyStore: widget.historyStore,
+      ),
     );
   }
 

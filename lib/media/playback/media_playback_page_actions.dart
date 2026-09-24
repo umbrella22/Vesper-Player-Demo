@@ -472,8 +472,10 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     return _showViewModelMessage(_viewModel.setPlaybackRate(rate));
   }
 
-  Future<void> _selectQualityOption(String? optionId) {
-    return _showViewModelMessage(_viewModel.selectQualityOption(optionId));
+  Future<bool> _selectQualityOption(String? optionId) async {
+    final message = await _viewModel.selectQualityOption(optionId);
+    if (mounted && message != null) _showMessage(message);
+    return message == null;
   }
 
   Future<void> _selectCodecIdentity(String? identity) {

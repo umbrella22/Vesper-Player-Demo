@@ -11,6 +11,7 @@ import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+import 'package:vesper_media/bili/common/services/bili_history_entries.dart';
 import 'package:vesper_media/bili/common/services/bili_text.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_card.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_grid_layout.dart';
@@ -148,22 +149,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         final local = await (widget.historyStore ?? const BiliHistoryStore())
             .loadEntries();
         refreshedLocalHistory = local
-            .map(
-              (entry) => BiliRemoteHistoryEntry(
-                aid: entry.aid,
-                bvid: entry.bvid,
-                cid: entry.cid,
-                episodeId: entry.episodeId,
-                title: entry.videoTitle,
-                pageTitle: entry.pageTitle,
-                coverUrl: entry.coverUrl,
-                ownerName: entry.ownerName,
-                durationMs: entry.durationMs ?? 0,
-                progressMs: entry.lastPositionMs,
-                viewedAtMs: entry.playedAtMs,
-                business: entry.business,
-              ),
-            )
+            .map((entry) => entry.toRemoteHistoryEntry())
             .toList(growable: false);
       } catch (_) {
         refreshedLocalHistory = const <BiliRemoteHistoryEntry>[];
@@ -175,7 +161,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           if (section == BiliLibrarySection.history) {
             state.localHistory = refreshedLocalHistory!;
             state.history = refreshedLocalHistory;
-            state.remoteHistoryCount = 0;
+            state.remoteHistory = [];
           }
           _clearAuthenticatedData(section, state);
           state.loading = false;
@@ -211,16 +197,17 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
             page: 1,
             pageSize: _historyPageSize,
           );
-          final remote = page.entries;
-          final seen = remote.map(_historyIdentity).toSet();
+          state.remoteHistory = mergeBiliHistory(
+            page.entries,
+            const [],
+            (entry) => entry.playbackIdentity,
+          );
           state.localHistory = refreshedLocalHistory!;
-          state.history = <BiliRemoteHistoryEntry>[
-            ...remote,
-            ...state.localHistory.where(
-              (item) => !seen.contains(_historyIdentity(item)),
-            ),
-          ];
-          state.remoteHistoryCount = remote.length;
+          state.history = mergeBiliHistory(
+            state.remoteHistory,
+            state.localHistory,
+            (entry) => entry.playbackIdentity,
+          );
           state.historyMax = page.nextMax;
           state.historyViewAtMs = page.nextViewAtMs;
           state.hasMore = page.hasMore;
@@ -250,7 +237,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           refreshedLocalHistory!.isNotEmpty) {
         state.localHistory = refreshedLocalHistory;
         state.history = refreshedLocalHistory;
-        state.remoteHistoryCount = 0;
+        state.remoteHistory = [];
         state.hasMore = false;
       }
     } finally {
@@ -302,33 +289,35 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           );
           final next = page.entries;
           receivedCount = next.length;
-          final seen = state.history.map(_historyIdentity).toSet();
-          final unique = next
-              .where((item) => seen.add(_historyIdentity(item)))
-              .toList(growable: false);
-          uniqueCount = unique.length;
-          final remoteCount = state.remoteHistoryCount.clamp(
-            0,
-            state.history.length,
+          final mergedRemote = mergeBiliHistory(
+            state.remoteHistory,
+            next,
+            (entry) => entry.playbackIdentity,
           );
-          state.history = <BiliRemoteHistoryEntry>[
-            ...state.history.take(remoteCount),
-            ...unique,
-            ...state.history.skip(remoteCount),
-          ];
-          state.remoteHistoryCount += unique.length;
+          uniqueCount = mergedRemote.length - state.remoteHistory.length;
+          final cursorAdvanced =
+              page.nextMax != state.historyMax ||
+              page.nextViewAtMs != state.historyViewAtMs;
+          state.remoteHistory = mergedRemote;
+          state.history = mergeBiliHistory(
+            state.remoteHistory,
+            state.localHistory,
+            (entry) => entry.playbackIdentity,
+          );
           state.historyMax = page.nextMax;
           state.historyViewAtMs = page.nextViewAtMs;
-          responseHasMore = page.hasMore;
+          responseHasMore = page.hasMore && (uniqueCount > 0 || cursorAdvanced);
         case BiliLibrarySection.watchLater:
           final next = await widget.client.fetchWatchLater(
             page: nextPage,
             pageSize: _watchLaterPageSize,
           );
           receivedCount = next.length;
-          final seen = state.watchLater.map(_watchLaterIdentity).toSet();
+          final seen = state.watchLater
+              .map((item) => item.playbackIdentity)
+              .toSet();
           final unique = next
-              .where((item) => seen.add(_watchLaterIdentity(item)))
+              .where((item) => seen.add(item.playbackIdentity))
               .toList(growable: false);
           uniqueCount = unique.length;
           state.watchLater = <BiliWatchLaterEntry>[
@@ -343,7 +332,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         BiliLibrarySection.watchLater => _watchLaterPageSize,
       };
       state.hasMore =
-          (responseHasMore ?? receivedCount >= pageSize) && uniqueCount > 0;
+          responseHasMore ?? (receivedCount >= pageSize && uniqueCount > 0);
       state.authenticationRequired = false;
     } catch (error) {
       state.error = _libraryError(error);
@@ -361,32 +350,6 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
     }
   }
 
-  String _historyIdentity(BiliRemoteHistoryEntry item) {
-    if (item.episodeId > 0) {
-      return 'episode:${item.episodeId}';
-    }
-    if (item.cid > 0) {
-      return 'cid:${item.cid}';
-    }
-    if (item.bvid.isNotEmpty) {
-      return 'bvid:${item.bvid}';
-    }
-    return 'aid:${item.aid}';
-  }
-
-  String _watchLaterIdentity(BiliWatchLaterEntry item) {
-    if (item.episodeId > 0) {
-      return 'episode:${item.episodeId}';
-    }
-    if (item.cid > 0) {
-      return 'cid:${item.cid}';
-    }
-    if (item.bvid.isNotEmpty) {
-      return 'bvid:${item.bvid}';
-    }
-    return 'aid:${item.aid}';
-  }
-
   void _clearAuthenticatedData(
     BiliLibrarySection section,
     _LibraryLoadState state,
@@ -399,7 +362,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
         // A cloud row may have deduplicated its local counterpart, so restore
         // the store snapshot instead of slicing the merged list by position.
         state.history = state.localHistory;
-        state.remoteHistoryCount = 0;
+        state.remoteHistory = [];
         break;
       case BiliLibrarySection.watchLater:
         state.watchLater = const <BiliWatchLaterEntry>[];
@@ -924,7 +887,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           );
         }
         final item = state.history[index];
-        final identity = _historyIdentity(item);
+        final identity = item.playbackIdentity;
         return _TvLibraryVideoCard(
           key: ValueKey<String>('bili-tv-library-card-history-$identity'),
           title: item.title,
@@ -970,7 +933,7 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
           );
         }
         final item = state.watchLater[index];
-        final identity = _watchLaterIdentity(item);
+        final identity = item.playbackIdentity;
         return _TvLibraryVideoCard(
           key: ValueKey<String>('bili-tv-library-card-watchLater-$identity'),
           title: item.title,
@@ -1157,13 +1120,13 @@ final class _LibraryLoadState {
   bool loaded = false;
   bool hasMore = true;
   int page = 1;
-  int remoteHistoryCount = 0;
   int historyMax = 0;
   int historyViewAtMs = 0;
   String? error;
   bool authenticationRequired = false;
   List<BiliFollowingUser> following = const <BiliFollowingUser>[];
   List<BiliRemoteHistoryEntry> localHistory = const <BiliRemoteHistoryEntry>[];
+  List<BiliRemoteHistoryEntry> remoteHistory = const <BiliRemoteHistoryEntry>[];
   List<BiliRemoteHistoryEntry> history = const <BiliRemoteHistoryEntry>[];
   List<BiliWatchLaterEntry> watchLater = const <BiliWatchLaterEntry>[];
 }

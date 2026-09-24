@@ -151,9 +151,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
             builder: (context) => vesper_ui.VesperStageIconButton(
               key: const ValueKey<String>('toggle-danmaku'),
               icon: Icon(
-                _danmakuEnabled
-                    ? AppIcons.chat3Fill
-                    : AppIcons.chat3Line,
+                _danmakuEnabled ? AppIcons.chat3Fill : AppIcons.chat3Line,
               ),
               label: _danmakuEnabled ? '关闭弹幕' : '开启弹幕',
               variant: vesper_ui.VesperStageButtonVariant.expanded,
@@ -355,7 +353,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
 
   Future<void> _openStageSheet(
     VesperPlayerController controller,
-    vesper_ui.VesperPlayerStageSheet _,
+    vesper_ui.VesperPlayerStageSheet sheet,
     bool isPortrait,
   ) async {
     if (!mounted) {
@@ -369,6 +367,15 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       await _showSettingsSurface(
         controller,
         isPortrait: isPortrait,
+        initialSection: switch (sheet) {
+          vesper_ui.VesperPlayerStageSheet.quality =>
+            MediaPlaybackTuningSection.quality,
+          vesper_ui.VesperPlayerStageSheet.speed =>
+            MediaPlaybackTuningSection.speed,
+          vesper_ui.VesperPlayerStageSheet.subtitle =>
+            MediaPlaybackTuningSection.subtitles,
+          _ => MediaPlaybackTuningSection.advanced,
+        },
         onActionSelected: (value) => action = value,
       );
     } finally {
@@ -402,7 +409,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     try {
       await showMediaPlaybackSideDrawer<void>(
         context,
-        side: MediaPlaybackDrawerSide.trailing,
+        scrollable: false,
         surfaceKey: const ValueKey<String>('danmaku-settings-drawer'),
         builder: (_) => settings,
       );
@@ -530,6 +537,8 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
   Future<void> _showSettingsSurface(
     VesperPlayerController controller, {
     required bool isPortrait,
+    MediaPlaybackTuningSection initialSection =
+        MediaPlaybackTuningSection.quality,
     ValueChanged<_PlaybackMenuAction>? onActionSelected,
   }) {
     return showMediaPlaybackSettingsSurface(
@@ -540,6 +549,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
         context,
         controller,
         snapshot,
+        initialSection: initialSection,
         onMenuAction: onActionSelected == null
             ? null
             : (action) {
@@ -554,6 +564,8 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     BuildContext context,
     VesperPlayerController controller,
     VesperPlayerSnapshot snapshot, {
+    MediaPlaybackTuningSection initialSection =
+        MediaPlaybackTuningSection.quality,
     ValueChanged<_PlaybackMenuAction>? onMenuAction,
   }) {
     final timeline = snapshot.timeline;
@@ -616,6 +628,8 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
         snapshot.subtitleState.catalogState ==
         VesperSubtitleCatalogState.loading;
     return MediaPlaybackTuningPanel(
+      initialSection: initialSection,
+      currentQualityLabel: _viewModel.effectiveQualityLabel(snapshot),
       quickActions: onMenuAction == null
           ? null
           : _buildPlaybackMenuActions(context, controller, onMenuAction),
@@ -645,9 +659,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       resolvedUri: _resolvedPlayback?.uri,
       debugPath: _resolvedPlayback?.debugPath,
       cacheEntry: widget.tuningCacheEntry,
-      onSelectQuality: (optionId) {
-        unawaited(_selectQualityOption(optionId));
-      },
+      onSelectQuality: _selectQualityOption,
       onSelectCodec: (identity) {
         unawaited(_selectCodecIdentity(identity));
       },

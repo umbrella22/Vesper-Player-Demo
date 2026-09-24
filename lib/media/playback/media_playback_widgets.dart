@@ -8,6 +8,8 @@ import 'package:vesper_media/media/capabilities/media_engagement.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
+import 'media_playback_settings_widgets.dart';
+
 /// 设备控制（亮度/音量）的通用接口，由宿主平台实现。
 ///
 /// 原 `_BiliStageDeviceControls`（bili 侧）实现本接口，
@@ -45,9 +47,10 @@ class TuningOptionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final immersive = MediaPlaybackDrawerScope.isActive(context);
     final color = enabled
         ? selected
-              ? AppVisualTokens.primaryBlue
+              ? Theme.of(context).colorScheme.primary
               : visualTheme.textPrimary
         : visualTheme.textTertiary;
     final detail = supportingText?.trim();
@@ -63,7 +66,7 @@ class TuningOptionButton extends StatelessWidget {
         child: Material(
           color: selected && enabled
               ? Color.alphaBlend(
-                  AppVisualTokens.primaryBlue.withValues(alpha: 0.12),
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                   visualTheme.surfaceRaised,
                 )
               : visualTheme.surfaceRaised,
@@ -72,7 +75,10 @@ class TuningOptionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             onTap: enabled ? onTap : null,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              constraints: BoxConstraints(
+                minWidth: immersive ? 44 : 40,
+                minHeight: immersive ? 44 : 40,
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -91,7 +97,9 @@ class TuningOptionButton extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: color,
-                              fontWeight: selected && enabled
+                              fontWeight: immersive
+                                  ? FontWeight.w500
+                                  : selected && enabled
                                   ? FontWeight.w900
                                   : FontWeight.w700,
                               fontSize: 14,
@@ -155,17 +163,19 @@ class TuningOptionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final tone = enabled
-        ? (confirmed ? AppVisualTokens.primaryBlue : visualTheme.textSecondary)
+        ? (confirmed
+              ? Theme.of(context).colorScheme.primary
+              : visualTheme.textSecondary)
         : visualTheme.textTertiary;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: confirmed && enabled
-            ? AppVisualTokens.primaryBlue.withValues(alpha: 0.16)
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         border: Border.all(
           color: confirmed && enabled
-              ? AppVisualTokens.primaryBlue.withValues(alpha: 0.55)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
               : tone.withValues(alpha: 0.5),
         ),
       ),
@@ -398,9 +408,7 @@ class CollapsedPlaybackBar extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          isPlaying
-                              ? AppIcons.pauseFill
-                              : AppIcons.playFill,
+                          isPlaying ? AppIcons.pauseFill : AppIcons.playFill,
                           color: AppVisualTokens.primaryBlue,
                           size: 34,
                         ),
@@ -584,21 +592,15 @@ class _MediaEngagementActionButtonState
 
   IconData get _icon => switch (widget.action.id) {
     MediaEngagementActionId.like =>
-      widget.action.selected
-          ? AppIcons.thumbUpFill
-          : AppIcons.thumbUpLine,
+      widget.action.selected ? AppIcons.thumbUpFill : AppIcons.thumbUpLine,
     MediaEngagementActionId.coin => AppIcons.moneyCnyCircleLine,
     MediaEngagementActionId.favorite =>
       widget.action.selected ? AppIcons.starFill : AppIcons.starLine,
     MediaEngagementActionId.share => AppIcons.shareLine,
     MediaEngagementActionId.follow =>
-      widget.action.selected
-          ? AppIcons.userAddFill
-          : AppIcons.userAddLine,
+      widget.action.selected ? AppIcons.userAddFill : AppIcons.userAddLine,
     MediaEngagementActionId.watchLater =>
-      widget.action.selected
-          ? AppIcons.bookmarkFill
-          : AppIcons.bookmarkLine,
+      widget.action.selected ? AppIcons.bookmarkFill : AppIcons.bookmarkLine,
   };
 
   Future<void> _handleTap() async {

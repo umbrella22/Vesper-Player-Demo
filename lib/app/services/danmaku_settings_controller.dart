@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:vesper_media/common/state/optimistic_value.dart';
 import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/media/media.dart';
 
@@ -18,12 +19,20 @@ final class DanmakuSettingsController {
        ),
        _sourceFilter = ValueNotifier<BiliDanmakuSourceFilterSettings>(
          _freezeSettings(initialSettings).sourceFilter,
-       );
+       ) {
+    _persistedValue = OptimisticValue(
+      initialValue: _settings.value,
+      persist: (value) =>
+          store?.setDanmakuSettings(value) ?? Future<void>.value(),
+      onChanged: _publish,
+    );
+  }
 
   final AppSettingsStore? store;
   final ValueNotifier<BiliDanmakuSettings> _settings;
   final ValueNotifier<MediaDanmakuOverlaySettings> _overlay;
   final ValueNotifier<BiliDanmakuSourceFilterSettings> _sourceFilter;
+  late final OptimisticValue<BiliDanmakuSettings> _persistedValue;
   bool _disposed = false;
 
   BiliDanmakuSettings get value => _settings.value;
@@ -45,23 +54,10 @@ final class DanmakuSettingsController {
     if (_disposed) {
       return false;
     }
-    final next = _freezeSettings(nextValue);
-    final previous = value;
-    if (previous == next) {
-      return true;
-    }
-    _publish(next);
-    final persistence = store;
-    if (persistence == null) {
-      return true;
-    }
     try {
-      await persistence.setDanmakuSettings(next);
+      await _persistedValue.setValue(_freezeSettings(nextValue));
       return true;
     } catch (_) {
-      if (!_disposed && value == next) {
-        _publish(previous);
-      }
       return false;
     }
   }
@@ -81,6 +77,7 @@ final class DanmakuSettingsController {
       return;
     }
     _disposed = true;
+    _persistedValue.dispose();
     _settings.dispose();
     _overlay.dispose();
     _sourceFilter.dispose();

@@ -389,47 +389,43 @@ void main() {
     }
 
     for (final sideInset in [0.0, 12.0]) {
-      testWidgets(
-        '大圆角 Android 手机的内嵌画面贴合安全区且无额外黑边：$sideInset',
-        (tester) async {
-          tester.view.devicePixelRatio = 1;
-          tester.view.padding = FakeViewPadding(
-            left: sideInset,
-            top: 48,
-            right: sideInset,
-            bottom: 24,
-          );
-          addTearDown(tester.view.resetDevicePixelRatio);
-          addTearDown(tester.view.resetPadding);
-          await pumpShell(
-            tester,
-            surfaceSize: const Size(390, 844),
-            displayCornerRadii: BorderRadius.circular(44),
-            binding: MediaPlaybackBinding(
-              contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
-            ),
-          );
+      testWidgets('大圆角 Android 手机的内嵌画面贴合安全区且无额外黑边：$sideInset', (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = FakeViewPadding(
+          left: sideInset,
+          top: 48,
+          right: sideInset,
+          bottom: 24,
+        );
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPadding);
+        await pumpShell(
+          tester,
+          surfaceSize: const Size(390, 844),
+          displayCornerRadii: BorderRadius.circular(44),
+          binding: MediaPlaybackBinding(
+            contentSurfacesBuilder: (_) => _IntroOnlySurfaces(),
+          ),
+        );
 
-          final stageRect = tester.getRect(stageFinder);
-          final videoWidth = 390 - sideInset * 2;
-          expect(stageRect.left, sideInset);
-          expect(stageRect.top, 48);
-          expect(stageRect.width, videoWidth);
-          expect(stageRect.height, closeTo(videoWidth / (16 / 9), 0.01));
-          expect(tester.getRect(find.byType(VesperPlayerView)), stageRect);
-          expect(tester.getRect(find.byType(AndroidViewSurface)), stageRect);
-          expect(
-            tester
-                .getTopLeft(find.byKey(const ValueKey('playback-bottom-surface')))
-                .dy,
-            closeTo(stageRect.bottom, 0.01),
-          );
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pump();
-          expect(tester.takeException(), isNull);
-        },
-        variant: TargetPlatformVariant.only(TargetPlatform.android),
-      );
+        final stageRect = tester.getRect(stageFinder);
+        final videoWidth = 390 - sideInset * 2;
+        expect(stageRect.left, sideInset);
+        expect(stageRect.top, 48);
+        expect(stageRect.width, videoWidth);
+        expect(stageRect.height, closeTo(videoWidth / (16 / 9), 0.01));
+        expect(tester.getRect(find.byType(VesperPlayerView)), stageRect);
+        expect(tester.getRect(find.byType(AndroidViewSurface)), stageRect);
+        expect(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('playback-bottom-surface')))
+              .dy,
+          closeTo(stageRect.bottom, 0.01),
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.android));
     }
 
     testWidgets('内嵌竖屏限制高度并为简介保留空间，原生尺寸可校正比例', (tester) async {
@@ -2802,6 +2798,42 @@ void main() {
         find.byKey(const ValueKey<String>('landscape-control-bar-leading')),
         findsNothing,
       );
+    });
+
+    testWidgets('全屏清晰度与弹幕从同一右侧打开，倍速入口定位高级设置', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        surfaceSize: const Size(960, 434),
+        adapter: _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider()),
+        danmakuSettingsSurface: const Text('宿主弹幕设置'),
+      );
+      harness.viewModel.setFullscreen(true);
+      await tester.pumpAndSettle();
+      vesper_ui.VesperPlayerStage stage() =>
+          tester.widget(find.byType(vesper_ui.VesperPlayerStage));
+      stage().onOpenSheet(vesper_ui.VesperPlayerStageSheet.quality);
+      await tester.pumpAndSettle();
+      final qualityRect = tester.getRect(
+        find.byKey(const ValueKey('playback-settings-drawer')),
+      );
+      expect(qualityRect.right, 960);
+      expect(find.text('清晰度'), findsOneWidget);
+      await tester.tap(find.byTooltip('关闭设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('open-danmaku-settings')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const ValueKey('danmaku-settings-drawer'))),
+        qualityRect,
+      );
+      await tester.tapAt(const Offset(100, 100));
+      await tester.pumpAndSettle();
+      stage().onOpenSheet(vesper_ui.VesperPlayerStageSheet.speed);
+      await tester.pumpAndSettle();
+      expect(find.text('高级设置'), findsOneWidget);
+      expect(find.text('倍速').hitTestable(), findsOneWidget);
+      expect(find.text('2.0x').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('弹幕抽屉独立显示并在打开期间保持控制层', (tester) async {

@@ -12,6 +12,7 @@ import '../models/bili_favorites_models.dart';
 import '../models/bili_region_models.dart';
 import 'bili_api_core.dart';
 import 'bili_dash_api.dart';
+import 'bili_dash_identity.dart';
 import 'bili_dash_manifest_builder.dart';
 import 'bili_dash_manifest_parser.dart';
 import 'bili_endpoints.dart';

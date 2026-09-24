@@ -76,7 +76,6 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
     if (shouldLoadRemote) {
       try {
         final remote = await _viewModel.client.fetchRemoteHistory(pageSize: 30);
-        final seen = <String>{};
         final cloud = remote
             .where(
               (entry) =>
@@ -84,29 +83,14 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
                   entry.aid > 0 ||
                   entry.episodeId > 0,
             )
-            .map(
-              (entry) => BiliPlaybackHistoryEntry(
-                bvid: entry.bvid,
-                aid: entry.aid,
-                cid: entry.cid,
-                episodeId: entry.episodeId,
-                business: entry.business,
-                videoTitle: entry.title,
-                pageTitle: entry.pageTitle,
-                coverUrl: entry.coverUrl,
-                ownerName: entry.ownerName,
-                playedAtMs: entry.viewedAtMs,
-                lastPositionMs: entry.progressMs,
-                durationMs: entry.durationMs > 0 ? entry.durationMs : null,
-              ),
-            )
-            .where((entry) => seen.add(_historyIdentity(entry)))
+            .map((entry) => entry.toPlaybackHistoryEntry())
             .toList(growable: false);
         if (cloud.isNotEmpty) {
-          merged = <BiliPlaybackHistoryEntry>[
-            ...cloud,
-            ...local.where((entry) => !seen.contains(_historyIdentity(entry))),
-          ];
+          merged = mergeBiliHistory(
+            cloud,
+            local,
+            (entry) => entry.playbackIdentity,
+          );
         }
       } catch (_) {
         // The local store is the offline fallback when the cursor endpoint
@@ -204,7 +188,11 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
       return;
     }
     unawaited(
-      precacheImage(appNetworkImageProvider(context, item.coverUrl), context, onError: (_, _) {}),
+      precacheImage(
+        appNetworkImageProvider(context, item.coverUrl),
+        context,
+        onError: (_, _) {},
+      ),
     );
   }
 
@@ -285,29 +273,12 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
           icon: AppIcons.arrowLeftLine,
           autofocus: true,
         ),
-        BiliTvDialogAction(
-          label: '开始播放',
-          value: true,
-          icon: AppIcons.playFill,
-        ),
+        BiliTvDialogAction(label: '开始播放', value: true, icon: AppIcons.playFill),
       ],
     );
     if (shouldPlay == true && mounted) {
       await _playHero(item);
     }
-  }
-
-  String _historyIdentity(BiliPlaybackHistoryEntry entry) {
-    if (entry.episodeId > 0) {
-      return 'episode:${entry.episodeId}';
-    }
-    if (entry.cid > 0) {
-      return 'cid:${entry.cid}';
-    }
-    if (entry.bvid.isNotEmpty) {
-      return 'bvid:${entry.bvid}';
-    }
-    return 'aid:${entry.aid}';
   }
 
   Future<void> _openLibrary(BiliLibrarySection section) async {

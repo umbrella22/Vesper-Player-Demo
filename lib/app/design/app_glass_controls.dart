@@ -224,6 +224,46 @@ final class AppGlassNavigationSearchConfig {
   final String hintText;
 }
 
+abstract final class _AppGlassTabStyle {
+  static const double barHeight = 50;
+  static const double indicatorBorderRadius = 21;
+  static const double iconSize = 22;
+  static const double iconLabelSpacing = 2;
+  static const TextStyle selectedLabelStyle = TextStyle(
+    fontSize: 11,
+    height: 1,
+    fontWeight: FontWeight.w700,
+  );
+  static const TextStyle unselectedLabelStyle = TextStyle(
+    fontSize: 11,
+    height: 1,
+    fontWeight: FontWeight.w600,
+  );
+  static const Color interactionGlowColor = Color(0x1FFFFFFF);
+
+  static Color selectedColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF70B8FF)
+        : const Color(0xFF0060C7);
+  }
+
+  static Color indicatorColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? const Color(0x24FFFFFF)
+        : const Color(0x14000000);
+  }
+
+  static LiquidGlassSettings settings(AppVisualTheme visualTheme) {
+    return LiquidGlassSettings(
+      blur: 12,
+      thickness: 14,
+      glassColor: visualTheme.glassTint,
+      lightIntensity: 0.55,
+      saturation: 1.04,
+    );
+  }
+}
+
 class AppGlassBottomNavigation extends StatelessWidget {
   const AppGlassBottomNavigation({
     super.key,
@@ -236,13 +276,12 @@ class AppGlassBottomNavigation extends StatelessWidget {
     this.scrollController,
   });
 
-  static const double barHeight = 50;
+  static const double barHeight = _AppGlassTabStyle.barHeight;
   static const double compactBarHeight = barHeight;
   static const double verticalPadding = 8;
   static const double extent = barHeight + verticalPadding * 2;
   static const double contentSpacing = 12;
   static const double tabItemWidth = 88;
-  static const double _indicatorBorderRadius = 21;
   static const EdgeInsets _indicatorExpansion = EdgeInsets.symmetric(
     horizontal: 6,
     vertical: 3,
@@ -253,17 +292,6 @@ class AppGlassBottomNavigation extends StatelessWidget {
   static const TextStyle _unselectedLabelStyle = TextStyle(
     fontWeight: FontWeight.w700,
   );
-  static const TextStyle _searchSelectedLabelStyle = TextStyle(
-    fontSize: 11,
-    height: 1,
-    fontWeight: FontWeight.w700,
-  );
-  static const TextStyle _searchUnselectedLabelStyle = TextStyle(
-    fontSize: 11,
-    height: 1,
-    fontWeight: FontWeight.w600,
-  );
-  static const Color _interactionGlowColor = Color(0x1FFFFFFF);
   static const ValueKey<String> navigationKey = ValueKey<String>(
     'app-glass-bottom-navigation',
   );
@@ -288,18 +316,6 @@ class AppGlassBottomNavigation extends StatelessWidget {
 
   static double contentClearance(BuildContext context) {
     return extent + MediaQuery.paddingOf(context).bottom + contentSpacing;
-  }
-
-  static Color _searchSelectionColor(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFF70B8FF)
-        : const Color(0xFF0060C7);
-  }
-
-  static Color _searchIndicatorColor(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0x24FFFFFF)
-        : const Color(0x14000000);
   }
 
   final List<AppGlassNavigationItem> items;
@@ -377,9 +393,9 @@ class AppGlassBottomNavigation extends StatelessWidget {
       verticalPadding: verticalPadding,
       barHeight: barHeight,
       barBorderRadius: barHeight / 2,
-      indicatorBorderRadius: _indicatorBorderRadius,
+      indicatorBorderRadius: _AppGlassTabStyle.indicatorBorderRadius,
       indicatorExpansion: _indicatorExpansion,
-      settings: _glassSettings(visualTheme),
+      settings: _AppGlassTabStyle.settings(visualTheme),
       indicatorColor: visualTheme.neutralSelection,
       selectedIconColor: visualTheme.textPrimary,
       selectedLabelColor: visualTheme.textPrimary,
@@ -394,7 +410,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
       glowOpacity: 0.38,
       glowBlurRadius: 26,
       glowSpreadRadius: 5,
-      interactionGlowColor: _interactionGlowColor,
+      interactionGlowColor: _AppGlassTabStyle.interactionGlowColor,
       pressScale: AppVisualTokens.interactionScale(
         context,
         AppVisualTokens.pressedScale,
@@ -423,7 +439,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
   }) {
     final selectedColor = search == null
         ? visualTheme.textPrimary
-        : _searchSelectionColor(context);
+        : _AppGlassTabStyle.selectedColor(context);
     return GlassTabBar.minimizable(
       key: navigationKey,
       tabs: tabs,
@@ -444,26 +460,26 @@ class AppGlassBottomNavigation extends StatelessWidget {
       barHeight: barHeight,
       minimizedBarHeight: compactBarHeight,
       barBorderRadius: barHeight / 2,
-      indicatorBorderRadius: _indicatorBorderRadius,
+      indicatorBorderRadius: _AppGlassTabStyle.indicatorBorderRadius,
       indicatorExpansion: search == null
           ? _indicatorExpansion
           : EdgeInsets.zero,
-      settings: _glassSettings(visualTheme),
+      settings: _AppGlassTabStyle.settings(visualTheme),
       indicatorColor: search == null
           ? visualTheme.neutralSelection
-          : _searchIndicatorColor(context),
+          : _AppGlassTabStyle.indicatorColor(context),
       selectedIconColor: selectedColor,
       selectedLabelColor: selectedColor,
       unselectedIconColor: visualTheme.textSecondary,
       unselectedLabelColor: visualTheme.textSecondary,
       selectedLabelStyle: search == null
           ? _selectedLabelStyle
-          : _searchSelectedLabelStyle,
+          : _AppGlassTabStyle.selectedLabelStyle,
       unselectedLabelStyle: search == null
           ? _unselectedLabelStyle
-          : _searchUnselectedLabelStyle,
-      iconSize: search == null ? 24 : 22,
-      iconLabelSpacing: search == null ? 4 : 2,
+          : _AppGlassTabStyle.unselectedLabelStyle,
+      iconSize: search == null ? 24 : _AppGlassTabStyle.iconSize,
+      iconLabelSpacing: search == null ? 4 : _AppGlassTabStyle.iconLabelSpacing,
       quality: inheritedQuality,
       maskingQuality: MaskingQuality.high,
       magnification: 1.12,
@@ -471,7 +487,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
       glowOpacity: 0.38,
       glowBlurRadius: 26,
       glowSpreadRadius: 5,
-      interactionGlowColor: _interactionGlowColor,
+      interactionGlowColor: _AppGlassTabStyle.interactionGlowColor,
       pressScale: AppVisualTokens.interactionScale(
         context,
         AppVisualTokens.pressedScale,
@@ -521,7 +537,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
             child: ExcludeSemantics(
               child: Icon(
                 items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
-                color: _searchSelectionColor(context),
+                color: _AppGlassTabStyle.selectedColor(context),
               ),
             ),
           ),
@@ -545,18 +561,18 @@ class AppGlassBottomNavigation extends StatelessWidget {
       barHeight: barHeight,
       searchBarHeight: compactBarHeight,
       barBorderRadius: barHeight / 2,
-      indicatorBorderRadius: _indicatorBorderRadius,
+      indicatorBorderRadius: _AppGlassTabStyle.indicatorBorderRadius,
       indicatorExpansion: EdgeInsets.zero,
-      settings: _glassSettings(visualTheme),
-      indicatorColor: _searchIndicatorColor(context),
-      selectedIconColor: _searchSelectionColor(context),
-      selectedLabelColor: _searchSelectionColor(context),
+      settings: _AppGlassTabStyle.settings(visualTheme),
+      indicatorColor: _AppGlassTabStyle.indicatorColor(context),
+      selectedIconColor: _AppGlassTabStyle.selectedColor(context),
+      selectedLabelColor: _AppGlassTabStyle.selectedColor(context),
       unselectedIconColor: visualTheme.textSecondary,
       unselectedLabelColor: visualTheme.textSecondary,
-      selectedLabelStyle: _searchSelectedLabelStyle,
-      unselectedLabelStyle: _searchUnselectedLabelStyle,
-      iconSize: 22,
-      iconLabelSpacing: 2,
+      selectedLabelStyle: _AppGlassTabStyle.selectedLabelStyle,
+      unselectedLabelStyle: _AppGlassTabStyle.unselectedLabelStyle,
+      iconSize: _AppGlassTabStyle.iconSize,
+      iconLabelSpacing: _AppGlassTabStyle.iconLabelSpacing,
       textStyle: Theme.of(
         context,
       ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -567,7 +583,7 @@ class AppGlassBottomNavigation extends StatelessWidget {
       glowOpacity: 0.38,
       glowBlurRadius: 26,
       glowSpreadRadius: 5,
-      interactionGlowColor: _interactionGlowColor,
+      interactionGlowColor: _AppGlassTabStyle.interactionGlowColor,
       pressScale: AppVisualTokens.interactionScale(
         context,
         AppVisualTokens.pressedScale,
@@ -662,16 +678,6 @@ class AppGlassBottomNavigation extends StatelessWidget {
       ),
     );
   }
-
-  LiquidGlassSettings _glassSettings(AppVisualTheme visualTheme) {
-    return LiquidGlassSettings(
-      blur: 12,
-      thickness: 14,
-      glassColor: visualTheme.glassTint,
-      lightIntensity: 0.55,
-      saturation: 1.04,
-    );
-  }
 }
 
 class AppGlassSectionTabs extends StatelessWidget {
@@ -702,7 +708,7 @@ class AppGlassSectionTabs extends StatelessWidget {
         items: items,
         selectedIndex: selectedIndex,
         onSelected: onSelected,
-        height: 48,
+        height: _AppGlassTabStyle.barHeight,
         padding: EdgeInsets.zero,
       );
     }
@@ -721,27 +727,20 @@ class AppGlassSectionTabs extends StatelessWidget {
       ],
       selectedIndex: selectedIndex,
       onTabSelected: onSelected,
-      barHeight: 48,
-      barBorderRadius: 24,
-      indicatorBorderRadius: 22,
-      indicatorExpansion: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 6,
-      ),
-      settings: LiquidGlassSettings(
-        blur: 10,
-        thickness: 12,
-        glassColor: visualTheme.glassTint,
-        lightIntensity: 0.5,
-        saturation: 1.02,
-      ),
-      indicatorColor: visualTheme.neutralSelection,
-      selectedIconColor: visualTheme.textPrimary,
-      selectedLabelColor: visualTheme.textPrimary,
+      barHeight: _AppGlassTabStyle.barHeight,
+      barBorderRadius: _AppGlassTabStyle.barHeight / 2,
+      indicatorBorderRadius: _AppGlassTabStyle.indicatorBorderRadius,
+      indicatorExpansion: EdgeInsets.zero,
+      settings: _AppGlassTabStyle.settings(visualTheme),
+      indicatorColor: _AppGlassTabStyle.indicatorColor(context),
+      selectedIconColor: _AppGlassTabStyle.selectedColor(context),
+      selectedLabelColor: _AppGlassTabStyle.selectedColor(context),
       unselectedIconColor: visualTheme.textSecondary,
       unselectedLabelColor: visualTheme.textSecondary,
-      selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w800),
-      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+      selectedLabelStyle: _AppGlassTabStyle.selectedLabelStyle,
+      unselectedLabelStyle: _AppGlassTabStyle.unselectedLabelStyle,
+      iconSize: _AppGlassTabStyle.iconSize,
+      iconLabelSpacing: _AppGlassTabStyle.iconLabelSpacing,
       quality: inheritedQuality,
       maskingQuality: MaskingQuality.high,
       magnification: 1.12,
@@ -753,7 +752,7 @@ class AppGlassSectionTabs extends StatelessWidget {
         context,
         AppVisualTokens.pressedScale,
       ),
-      interactionGlowColor: const Color(0x1FFFFFFF),
+      interactionGlowColor: _AppGlassTabStyle.interactionGlowColor,
     );
 
     return tabBar;
@@ -833,7 +832,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
             icon: items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
             foregroundColor: search == null
                 ? AppVisualTheme.of(context).textPrimary
-                : AppGlassBottomNavigation._searchSelectionColor(context),
+                : _AppGlassTabStyle.selectedColor(context),
             selected: true,
             onTap: minimizeController!.expand,
           ),
@@ -907,9 +906,7 @@ class _OpaqueBottomNavigation extends StatelessWidget {
           key: AppGlassBottomNavigation.searchExitButtonKey,
           label: '退出搜索',
           icon: items[selectedIndex].activeIcon ?? items[selectedIndex].icon,
-          foregroundColor: AppGlassBottomNavigation._searchSelectionColor(
-            context,
-          ),
+          foregroundColor: _AppGlassTabStyle.selectedColor(context),
           selected: true,
           onTap: () => search.onActiveChanged(false),
         ),
@@ -1195,7 +1192,7 @@ class _OpaqueNavigationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final selectedColor = emphasized
-        ? AppGlassBottomNavigation._searchSelectionColor(context)
+        ? _AppGlassTabStyle.selectedColor(context)
         : visualTheme.textPrimary;
     return Padding(
       padding: padding,

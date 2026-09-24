@@ -275,62 +275,16 @@ class _BiliHubPageState extends State<BiliHubPage> {
       return;
     }
 
-    await showGeneralDialog<void>(
+    await showMediaReadableSideDrawer<void>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: AppVisualTheme.of(context).scrim,
-      transitionDuration: AppVisualTokens.motionDuration(
-        context,
-        AppVisualTokens.overlayDuration,
+      surfaceKey: const ValueKey<String>('media-readable-home-cache-drawer'),
+      builder: (_) => _HomeCacheSurface(
+        client: _viewModel.client,
+        historyStore: _viewModel.historyStore,
+        bvid: item.bvid,
+        controller: _viewModel.offlineController,
+        onMessage: _showMessage,
       ),
-      pageBuilder: (dialogContext, _, _) {
-        final drawerWidth = (MediaQuery.sizeOf(dialogContext).width * 0.42)
-            .clamp(
-              MediaQuery.sizeOf(dialogContext).width * 0.28,
-              MediaQuery.sizeOf(dialogContext).width * 0.42,
-            )
-            .toDouble();
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: MediaReadableSurface(
-            surfaceKey: const ValueKey<String>(
-              'media-readable-home-cache-drawer',
-            ),
-            child: SafeArea(
-              right: false,
-              child: SizedBox(
-                width: drawerWidth,
-                height: double.infinity,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                  child: _HomeCacheSurface(
-                    client: _viewModel.client,
-                    historyStore: _viewModel.historyStore,
-                    bvid: item.bvid,
-                    controller: _viewModel.offlineController,
-                    onMessage: _showMessage,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(-1, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        );
-      },
     );
   }
 
