@@ -1001,8 +1001,11 @@ void main() {
       });
 
       expect(fullFile.path, isNot(audioFile.path));
-      expect(fullFile.path, endsWith('BV1LISTENAUDIO-991122.mpd'));
-      expect(audioFile.path, endsWith('BV1LISTENAUDIO-991122-audio.mpd'));
+      expect(fullFile.path, matches(r'BV1LISTENAUDIO-991122-\d+-\d+\.mpd$'));
+      expect(
+        audioFile.path,
+        matches(r'BV1LISTENAUDIO-991122-audio-\d+-\d+\.mpd$'),
+      );
       final fullMpd = await fullFile.readAsString();
       final audioMpd = await audioFile.readAsString();
       expect(fullMpd, contains('contentType="video"'));

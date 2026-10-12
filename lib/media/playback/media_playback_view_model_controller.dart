@@ -6,6 +6,7 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
     _invalidatePlaybackSelectionRequests();
     _resetRuntimeTrackCapabilityState();
     _resetHdrStatus();
+    _resetNativePlaybackDiagnostics();
     _suppressedPlaybackCommandError.value = null;
     VesperPlayerController? nextController;
     try {
@@ -13,12 +14,17 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       // 首次创建直接使用；之后一律走适配器重新解析。
       final initialResolved = _initialResolvedPlayback;
       _initialResolvedPlayback = null;
+      startupTiming?.markResolveStarted();
       final resolved =
           initialResolved ??
           await adapter.resolvePlayback(
             detail: detail,
             entry: _selectedEntry.value,
           );
+      startupTiming?.markSourceReady();
+      if (_isDisposed || generation != _controllerGeneration) {
+        throw const _PlaybackSourceObsoleted();
+      }
       if (!_isDisposed && generation == _controllerGeneration) {
         _resolvedPlayback.value = resolved;
         _syncVideoAspectRatio();
@@ -46,7 +52,16 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
         throw const _PlaybackSourceObsoleted();
       }
       _resetPlaybackRecoveryState(clearPendingNotice: true);
+      startupTiming?.bindController(nextController.playerId);
       await _replaceControllerEventSubscription(nextController, generation);
+      try {
+        await nextController.setPlaybackStallPolicy(mediaPlayerStallPolicy);
+      } catch (_) {
+        // Older or unsupported hosts retain the App watchdog fallback.
+      }
+      if (_isDisposed || generation != _controllerGeneration) {
+        throw const _PlaybackSourceObsoleted();
+      }
       await nextController.initialize();
       if (_isDisposed || generation != _controllerGeneration) {
         await nextController.dispose();
@@ -80,7 +95,14 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       _hdrSourceNormalizerConfiguration = sourceNormalizerConfiguration;
       _userController = SeekAwarePlayerController(
         nextController,
-        () => _userSeekGeneration += 1,
+        _performUserSeek,
+        onPlaybackIntent: _recordPlaybackIntent,
+      );
+      _startAudioWatchdog(generation);
+      _observeNativePlaybackDiagnostics(
+        nextController,
+        nextController.snapshot,
+        generation,
       );
       if (nextController.snapshot.lastError case final lastError?) {
         _handleControllerError(lastError, generation);

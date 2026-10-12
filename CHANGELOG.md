@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.17.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.3...vesper_media-v1.17.0) (2026-10-12)
+
+### Features
+
+* Support awaited Vesper source activation in the player-controller adapter, configure bounded preload budgets, and preserve playback intent and history resume ordering.
+* Add Android Dolby audio policy overrides and one recovery attempt per session when a replaceable DASH audio source stalls.
+* Show startup timing, native first frame observations, audio capability evidence, and recent playback failures in advanced playback settings.
+
+### Performance Improvements
+
+* Open the playback route immediately while resolving video details, with retryable loading states on phone and TV.
+* Warm Bilibili session and transport state and prefetch feed playback responses with bounded concurrency, capacity, and expiry.
+* Resolve optional subtitles alongside playback requests with a bounded deadline so slow subtitle requests do not delay playback indefinitely.
+
+### Bug Fixes
+
+* Fence playback resolution and prefetched responses against changes to the login session.
+* Refresh generated local DASH manifests during source recovery and use unique manifest paths for overlapping playback requests.
+* Preserve manual seek and play/pause intent across source activation and recovery, and reject stale recovery callbacks.
+* Use shared responsive typography for mobile video card and playback titles.
+
+### Dependencies
+
+* Upgrade all Vesper Flutter packages, Android performance diagnostics, and iOS VesperPlayerKit pins to 0.9.1.
+* Update Material, Cupertino, liquid_glass_widgets, package_info_plus, cached_network_image, flutter_cache_manager, and compatible transitive dependencies; align the minimum Dart version with Dart 3.13.
+* Update Gradle to 9.8.1 and Kotlin to 2.4.21, with AGP 9.4.1 and AndroidX Core KTX 1.19.1.
+* Update CI to Flutter 3.47.7 and current stable GitHub Actions, preserving basic Gradle caching.
+
+### Validation
+
+* Local Flutter 3.47.6 / Dart 3.13.5 analysis and all 844 tests passed. iOS Debug and Release unsigned device builds passed, including Release performance-diagnostics exclusion.
+* Local Android APK validation remains blocked by distribution and dependency-cache availability. Flutter 3.47.7 CI and device playback, download, and DLNA acceptance are pending at tag creation.
+
 ## [1.16.3](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.2...vesper_media-v1.16.3) (2026-09-24)
 
 ### Bug Fixes

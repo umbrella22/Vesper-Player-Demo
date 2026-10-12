@@ -1,4 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:vesper_player/vesper_player.dart';
+import 'package:vesper_media/media/capabilities/media_audio_compatibility.dart';
+import 'common/services/bili_audio_policy.dart';
+import 'common/services/bili_audio_policy_controller.dart';
 import 'package:vesper_media/media/media.dart';
 
 import 'common/services/bili_client.dart';
@@ -48,6 +52,14 @@ final class BiliMediaPlatformAdapter extends MediaPlatformAdapter {
     return BiliMediaMapper.toResolvedPlayback(resolved);
   }
 
+  late final _audioCompatibility = _BiliAudioCompatibility(_client.audioPolicy);
+
+  @override
+  MediaAudioCompatibility? get audioCompatibility =>
+      defaultTargetPlatform == TargetPlatform.android
+      ? _audioCompatibility
+      : null;
+
   @override
   MediaDanmakuProvider? get danmaku => _danmaku;
 
@@ -61,4 +73,77 @@ final class BiliMediaPlatformAdapter extends MediaPlatformAdapter {
   @override
   MediaDlnaConfig? get dlnaConfig =>
       MediaDlnaConfig(formatAdaptation: mediaDlnaFormatAdaptationConfig);
+}
+
+final class _BiliAudioCompatibility implements MediaAudioCompatibility {
+  _BiliAudioCompatibility(this.policy);
+  final BiliAudioPolicyController policy;
+
+  @override
+  bool canRecover(
+    ResolvedMediaPlayback playback,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    if (!playback.canRefreshSource ||
+        policy.recoveryAttemptedThisSession ||
+        policy.override != BiliAudioPolicyOverride.automatic ||
+        playback.audioCompatibilityRestricted) {
+      return false;
+    }
+    final declared = playback.audioTracks;
+    // Offline/progressive sources do not advertise replaceable DASH audio.
+    if (!declared.any((track) => BiliAudioPolicy.isDolbyCodec(track.codec)) ||
+        !declared.any((track) => !BiliAudioPolicy.isDolbyCodec(track.codec))) {
+      return false;
+    }
+    final selection = snapshot.trackSelection.audio;
+    if (selection.mode == VesperTrackSelectionMode.disabled) return false;
+    final observedAudio = snapshot.playbackDiagnostics?.audio;
+    if (observedAudio != null &&
+        observedAudio.evidence != VesperAudioDiagnosticEvidence.unknown &&
+        (observedAudio.codec?.isNotEmpty ?? false) &&
+        !BiliAudioPolicy.isDolbyCodec(observedAudio.codec)) {
+      return false;
+    }
+    if (selection.mode == VesperTrackSelectionMode.track) {
+      final selected = snapshot.trackCatalog.audioTracks
+          .where((track) => track.id == selection.trackId)
+          .firstOrNull;
+      if (selected != null && !BiliAudioPolicy.isDolbyCodec(selected.codec)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  bool claimRecovery() => policy.recordRecoveryAttempt();
+
+  @override
+  String? fallbackTrackId(
+    ResolvedMediaPlayback playback,
+    VesperPlayerSnapshot snapshot,
+  ) {
+    if (!playback.audioCompatibilityRestricted ||
+        !snapshot.capabilities.supportsAudioTrackSelection ||
+        snapshot.trackSelection.audio.mode ==
+            VesperTrackSelectionMode.disabled) {
+      return null;
+    }
+    final tracks = snapshot.trackCatalog.audioTracks;
+    if (!tracks.any((track) => BiliAudioPolicy.isDolbyCodec(track.codec))) {
+      return null;
+    }
+    final candidates =
+        tracks
+            .where(
+              (track) =>
+                  (track.codec?.toLowerCase().startsWith('mp4a') ?? false) &&
+                  track.support.status != VesperTrackSupportStatus.unsupported,
+            )
+            .toList()
+          ..sort((a, b) => (b.bitRate ?? 0).compareTo(a.bitRate ?? 0));
+    final id = candidates.firstOrNull?.id;
+    return id == snapshot.trackSelection.audio.trackId ? null : id;
+  }
 }

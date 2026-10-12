@@ -488,7 +488,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
               }
               if (asyncSnapshot.connectionState != ConnectionState.done ||
                   !asyncSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const MediaPlaybackLoadingState();
               }
 
               final controller = asyncSnapshot.data!;

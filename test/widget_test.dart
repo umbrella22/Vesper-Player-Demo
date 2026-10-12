@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:vesper_media/bili/common/services/bili_playback_target.dart';
+import 'package:vesper_media/media/media.dart'
+    show MediaPlaybackPage, MediaPlaybackLoadingState;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show SemanticsAction;
@@ -50,6 +53,7 @@ part 'widget_test_parts/tv_focus_and_layout.dart';
 part 'widget_test_parts/tv_library.dart';
 part 'widget_test_parts/tv_content.dart';
 part 'widget_test_parts/playback_recovery.dart';
+part 'widget_test_parts/playback_pending.dart';
 part 'widget_test_parts/playback_comments.dart';
 part 'widget_test_parts/playback_platforms.dart';
 part 'widget_test_parts/offline_cache.dart';
@@ -65,6 +69,7 @@ void main() {
   _registerTvLibraryWidgetTests();
   _registerTvContentWidgetTests();
   _registerPlaybackRecoveryWidgetTests();
+  _registerPlaybackPendingWidgetTests();
   _registerPlaybackCommentsWidgetTests();
   _registerPlaybackPlatformWidgetTests();
   _registerOfflineCacheWidgetTests();

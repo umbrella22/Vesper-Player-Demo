@@ -16,10 +16,10 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.16.3
+version: 1.17.0
 
 environment:
-  sdk: ^3.12.0
+  sdk: ^3.13.0
   flutter: ">=3.47.2"
 
 # Dependencies specify other packages that your package needs in order to work.
@@ -31,25 +31,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vesper_player: ^0.6.2
-  vesper_player_ui: ^0.6.4
-  vesper_player_external_playback: ^0.6.2
-  vesper_player_source_normalizer_ffmpeg: ^0.6.2
-  vesper_player_remux_ffmpeg: ^0.6.2
+  vesper_player: ^0.9.1
+  vesper_player_ui: ^0.9.1
+  vesper_player_external_playback: ^0.9.1
+  vesper_player_source_normalizer_ffmpeg: ^0.9.1
+  vesper_player_remux_ffmpeg: ^0.9.1
   crypto: ^3.0.7
-  cupertino_ui: ^1.1.0
-  material_ui: ^1.3.0
+  cupertino_ui: ^1.1.2
+  material_ui: ^1.6.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
   signals: ^7.1.0
 
-  cupertino_icons: ^1.0.9
+  cupertino_icons: ^2.0.0
   flutter_secure_storage: ^11.2.0
-  liquid_glass_widgets: ^1.6.2
-  package_info_plus: ^10.2.1
+  liquid_glass_widgets: ^1.11.1
+  package_info_plus: ^10.2.2
   pub_semver: ^2.2.1
-  cached_network_image: ^3.4.1
-  flutter_cache_manager: ^3.4.1
+  cached_network_image: ^4.0.4
+  flutter_cache_manager: ^3.4.5
 
 dev_dependencies:
   flutter_test:

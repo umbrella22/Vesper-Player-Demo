@@ -1,6 +1,7 @@
 import 'package:vesper_player/vesper_player.dart';
 
 import '../capabilities/media_danmaku.dart';
+import '../capabilities/media_audio_compatibility.dart';
 import '../capabilities/media_history.dart';
 import '../models/media_detail.dart';
 import '../models/resolved_media.dart';
@@ -20,6 +21,8 @@ abstract base class MediaPlatformAdapter {
     required MediaDetail detail,
     required MediaPlaybackEntry entry,
   });
+
+  MediaAudioCompatibility? get audioCompatibility => null;
 
   /// 弹幕能力。null 表示不挂载弹幕 overlay。
   MediaDanmakuProvider? get danmaku => null;

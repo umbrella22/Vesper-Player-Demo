@@ -17,6 +17,7 @@ import 'app/system_presentation.dart';
 import 'app/updates/app_update_controller.dart';
 import 'app/updates/app_update_widgets.dart';
 import 'bili/common/services/bili_client.dart';
+import 'bili/common/services/bili_audio_policy_controller.dart';
 import 'bili/common/services/bili_platform_info.dart';
 import 'bili/common/services/bili_ui_mode_resolver.dart';
 import 'common/widgets/app_network_image.dart';
@@ -58,6 +59,7 @@ class PlatformApp extends StatefulWidget {
 }
 
 class _PlatformAppState extends State<PlatformApp> {
+  late final BiliClient _client;
   late final BiliUiModeController _uiModeController;
   late final DanmakuSettingsController _danmakuSettingsController;
   late final AppUpdateController _updateController;
@@ -69,6 +71,12 @@ class _PlatformAppState extends State<PlatformApp> {
   @override
   void initState() {
     super.initState();
+    _client = widget.client ?? BiliClient();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_client.prepareSession().catchError((Object _) {}));
+      }
+    });
     _updateController = widget.updateController ?? AppUpdateController();
     _uiModeController =
         widget.uiModeController ??
@@ -122,7 +130,7 @@ class _PlatformAppState extends State<PlatformApp> {
                 controller: _updateController,
                 child: HomePage(
                   uiModeController: _uiModeController,
-                  client: widget.client,
+                  client: _client,
                   offlineController: widget.offlineController,
                   appSettings: widget.appSettings,
                 ),
@@ -284,7 +292,12 @@ Future<({Widget app, bool isTvMode})> _createConfiguredApp() async {
     }
   }
 
-  final biliClient = BiliClient();
+  final biliClient = BiliClient(
+    audioPolicy: BiliAudioPolicyController(
+      store: _appSettings,
+      initialOverride: settings.audioPolicyOverride,
+    ),
+  );
   final offlineController = BiliOfflineDownloadController(client: biliClient);
   final app = LiquidGlassWidgets.wrap(
     brightnessResolver: Theme.maybeBrightnessOf,

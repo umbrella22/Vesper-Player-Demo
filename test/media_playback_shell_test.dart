@@ -8,6 +8,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/bili/common/services/bili_quality_mapping.dart';
 import 'package:vesper_media/media/media.dart';
+import 'package:vesper_media/media/capabilities/media_audio_compatibility.dart';
+import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 import 'package:vesper_media/media/models/media_hdr_status.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
@@ -131,6 +133,418 @@ void main() {
     });
     return fakePlatform;
   }
+
+  group('audio stall recovery', () {
+    Future<
+      ({
+        MediaPlaybackViewModel vm,
+        _ShellFakePlatform platform,
+        _ShellAdapter adapter,
+      })
+    >
+    create(
+      WidgetTester tester, {
+      bool localManifest = false,
+      VesperPlaybackDiagnosticsSnapshot? diagnostics,
+      MediaPlaybackStartupTiming? timing,
+    }) async {
+      final platform = installViewModelEnvironment(
+        initialSnapshot: _shellSnapshot.copyWith(
+          playbackState: VesperPlaybackState.playing,
+          playbackRate: 1.5,
+          playbackDiagnostics: diagnostics,
+          timeline: VesperTimeline(
+            kind: VesperTimelineKind.vod,
+            isSeekable: true,
+            seekableRange: null,
+            liveEdgeMs: null,
+            positionMs: 45000,
+            durationMs: 120000,
+          ),
+        ),
+      );
+      final adapter = _ShellAdapter(
+        audioCompatibility: _ShellAudioCompatibility(),
+        localManifest: localManifest,
+      );
+      final vm = MediaPlaybackViewModel(
+        detail: target.detail,
+        initialEntry: target.entry,
+        adapter: adapter,
+        startupTiming: timing,
+      );
+      addTearDown(vm.dispose);
+      await tester.pump();
+      await vm.controllerFuture;
+      await tester.pump(const Duration(seconds: 1));
+      return (vm: vm, platform: platform, adapter: adapter);
+    }
+
+    const nativeAudio = VesperAudioPlaybackDiagnostics(
+      codec: 'ec-3',
+      sampleMimeType: 'audio/eac3',
+      channels: 6,
+      sampleRate: 48000,
+      decoderName: 'native.decoder',
+      evidence: VesperAudioDiagnosticEvidence.runtimeFormat,
+    );
+    const nativeStall = VesperPlaybackStallObservation(
+      playbackEpoch: 1,
+      kind: VesperPlaybackStallKind.positionNotAdvancing,
+      stalledForMs: 10000,
+      elapsedSinceLoadStartMs: 55000,
+      mediaPositionMs: 45000,
+      audio: nativeAudio,
+    );
+    void emitNativeStall(_ShellFakePlatform platform) {
+      platform.emitSnapshot(
+        platform._current.copyWith(
+          playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+            playbackEpoch: 1,
+            audio: nativeAudio,
+            lastStall: nativeStall,
+          ),
+        ),
+      );
+      platform._eventsController.add(
+        const VesperPlayerWarningEvent(
+          playerId: 'shell-test-player',
+          warning: VesperRuntimeWarning.playback(nativeStall),
+        ),
+      );
+    }
+
+    testWidgets(
+      'native stall observations replace duplicate App timers and recover only once',
+      (tester) async {
+        final h = await create(
+          tester,
+          diagnostics: const VesperPlaybackDiagnosticsSnapshot(
+            playbackEpoch: 1,
+            audio: nativeAudio,
+          ),
+        );
+        expect(h.platform.stallPolicies.single.positionThresholdMs, 10000);
+        expect(h.platform.stallPolicies.single.bufferingThresholdMs, 30000);
+        await tester.pump(const Duration(seconds: 40));
+        expect(h.adapter.resolveCallCount, 1);
+        emitNativeStall(h.platform);
+        await tester.pump();
+        await tester.pump();
+        expect(h.adapter.resolveCallCount, 2);
+        expect(h.platform.seekRatios, contains(0.375));
+        expect(h.platform.playbackRates, contains(1.5));
+        emitNativeStall(h.platform);
+        await tester.pump();
+        expect(h.adapter.resolveCallCount, 2);
+        h.vm.dispose();
+        await tester.pump();
+      },
+    );
+
+    for (final state in ['advanced', 'paused', 'listen', 'seeking']) {
+      testWidgets('historical native stall does not recover after $state', (
+        tester,
+      ) async {
+        final h = await create(tester);
+        if (state == 'advanced') h.platform.emitPosition(50000);
+        if (state == 'paused') {
+          h.platform.emitSnapshot(
+            h.platform._current.copyWith(
+              playbackState: VesperPlaybackState.paused,
+            ),
+          );
+        }
+        if (state == 'listen') await h.vm.enterListenMode();
+        if (state == 'seeking') {
+          await h.vm.seekToRatio(0.8);
+          h.platform.emitPosition(96000);
+        }
+        await tester.pump();
+        emitNativeStall(h.platform);
+        await tester.pump();
+        expect(h.adapter.resolveCallCount, 1);
+        h.vm.dispose();
+        await tester.pump();
+      });
+    }
+
+    testWidgets(
+      'native stall cannot replace a source while a player-stage seek is pending',
+      (tester) async {
+        final h = await create(tester);
+        final gate = h.platform.seekToRatioGate = Completer<void>();
+        final seek = h.vm.controller!.seekToRatio(0.8);
+        emitNativeStall(h.platform);
+        await tester.pump();
+        expect(h.adapter.resolveCallCount, 1);
+        expect(h.platform.selectedSources, isEmpty);
+        gate.complete();
+        await seek;
+        h.vm.dispose();
+        await tester.pump();
+      },
+    );
+
+    testWidgets(
+      'late audio probes are discarded after the playback page is disposed',
+      (tester) async {
+        final h = await create(tester);
+        final gate = Completer<VesperAudioDecoderCapabilityResult>();
+        h.platform.audioProbeHandler = (_) => gate.future;
+        h.platform.emitSnapshot(
+          h.platform._current.copyWith(
+            playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+              playbackEpoch: 1,
+              audio: nativeAudio,
+            ),
+          ),
+        );
+        await tester.pump();
+        final request = h.platform.audioProbeRequests.single;
+        h.vm.dispose();
+        gate.complete(
+          VesperAudioDecoderCapabilityResult(
+            request: request,
+            status: VesperAudioDecoderSupport.supported,
+            reason: 'late',
+            evidence: 'platform',
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'retained first frame is measured without waiting for a replayed event',
+      (tester) async {
+        var now = Duration.zero;
+        final timing = MediaPlaybackStartupTiming(elapsed: () => now);
+        final h = await create(tester, timing: timing);
+        now = const Duration(milliseconds: 850);
+        h.platform.emitSnapshot(
+          h.platform._current.copyWith(
+            playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+              playbackEpoch: 1,
+              firstFrame: VesperFirstFrameObservation(
+                playbackEpoch: 1,
+                elapsedSinceLoadStartMs: 123,
+                kind: VesperFirstFrameObservationKind.media3RenderedFirstFrame,
+                mediaPositionMs: 45000,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(timing.firstFrameReceived, const Duration(milliseconds: 850));
+        expect(
+          h.vm.nativeFirstFrameLabel,
+          contains('nativeLoad→firstFrame=123ms'),
+        );
+        expect(
+          h.vm.nativeFirstFrameLabel,
+          contains('media3RenderedFirstFrame'),
+        );
+        h.vm.dispose();
+        await tester.pump();
+      },
+    );
+
+    testWidgets(
+      'audio probe preserves runtime inputs and discards prior epoch results',
+      (tester) async {
+        final h = await create(tester);
+        final oldProbe = Completer<VesperAudioDecoderCapabilityResult>();
+        h.platform.audioProbeHandler = (request) => oldProbe.future;
+        h.platform.emitSnapshot(
+          h.platform._current.copyWith(
+            playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+              playbackEpoch: 1,
+              audio: nativeAudio,
+            ),
+          ),
+        );
+        await tester.pump();
+        final oldRequest = h.platform.audioProbeRequests.single;
+        expect(oldRequest.codec, 'ec-3');
+        expect(oldRequest.sampleMimeType, 'audio/eac3');
+        expect(oldRequest.channels, 6);
+        expect(oldRequest.sampleRate, 48000);
+        h.platform.audioProbeHandler = (request) async =>
+            VesperAudioDecoderCapabilityResult(
+              request: request,
+              status: VesperAudioDecoderSupport.unknown,
+              reason: 'newAttemptUnknown',
+              evidence: 'unavailable',
+            );
+        h.platform.emitSnapshot(
+          h.platform._current.copyWith(
+            playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+              playbackEpoch: 2,
+              audio: VesperAudioPlaybackDiagnostics(
+                codec: 'mp4a.40.2',
+                evidence: VesperAudioDiagnosticEvidence.manifestMetadata,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        oldProbe.complete(
+          VesperAudioDecoderCapabilityResult(
+            request: oldRequest,
+            status: VesperAudioDecoderSupport.supported,
+            reason: 'oldAttemptSupported',
+            evidence: 'platform',
+          ),
+        );
+        await tester.pump();
+        expect(h.vm.audioDecoderCapabilityLabel, contains('newAttemptUnknown'));
+        expect(
+          h.vm.audioDecoderCapabilityLabel,
+          isNot(contains('oldAttemptSupported')),
+        );
+        expect(h.platform.audioProbeRequests.last.channels, isNull);
+        expect(h.platform.audioProbeRequests.last.sampleMimeType, isNull);
+        expect(h.adapter.audioCompatibility!.claimed, isFalse);
+        h.vm.dispose();
+        await tester.pump();
+      },
+    );
+
+    testWidgets('audio warnings retain evidence without initiating retries', (
+      tester,
+    ) async {
+      const audio = VesperAudioPlaybackDiagnostics(
+        codec: 'ec-3',
+        decoderName: 'native.decoder',
+        evidence: VesperAudioDiagnosticEvidence.runtimeFormat,
+        lastIssue: VesperAudioDiagnosticIssue(
+          kind: VesperAudioDiagnosticIssueKind.sinkError,
+          elapsedSinceLoadStartMs: 100,
+          platformCode: 'AudioSinkFailure',
+        ),
+      );
+      const evidence = VesperPlaybackDiagnosticsSnapshot(
+        playbackEpoch: 1,
+        audio: audio,
+      );
+      final h = await create(tester, diagnostics: evidence);
+      h.platform._eventsController.add(
+        const VesperPlayerWarningEvent(
+          playerId: 'shell-test-player',
+          warning: VesperRuntimeWarning.audio(
+            VesperAudioRuntimeWarning(playbackEpoch: 1, diagnostics: audio),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(h.vm.audioDiagnosticsLabel, contains('AudioSinkFailure'));
+      expect(h.adapter.resolveCallCount, 1);
+      h.platform._eventsController.add(
+        VesperPlayerErrorEvent(
+          playerId: 'shell-test-player',
+          error: VesperPlayerError(
+            message: 'generic native failure',
+            code: VesperPlayerErrorCode.backendFailure,
+            category: VesperPlayerErrorCategory.platform,
+            retriable: false,
+            details: {'playbackDiagnostics': evidence.toMap()},
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(h.vm.lastPlaybackFailureLabel, contains('native.decoder'));
+      expect(h.adapter.resolveCallCount, 1);
+      h.vm.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('reloads once and preserves position and rate', (tester) async {
+      final h = await create(tester);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+      expect(h.adapter.resolveCallCount, 2);
+      expect(h.platform.selectedSources, hasLength(1));
+      expect(h.platform.seekRatios, contains(0.375));
+      expect(h.platform.playbackRates, contains(1.5));
+      expect(h.vm.resolvedPlayback!.transportLabel, contains('watchdog'));
+      await tester.pump(const Duration(seconds: 40));
+      expect(h.adapter.resolveCallCount, 2);
+      h.vm.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('listen mode skips the watchdog', (tester) async {
+      final h = await create(tester);
+      await h.vm.enterListenMode();
+      await tester.pump(const Duration(seconds: 45));
+      expect(h.adapter.resolveCallCount, 1);
+      expect(h.platform.selectedSources, hasLength(1));
+      h.vm.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('pause during slow recovery is retained', (tester) async {
+      final h = await create(tester);
+      final gate = h.adapter.resolveGate = Completer<void>();
+      await tester.pump(const Duration(seconds: 10));
+      expect(h.adapter.resolveCallCount, 2);
+      await h.vm.controller!.pause();
+      final plays = h.platform.playCalls;
+      gate.complete();
+      await tester.pump();
+      expect(h.platform.selectedSources, hasLength(1));
+      expect(h.platform.playCalls, plays);
+      expect(h.platform.pauseCalls, greaterThanOrEqualTo(2));
+      h.vm.dispose();
+      await tester.pump();
+    });
+
+    testWidgets(
+      'seek invalidates a pending recovery before source replacement',
+      (tester) async {
+        final h = await create(tester);
+        final gate = h.adapter.resolveGate = Completer<void>();
+        await tester.pump(const Duration(seconds: 10));
+        await h.vm.controller!.seekToRatio(0.7);
+        gate.complete();
+        await tester.pump();
+        expect(h.platform.selectedSources, isEmpty);
+        expect(h.platform.seekRatios, [0.7]);
+        h.vm.dispose();
+        await tester.pump();
+      },
+    );
+
+    testWidgets('dispose prevents late recovery from mutating a player', (
+      tester,
+    ) async {
+      final h = await create(tester);
+      final gate = h.adapter.resolveGate = Completer<void>();
+      await tester.pump(const Duration(seconds: 10));
+      h.vm.dispose();
+      gate.complete();
+      await tester.pump();
+      expect(h.platform.selectedSources, isEmpty);
+      h.vm.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('a local online manifest still refreshes expired media URLs', (
+      tester,
+    ) async {
+      final h = await create(tester, localManifest: true);
+      h.platform.emitRecoverableSourceError();
+      await tester.pump();
+      await tester.pump();
+      expect(h.adapter.resolveCallCount, 2);
+      expect(h.platform.selectedSources, hasLength(1));
+      h.vm.dispose();
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump(const Duration(milliseconds: 1));
+    });
+  });
 
   test('HDR probes follow source and effective track generations', () async {
     const trackA = VesperMediaTrack(
@@ -3391,7 +3805,7 @@ void main() {
       );
     });
 
-    testWidgets('过时代际创建以取消错误结束且不泄漏已销毁实例', (tester) async {
+    testWidgets('过时代际解析以取消错误结束且不创建原生实例', (tester) async {
       final adapter = _ShellAdapter()..resolveGate = Completer<void>();
       final fakePlatform = installEnvironment(tester);
       await tester.binding.setSurfaceSize(const Size(1200, 900));
@@ -3422,8 +3836,9 @@ void main() {
       expect(controller, isNotNull);
       expect(viewModel.controller, same(controller));
 
-      // 旧链创建的实例已被 dispose（不泄漏给调用方）。
-      expect(fakePlatform.disposeCalls, 1);
+      // 旧链在解析边界终止，只有新链分配原生实例。
+      expect(fakePlatform.createCalls, 1);
+      expect(fakePlatform.disposeCalls, 0);
 
       // 旧链以取消错误结束（调用方不应收到已销毁实例）。
       await expectLater(
@@ -3658,6 +4073,8 @@ final class _ShellAdapter extends MediaPlatformAdapter {
     this.qualityPolicy = const MediaQualityPolicy(),
     this.supportsAudioOnly = true,
     this.versionSourcesByResolveCall = false,
+    this.audioCompatibility,
+    this.localManifest = false,
   });
 
   final MediaDanmakuProvider? danmakuProvider;
@@ -3669,6 +4086,9 @@ final class _ShellAdapter extends MediaPlatformAdapter {
   final MediaQualityPolicy qualityPolicy;
   final bool supportsAudioOnly;
   final bool versionSourcesByResolveCall;
+  final bool localManifest;
+  @override
+  final _ShellAudioCompatibility? audioCompatibility;
 
   /// 非空时 resolvePlayback 挂起，由测试手动完成（模拟慢解析/过时代际）。
   Completer<void>? resolveGate;
@@ -3697,8 +4117,25 @@ final class _ShellAdapter extends MediaPlatformAdapter {
       subtitle: 'P${entry.pageNumber} · ${entry.title}',
       uri: 'https://example.test/shell$versionSuffix.mp4',
       protocol: VesperPlayerSourceProtocol.progressive,
-      transportLabel: 'shell',
-      isLocalFile: false,
+      transportLabel: audioCompatibility?.claimed == true
+          ? 'shell audio-policy=dolby-blocked(watchdog)'
+          : 'shell',
+      isLocalFile: localManifest,
+      canRefreshSource: true,
+      audioTracks: audioCompatibility == null
+          ? const []
+          : const [
+              VesperMediaTrack(
+                id: 'a',
+                kind: VesperMediaTrackKind.audio,
+                codec: 'ec-3',
+              ),
+              VesperMediaTrack(
+                id: 'b',
+                kind: VesperMediaTrackKind.audio,
+                codec: 'mp4a.40.2',
+              ),
+            ],
       qualityOptions: qualityOptions,
       supportsCodecSelection: qualityPolicy.supportsCodecSelection,
       audioOnlySource: supportsAudioOnly
@@ -3910,6 +4347,30 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   _ShellFakePlatform(VesperPlayerSnapshot snapshot) : _current = snapshot;
 
   VesperPlayerSnapshot _current;
+  final audioProbeRequests = <VesperAudioDecoderCapabilityRequest>[];
+  final stallPolicies = <VesperPlaybackStallPolicy>[];
+  Future<VesperAudioDecoderCapabilityResult> Function(
+    VesperAudioDecoderCapabilityRequest,
+  )?
+  audioProbeHandler;
+
+  @override
+  Future<VesperAudioDecoderCapabilityResult> probeAudioDecoderCapability(
+    VesperAudioDecoderCapabilityRequest request,
+  ) {
+    audioProbeRequests.add(request);
+    return audioProbeHandler?.call(request) ??
+        super.probeAudioDecoderCapability(request);
+  }
+
+  @override
+  Future<void> setPlaybackStallPolicy(
+    String playerId,
+    VesperPlaybackStallPolicy policy,
+  ) async {
+    stallPolicies.add(policy);
+  }
+
   final probeRequests = <VesperPlaybackCapabilityProbeRequest>[];
   Future<VesperPlaybackCapabilityProbeResult> Function(
     VesperPlaybackCapabilityProbeRequest,
@@ -3962,6 +4423,7 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
 
   /// 为 true 时 seekToRatio 抛错（验证错误传播）。
   bool failSeekToRatio = false;
+  Completer<void>? seekToRatioGate;
 
   /// 模拟播放推进/用户 seek 后的位置（经快照事件广播给 controller）。
   void emitPosition(int positionMs) {
@@ -4213,6 +4675,7 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
 
   @override
   Future<void> seekToRatio(String playerId, double ratio) async {
+    await seekToRatioGate?.future;
     if (failSeekToRatio) {
       throw PlatformException(code: 'seek-failed', message: '模拟 seek 失败');
     }
@@ -4331,4 +4794,25 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _ShellAudioCompatibility implements MediaAudioCompatibility {
+  bool claimed = false;
+  @override
+  bool canRecover(
+    ResolvedMediaPlayback playback,
+    VesperPlayerSnapshot snapshot,
+  ) => !claimed;
+  @override
+  bool claimRecovery() {
+    if (claimed) return false;
+    claimed = true;
+    return true;
+  }
+
+  @override
+  String? fallbackTrackId(
+    ResolvedMediaPlayback playback,
+    VesperPlayerSnapshot snapshot,
+  ) => null;
 }

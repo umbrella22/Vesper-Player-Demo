@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag_name || github.ref }}
           fetch-depth: 0
@@ -66,7 +66,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.47.4"
+          flutter-version: "3.47.7"
           channel: stable
           cache: true
 
@@ -161,7 +161,7 @@ jobs:
           /usr/bin/unzip -tq "$artifact_dir/$playcover_ipa_name"
 
       - name: Upload unsigned IPA artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ios-unsigned-ipa
           path: |
@@ -171,7 +171,7 @@ jobs:
           retention-days: 30
 
       - name: Upload PlayCover IPA artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ios-playcover-ipa
           path: |

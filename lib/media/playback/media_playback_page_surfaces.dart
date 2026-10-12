@@ -655,6 +655,12 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       timelineLabel:
           '${mediaFormatDurationSeconds(timeline.positionMs ~/ 1000)} / '
           '${mediaFormatDurationSeconds((timeline.durationMs ?? 0) ~/ 1000)}',
+      startupTimingLabel: kDebugMode ? _viewModel.startupTiming?.label : null,
+      nativeFirstFrameLabel: _viewModel.nativeFirstFrameLabel,
+      audioDiagnosticsLabel: _viewModel.audioDiagnosticsLabel,
+      audioDecoderCapabilityLabel: _viewModel.audioDecoderCapabilityLabel,
+      playbackStallLabel: _viewModel.playbackStallLabel,
+      lastPlaybackFailureLabel: _viewModel.lastPlaybackFailureLabel,
       transportLabel: _resolvedPlayback?.transportLabel,
       resolvedUri: _resolvedPlayback?.uri,
       debugPath: _resolvedPlayback?.debugPath,

@@ -118,6 +118,18 @@ private final class AppUpdateBridge {
     )
     platformChannel.setMethodCallHandler { call, result in
       switch call.method {
+      case "deviceBrand":
+        result("Apple")
+      case "deviceModel":
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let capacity = MemoryLayout.size(ofValue: systemInfo.machine)
+        let model = withUnsafePointer(to: &systemInfo.machine) { pointer in
+          pointer.withMemoryRebound(to: CChar.self, capacity: capacity) {
+            String(cString: $0)
+          }
+        }
+        result(model)
       case "isTv":
         result(UIDevice.current.userInterfaceIdiom == .tv)
       case "isTablet":

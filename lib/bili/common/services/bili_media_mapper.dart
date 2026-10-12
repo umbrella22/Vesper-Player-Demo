@@ -154,8 +154,11 @@ final class BiliMediaMapper {
       protocol: resolved.protocol,
       transportLabel: resolved.transportLabel,
       isLocalFile: resolved.isLocalFile,
+      canRefreshSource: resolved.canRefreshSource,
       headers: resolved.headers,
       videoTracks: resolved.videoTracks,
+      audioTracks: resolved.audioTracks,
+      audioCompatibilityRestricted: resolved.dolbyAudioBlocked,
       subtitleTracks: resolved.subtitleTracks
           .map(toResolvedSubtitle)
           .toList(growable: false),
@@ -209,8 +212,11 @@ final class BiliMediaMapper {
       protocol: resolved.protocol,
       transportLabel: resolved.transportLabel,
       isLocalFile: resolved.isLocalFile,
+      canRefreshSource: resolved.canRefreshSource,
       headers: resolved.headers,
       videoTracks: resolved.videoTracks,
+      audioTracks: resolved.audioTracks,
+      dolbyAudioBlocked: resolved.audioCompatibilityRestricted,
       subtitleTracks: resolved.subtitleTracks
           .map(
             (track) => BiliSubtitleTrack(

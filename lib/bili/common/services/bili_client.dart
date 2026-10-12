@@ -11,6 +11,10 @@ import '../models/bili_models.dart';
 import '../models/bili_favorites_models.dart';
 import '../models/bili_region_models.dart';
 import 'bili_api_core.dart';
+import 'bili_audio_policy.dart';
+import 'bili_audio_policy_controller.dart';
+import 'bili_playback_prefetcher.dart';
+import 'bili_playback_target.dart';
 import 'bili_dash_api.dart';
 import 'bili_dash_identity.dart';
 import 'bili_dash_manifest_builder.dart';
@@ -28,6 +32,7 @@ part 'bili_client_download.dart';
 part 'bili_client_favorites.dart';
 part 'bili_client_library.dart';
 part 'bili_client_playback.dart';
+part 'bili_client_prefetch.dart';
 part 'bili_client_region.dart';
 part 'bili_client_search.dart';
 
@@ -57,13 +62,19 @@ class BiliClient {
     BiliDashManifestBuilder? manifestBuilder,
     BiliTransport? transport,
     BiliFavoriteCoverStore? favoriteCoverStore,
+    BiliAudioPolicyController? audioPolicy,
+    BiliPlaybackPrefetcher? playbackPrefetcher,
   }) : _transport =
            transport ?? BiliTransport(httpClient: httpClient, signer: signer),
        _manifestBuilder = manifestBuilder ?? const BiliDashManifestBuilder(),
-       _favoriteCoverStore = favoriteCoverStore ?? BiliFavoriteCoverStore();
+       _favoriteCoverStore = favoriteCoverStore ?? BiliFavoriteCoverStore(),
+       audioPolicy = audioPolicy ?? BiliAudioPolicyController(),
+       playbackPrefetcher = playbackPrefetcher ?? BiliPlaybackPrefetcher();
 
   static final BiliClient instance = BiliClient();
 
+  final BiliAudioPolicyController audioPolicy;
+  final BiliPlaybackPrefetcher playbackPrefetcher;
   final BiliTransport _transport;
   final BiliDashManifestBuilder _manifestBuilder;
   final BiliFavoriteCoverStore _favoriteCoverStore;
@@ -86,6 +97,7 @@ class BiliClient {
   final Set<String> _completedSubtitleRequests = <String>{};
   int? _currentUserMid;
   int _sessionRevision = 0;
+  int _manifestSequence = 0;
 
   BiliTransport get transport => _transport;
 
@@ -93,6 +105,7 @@ class BiliClient {
 
   void restoreCookies(Map<String, String> cookies) {
     _sessionRevision++;
+    playbackPrefetcher.clear();
     _transport.restoreCookies(cookies);
     _currentUserMid = readInt(cookies['DedeUserID']);
     _subtitleRequests.clear();
@@ -101,6 +114,7 @@ class BiliClient {
 
   void clearSession() {
     _sessionRevision++;
+    playbackPrefetcher.clear();
     _transport.clearSession();
     _currentUserMid = null;
     _subtitleRequests.clear();
@@ -126,6 +140,16 @@ class BiliClient {
       this,
     ).resolvePlayback(detail: detail, page: page, platform: platform);
   }
+
+  /// Startup warmup shares the transport's in-flight preparation with requests.
+  Future<void> prepareSession() => _transport.ensureReady();
+
+  Future<void> prefetchFeedPlayback(List<BiliFeedVideo> items) =>
+      _BiliClientPrefetchImplementation(this).prefetchFeedPlayback(items);
+
+  Future<BiliPlaybackTarget> resolvePlaybackTarget(
+    BiliPendingPlaybackTarget target,
+  ) => _BiliClientPrefetchImplementation(this).resolvePlaybackTarget(target);
 
   Future<BiliDownloadOptions> resolveDownloadOptions({
     required BiliVideoDetail detail,

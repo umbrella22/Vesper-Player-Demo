@@ -451,11 +451,6 @@ class _PlaybackIntroSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
-    final titleStyle = theme.textTheme.titleLarge?.copyWith(
-      color: visualTheme.textPrimary,
-      fontWeight: FontWeight.w900,
-      height: 1.18,
-    );
     final descriptionStyle = theme.textTheme.bodyMedium?.copyWith(
       color: visualTheme.textSecondary,
       height: 1.62,
@@ -464,6 +459,10 @@ class _PlaybackIntroSummary extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final titleStyle = AppTypography.playbackTitle(
+          context,
+          contentWidth: constraints.maxWidth,
+        ).copyWith(color: visualTheme.textPrimary);
         final textDirection = Directionality.of(context);
         final textScaler = MediaQuery.textScalerOf(context);
         final locale = Localizations.maybeLocaleOf(context);

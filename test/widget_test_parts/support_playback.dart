@@ -236,6 +236,12 @@ BiliVideoComment _playbackCommentReply({
 
 final class _FakePlaybackClient extends BiliClient {
   _FakePlaybackClient();
+  Future<BiliPlaybackTarget> Function(BiliPendingPlaybackTarget)?
+  targetResolver;
+  @override
+  Future<BiliPlaybackTarget> resolvePlaybackTarget(
+    BiliPendingPlaybackTarget target,
+  ) => targetResolver?.call(target) ?? super.resolvePlaybackTarget(target);
 
   /// 测试可覆盖的解析结果；非空时优先于 [_resolvedPlaybackFor]。
   BiliResolvedPlayback Function()? resolveOverride;
@@ -716,6 +722,12 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   Future<void> setResiliencePolicy(
     String playerId,
     VesperPlaybackResiliencePolicy policy,
+  ) async {}
+
+  @override
+  Future<void> setPlaybackStallPolicy(
+    String playerId,
+    VesperPlaybackStallPolicy policy,
   ) async {}
 
   @override

@@ -351,28 +351,17 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
     int? episodeId,
     int initialPositionMs = 0,
   }) async {
-    late final BiliHubPlaybackTarget target;
-    try {
-      target = await _viewModel.resolvePlaybackTarget(
-        bvid,
-        aid: aid,
-        cid: cid,
-        episodeId: episodeId,
-      );
-    } catch (error) {
-      if (mounted) {
-        _showMessage('打开视频失败：${biliErrorMessage(error)}');
-      }
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
+    final timing = MediaPlaybackStartupTiming()..markPushed();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => BiliPlaybackPage(
-          detail: target.detail,
-          initialPage: target.initialPage,
+        builder: (_) => BiliPlaybackPage.pending(
+          pendingTarget: BiliPendingPlaybackTarget(
+            bvid: bvid,
+            aid: aid,
+            cid: cid,
+            episodeId: episodeId,
+          ),
+          startupTiming: timing,
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
           offlineController: _viewModel.offlineController,

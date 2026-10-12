@@ -20,6 +20,11 @@ const mediaPlayerTrackPreferencePolicy = VesperTrackPreferencePolicy(
   subtitleSelection: VesperTrackSelection.disabled(),
 );
 
+const mediaPlayerStallPolicy = VesperPlaybackStallPolicy(
+  positionThresholdMs: 10000,
+  bufferingThresholdMs: 30000,
+);
+
 const mediaPlayerPreloadBudgetPolicy = VesperPreloadBudgetPolicy(
   maxConcurrentTasks: 2,
   maxMemoryBytes: 16 * _mib,

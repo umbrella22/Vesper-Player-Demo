@@ -430,7 +430,9 @@ BiliFeedVideo? parseBiliFeedVideo(Map<String, Object?> value) {
     value['pubdate'] ?? value['ctime'],
   );
 
+  final cid = readInt(value['cid']);
   return BiliFeedVideo(
+    cid: cid != null && cid > 0 ? cid : null,
     aid: readInt(value['id']) ?? readInt(value['aid']) ?? 0,
     bvid: bvid,
     title: biliStripHtmlTags(readString(value['title']) ?? bvid),

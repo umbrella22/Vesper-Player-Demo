@@ -165,6 +165,10 @@ extension MediaPlaybackListenMode on MediaPlaybackViewModel {
   }
 
   int _beginSourceTransition() {
+    startupTiming?.endNavigationAttempt();
+    _resetNativePlaybackDiagnostics();
+    _audioWatchdog.reset();
+    _audioPinAttempt = null;
     _sourceGeneration += 1;
     _playbackSourceTransitionInFlight.value = true;
     _resetHdrStatus();
@@ -176,8 +180,16 @@ extension MediaPlaybackListenMode on MediaPlaybackViewModel {
   void _finishSourceTransition(int generation) {
     if (generation == _sourceTransitionGeneration) {
       _playbackSourceTransitionInFlight.value = false;
+      if (!(_audioWatchdogTimer?.isActive ?? false)) {
+        _startAudioWatchdog(_controllerGeneration);
+      }
       final controller = _controller;
       if (controller != null) {
+        _observeNativePlaybackDiagnostics(
+          controller,
+          controller.snapshot,
+          _controllerGeneration,
+        );
         _syncHdrCapability(controller.snapshot);
         _syncVideoAspectRatio(controller.snapshot);
       }

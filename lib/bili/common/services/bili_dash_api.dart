@@ -35,10 +35,26 @@ Map<String, Object?> buildBiliDashPlayUrlParams({
   required BiliDashRequestVariant variant,
   required String session,
 }) {
+  return buildBiliDashPlayUrlParamsForTarget(
+    aid: page.aid ?? detail.aid,
+    bvid: page.bvid ?? detail.bvid,
+    cid: page.cid,
+    variant: variant,
+    session: session,
+  );
+}
+
+Map<String, Object?> buildBiliDashPlayUrlParamsForTarget({
+  required int aid,
+  required String bvid,
+  required int cid,
+  required BiliDashRequestVariant variant,
+  required String session,
+}) {
   return <String, Object?>{
-    'avid': page.aid ?? detail.aid,
-    'bvid': page.bvid ?? detail.bvid,
-    'cid': page.cid,
+    'avid': aid,
+    'bvid': bvid,
+    'cid': cid,
     'qn': biliMaxVideoQuality,
     'otype': 'json',
     'fnver': 0,

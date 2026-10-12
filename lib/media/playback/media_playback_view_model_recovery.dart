@@ -15,10 +15,27 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
       }
       switch (event) {
         case VesperPlayerSnapshotEvent():
+          _observeNativePlaybackDiagnostics(
+            controller,
+            event.snapshot,
+            generation,
+          );
           _handleControllerSnapshot(event.snapshot, generation);
+        case VesperPlayerFirstFrameEvent():
+          // The SDK publishes the retained snapshot first. Consume the same
+          // epoch-checked observation for live events and late subscribers.
+          if (event.observation.playbackEpoch ==
+              controller.snapshot.playbackDiagnostics?.playbackEpoch) {
+            _observeNativePlaybackDiagnostics(
+              controller,
+              controller.snapshot,
+              generation,
+            );
+          }
         case VesperPlayerErrorEvent():
           _handleControllerError(event.error, generation);
         case VesperPlayerWarningEvent():
+          _handleNativePlaybackWarning(controller, event.warning, generation);
           _handleControllerWarning(event.warning, generation);
         default:
       }
@@ -35,6 +52,15 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     if (snapshot.lastError == null &&
         _suppressedPlaybackCommandError.value != null) {
       _suppressedPlaybackCommandError.value = null;
+    }
+    if (snapshot.isInterrupted ||
+        snapshot.playbackState != VesperPlaybackState.playing) {
+      // Buffering has a separate, longer observation window.
+      if (!snapshot.isBuffering ||
+          snapshot.isInterrupted ||
+          snapshot.playbackState == VesperPlaybackState.paused) {
+        _audioWatchdog.reset();
+      }
     }
     _reconcileRuntimeTrackFallback(snapshot);
     // 自动换轨、运行时降级与手动定轨都通过生效轨道变化体现，HDR 状态随之
@@ -139,6 +165,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     if (_isDisposed || generation != _controllerGeneration) {
       return;
     }
+    _capturePlaybackFailureEvidence(error);
     if (_playbackSourceTransitionInFlight.value) {
       return;
     }
@@ -165,7 +192,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
 
   bool _shouldAutoRecoverPlaybackSource(VesperPlayerError error) {
     final resolved = _resolvedPlayback.value;
-    if (resolved == null || resolved.isLocalFile) {
+    if (resolved == null || !resolved.canRefreshSource) {
       return false;
     }
     if (error.details['domain'] == 'subtitle') {
@@ -216,6 +243,8 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     }
 
     _playbackRecoveryInFlight = true;
+    startupTiming?.endNavigationAttempt();
+    _resetNativePlaybackDiagnostics();
     _resetHdrStatus();
     _playbackRecoverySuccessTimer?.cancel();
     var lastFailureMessage = triggerError.message;
@@ -319,12 +348,22 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
               return null;
             }
             await Future<void>.delayed(Duration.zero);
+            if (!_isCurrentPlaybackRecovery(
+              controller: controller,
+              recoveryEntry: recoveryEntry,
+              controllerGeneration: controllerGeneration,
+              recoveryGeneration: recoveryGeneration,
+            )) {
+              return null;
+            }
             final deferredError = _deferredPlaybackRecoveryError;
             if (deferredError != null) {
               lastFailureMessage = deferredError.message;
               return true;
             }
             _resolvedPlayback.value = resolved;
+            _audioPinAttempt = null;
+            _audioWatchdog.reset();
             _schedulePlaybackRecoverySuccessReset(
               controllerGeneration,
               recoveryGeneration,

@@ -31,6 +31,8 @@ class BiliTransport {
   final Duration _requestTimeout;
   final Map<String, String> _cookies = <String, String>{};
 
+  Future<void>? _readyFuture;
+  int _sessionGeneration = 0;
   String? _imgKey;
   String? _subKey;
 
@@ -43,12 +45,16 @@ class BiliTransport {
   Map<String, String> snapshotCookies() => Map<String, String>.from(_cookies);
 
   void restoreCookies(Map<String, String> cookies) {
+    _sessionGeneration++;
+    _readyFuture = null;
     _cookies
       ..clear()
       ..addAll(cookies);
   }
 
   void clearSession() {
+    _sessionGeneration++;
+    _readyFuture = null;
     _cookies.clear();
   }
 
@@ -75,7 +81,26 @@ class BiliTransport {
     }
   }
 
-  Future<void> ensureReady() async {
+  Future<void> ensureReady() {
+    final pending = _readyFuture;
+    if (pending != null) return pending;
+    final generation = _sessionGeneration;
+    final future = _prepareSession(generation);
+    _readyFuture = future;
+    unawaited(
+      future.then<void>(
+        (_) {
+          if (identical(_readyFuture, future)) _readyFuture = null;
+        },
+        onError: (Object _) {
+          if (identical(_readyFuture, future)) _readyFuture = null;
+        },
+      ),
+    );
+    return future;
+  }
+
+  Future<void> _prepareSession(int generation) async {
     // Preserve the visitor-identity dependency chain. Each step updates the
     // shared cookie jar, and the WBI nav request must observe the cookies
     // established by the preceding requests.
@@ -83,10 +108,12 @@ class BiliTransport {
       await _primeCookies();
     }
 
+    if (generation != _sessionGeneration) return;
     if (!_hasBuvidCookies) {
       await _ensureBuvidCookies();
     }
 
+    if (generation != _sessionGeneration) return;
     if (_imgKey == null || _subKey == null) {
       await _refreshWbiKeys();
     }
@@ -312,6 +339,7 @@ class BiliTransport {
     bool includeCookies = true,
     bool storeResponseCookies = true,
   }) async {
+    final generation = _sessionGeneration;
     HttpClientRequest? activeRequest;
     StreamIterator<List<int>>? responseBody;
     var timedOut = false;
@@ -382,7 +410,7 @@ class BiliTransport {
       }
 
       final cookieUpdates = _responseCookieUpdates(uri, response.cookies);
-      if (storeResponseCookies) {
+      if (storeResponseCookies && generation == _sessionGeneration) {
         applyCookieUpdates(cookieUpdates);
       }
       return BiliHttpResponse(
@@ -567,6 +595,7 @@ class BiliTransport {
   }
 
   Future<void> _refreshWbiKeys() async {
+    final generation = _sessionGeneration;
     final data = await getData(
       host: biliApiHost,
       path: BiliApiPaths.nav,
@@ -575,6 +604,7 @@ class BiliTransport {
       allowedCodes: const <int>{0, -101},
     );
 
+    if (generation != _sessionGeneration) return;
     final wbiImg = readObjectMap(data['wbi_img']);
     final imgUrl = readString(wbiImg['img_url']) ?? '';
     final subUrl = readString(wbiImg['sub_url']) ?? '';
@@ -592,11 +622,13 @@ class BiliTransport {
   }
 
   Future<void> _refreshBuvidCookies() async {
+    final generation = _sessionGeneration;
     try {
       final response = await sendRequest(
         Uri.https(biliApiHost, BiliApiPaths.frontendFingerSpi),
         referer: biliDefaultReferer,
       );
+      if (generation != _sessionGeneration) return;
       final data = decodeApiData(response.body);
       if (data is! Map) {
         return;

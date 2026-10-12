@@ -61,6 +61,8 @@ open class MainActivity : FlutterFragmentActivity() {
             "dev.ikaros.vesper_player/platform",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "deviceBrand" -> result.success(Build.BRAND)
+                "deviceModel" -> result.success(Build.MODEL)
                 "isTv" -> result.success(isTvDevice())
                 "isTablet" -> result.success(isTabletDevice())
                 "isAutoRotateEnabled" -> result.success(isAutoRotateEnabled())

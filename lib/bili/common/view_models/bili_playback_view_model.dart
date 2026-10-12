@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -48,6 +49,7 @@ final class BiliPlaybackViewModel {
     BiliOfflineDownloadController? offlineController,
     BiliResolvedPlayback? initialResolvedPlayback,
     int initialPositionMs = 0,
+    MediaPlaybackStartupTiming? startupTiming,
   }) : offlineController =
            offlineController ?? BiliOfflineDownloadController.instance,
        _coinCountLabel = signal(detail.coinCountLabel),
@@ -76,6 +78,7 @@ final class BiliPlaybackViewModel {
           ? null
           : BiliMediaMapper.toResolvedPlayback(initialResolvedPlayback),
       initialPositionMs: initialPositionMs,
+      startupTiming: startupTiming,
       preferTextureViewForPlayback: _usesLegacyAndroidPlaybackCompatibility,
     );
     unawaited(loadEngagementState());

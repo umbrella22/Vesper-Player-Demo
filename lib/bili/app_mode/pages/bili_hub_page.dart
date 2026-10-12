@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import '../../common/services/bili_playback_target.dart';
+import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
+
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/common/widgets/app_network_image.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
+import 'package:vesper_media/media/design/app_typography.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
@@ -229,25 +233,12 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   Future<void> _openPlayback(String bvid, {int? cid}) async {
-    late final BiliHubPlaybackTarget target;
-    try {
-      target = await _viewModel.resolvePlaybackTarget(bvid, cid: cid);
-    } catch (error) {
-      if (mounted) {
-        _showMessage('打开视频失败：${biliErrorMessage(error)}');
-      }
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
+    final timing = MediaPlaybackStartupTiming()..markPushed();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => BiliPlaybackPage(
-          detail: target.detail,
-          initialPage: target.initialPage,
+        builder: (_) => BiliPlaybackPage.pending(
+          pendingTarget: BiliPendingPlaybackTarget(bvid: bvid, cid: cid),
+          startupTiming: timing,
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
           offlineController: _viewModel.offlineController,
@@ -479,7 +470,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
                               color: visualTheme.textPrimary,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: AppTypography.titleWeight,
                             ),
                       ),
                       actions: [
@@ -638,7 +629,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
           _HomeVideoGrid(
             itemCount: itemCount,
             itemAt: itemAt,
-            onTap: (item) => _openPlayback(item.bvid),
+            onTap: (item) => _openPlayback(item.bvid, cid: item.cid),
             onCacheTap: (item) => unawaited(_openHomeCacheSurface(item)),
           ),
         if (itemCount > 0)

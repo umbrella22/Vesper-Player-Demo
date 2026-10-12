@@ -52,6 +52,10 @@ class _HomeVideoGrid extends StatelessWidget {
           tileWidth: tileWidth,
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
         );
+        final titleStyle = AppTypography.videoCardTitle(
+          context,
+          cardWidth: tileWidth,
+        );
 
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(
@@ -74,6 +78,7 @@ class _HomeVideoGrid extends StatelessWidget {
                 key: ValueKey<String>('${item.bvid}-$index'),
                 item: item,
                 coverCacheWidth: coverCacheWidth,
+                titleStyle: titleStyle,
                 onTap: () => onTap(item),
                 onCacheTap: () => onCacheTap(item),
               );
@@ -90,6 +95,7 @@ class _HomeVideoCard extends StatelessWidget {
     super.key,
     required this.item,
     required this.coverCacheWidth,
+    required this.titleStyle,
     required this.onTap,
     required this.onCacheTap,
   });
@@ -98,6 +104,7 @@ class _HomeVideoCard extends StatelessWidget {
 
   final _HomeVideoItem item;
   final int coverCacheWidth;
+  final TextStyle titleStyle;
   final VoidCallback onTap;
   final VoidCallback onCacheTap;
 
@@ -224,10 +231,8 @@ class _HomeVideoCard extends StatelessWidget {
                           item.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
+                          style: titleStyle.copyWith(
                             color: visualTheme.textPrimary,
-                            fontWeight: FontWeight.w900,
-                            height: 1.25,
                           ),
                         ),
                       ),
@@ -247,7 +252,7 @@ class _HomeVideoCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: visualTheme.textSecondary,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                             ),

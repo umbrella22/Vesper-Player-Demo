@@ -1,4 +1,7 @@
 import 'dart:async';
+import '../diagnostics/media_playback_startup_timing.dart';
+import '../diagnostics/media_native_playback_diagnostics.dart';
+import 'media_playback_stall_watchdog.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:signals/signals_flutter.dart';
@@ -21,6 +24,8 @@ part 'media_playback_view_model_controller.dart';
 part 'media_playback_view_model_hdr.dart';
 part 'media_playback_view_model_listen.dart';
 part 'media_playback_view_model_recovery.dart';
+part 'media_playback_view_model_audio.dart';
+part 'media_playback_view_model_diagnostics.dart';
 part 'media_playback_view_model_tracks.dart';
 
 /// 过时代际的播放器创建被取消（reload/dispose 后旧创建链才完成）。
@@ -60,6 +65,7 @@ final class MediaPlaybackViewModel {
     MediaHistoryStore? historyStore,
     this._initialResolvedPlayback,
     int initialPositionMs = 0,
+    this.startupTiming,
     Future<bool> Function()? preferTextureViewForPlayback,
   }) : detail = detail,
        adapter = adapter,
@@ -101,7 +107,9 @@ final class MediaPlaybackViewModel {
   /// 用户操作代际：经 VM 的 seek 入口（seekToRatio/seekBy）时递增，
   /// 使在途历史续播失效。
   int _userSeekGeneration = 0;
+  int _userSeeksInFlight = 0;
 
+  final MediaPlaybackStartupTiming? startupTiming;
   final MediaDetail detail;
   final MediaPlatformAdapter adapter;
 
@@ -182,6 +190,45 @@ final class MediaPlaybackViewModel {
   VesperPlayerError? _deferredPlaybackRecoveryError;
   StreamSubscription<VesperPlayerEvent>? _controllerEventsSubscription;
   Timer? _playbackRecoverySuccessTimer;
+  Timer? _audioWatchdogTimer;
+  final _audioWatchdog = MediaPlaybackStallWatchdog();
+  bool _audioRecoveryAttempted = false;
+  Object? _audioPinAttempt;
+  final Signal<VesperPlaybackDiagnosticsSnapshot?> _nativeDiagnostics = signal(
+    null,
+  );
+  final Signal<VesperPlaybackDiagnosticsSnapshot?>
+  _lastPlaybackFailureEvidence = signal(null);
+  final Signal<VesperAudioDecoderCapabilityResult?> _audioDecoderCapability =
+      signal(null);
+  final Signal<String?> _audioProbeError = signal(null);
+  Object? _audioProbeKey;
+  Object? _handledNativeStall;
+  int _playbackIntentGeneration = 0;
+  bool? _latestPlayIntent;
+
+  void _recordUserSeek() {
+    _userSeekGeneration++;
+    _audioWatchdog.reset();
+  }
+
+  Future<void> _performUserSeek(Future<void> Function() operation) async {
+    _recordUserSeek();
+    _userSeeksInFlight++;
+    try {
+      await operation();
+    } finally {
+      _userSeeksInFlight--;
+      _audioWatchdog.reset();
+    }
+  }
+
+  void _recordPlaybackIntent(bool playing) {
+    _playbackIntentGeneration++;
+    _latestPlayIntent = playing;
+    _audioWatchdog.reset();
+  }
+
   StreamSubscription<VesperExternalPlaybackSessionEvent>?
   _castEventsSubscription;
   late final MediaExternalPlaybackManager _dlnaManager;
@@ -312,9 +359,12 @@ final class MediaPlaybackViewModel {
     if (_isDisposed) {
       return;
     }
+    startupTiming?.endNavigationAttempt();
     final sourceTransaction = _sourceTransactionTail;
     final sourceTransitionWasInFlight =
         _playbackSourceTransitionInFlight.value || _playbackRecoveryInFlight;
+    _audioWatchdogTimer?.cancel();
+    _audioWatchdog.reset();
     _controllerGeneration += 1;
     _sourceTransitionGeneration += 1;
     _playbackSourceTransitionInFlight.value = false;
@@ -528,13 +578,12 @@ final class MediaPlaybackViewModel {
   /// 返回错误消息（null = 成功）；代际递增与错误处理分离，
   /// 失败时不会伪装成功。
   Future<String?> seekToRatio(double ratio) async {
-    _userSeekGeneration += 1;
     final controller = _controller;
     if (controller == null) {
       return '播放器尚未准备好。';
     }
     try {
-      await controller.seekToRatio(ratio);
+      await _performUserSeek(() => controller.seekToRatio(ratio));
       return null;
     } catch (error) {
       return '跳转失败：${mediaErrorMessage(error)}';
@@ -543,13 +592,12 @@ final class MediaPlaybackViewModel {
 
   /// 用户 seek 入口（相对增量形式），语义同 [seekToRatio]。
   Future<String?> seekBy(int deltaMs) async {
-    _userSeekGeneration += 1;
     final controller = _controller;
     if (controller == null) {
       return '播放器尚未准备好。';
     }
     try {
-      await controller.seekBy(deltaMs);
+      await _performUserSeek(() => controller.seekBy(deltaMs));
       return null;
     } catch (error) {
       return '跳转失败：${mediaErrorMessage(error)}';
@@ -794,6 +842,9 @@ final class MediaPlaybackViewModel {
       return;
     }
     _isDisposed = true;
+    startupTiming?.endNavigationAttempt();
+    _audioWatchdogTimer?.cancel();
+    _audioWatchdog.reset();
     _controllerGeneration += 1;
     _sourceTransitionGeneration += 1;
     _playbackRecoveryGeneration += 1;
@@ -853,5 +904,9 @@ final class MediaPlaybackViewModel {
     _isFullscreen.dispose();
     _videoAspectRatio.dispose();
     _playbackSourceTransitionInFlight.dispose();
+    _nativeDiagnostics.dispose();
+    _lastPlaybackFailureEvidence.dispose();
+    _audioDecoderCapability.dispose();
+    _audioProbeError.dispose();
   }
 }

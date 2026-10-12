@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import '../../common/services/bili_playback_target.dart';
+import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/common/widgets/app_network_image.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
@@ -106,6 +109,7 @@ final class _TvHeroItem {
       playCountLabel: item.playCountLabel,
       bvid: item.bvid,
       aid: item.aid,
+      cid: item.cid ?? 0,
     );
   }
 

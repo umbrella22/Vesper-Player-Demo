@@ -130,6 +130,7 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   int initialPositionMs = 0,
   void Function(_FakePlaybackClient client)? configureClient,
   BiliResolvedPlayback? initialResolvedPlayback,
+  BiliPendingPlaybackTarget? pendingTarget,
   ThemeData? theme,
   bool externalPlaybackMockInstalled = false,
   Widget? previousPage,
@@ -180,16 +181,25 @@ Future<_PlaybackHarness> _pumpPlaybackPage(
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final playbackPage = BiliPlaybackPage(
-    detail: playbackDetail,
-    initialPage: page,
-    client: client,
-    historyStore: historyStore,
-    initialResolvedPlayback:
-        initialResolvedPlayback ?? _resolvedPlaybackFor(playbackDetail, page),
-    initialPositionMs: initialPositionMs,
-    presentationMode: presentationMode,
-  );
+  final playbackPage = pendingTarget != null
+      ? BiliPlaybackPage.pending(
+          pendingTarget: pendingTarget,
+          client: client,
+          historyStore: historyStore,
+          initialPositionMs: initialPositionMs,
+          presentationMode: presentationMode,
+        )
+      : BiliPlaybackPage(
+          detail: playbackDetail,
+          initialPage: page,
+          client: client,
+          historyStore: historyStore,
+          initialResolvedPlayback:
+              initialResolvedPlayback ??
+              _resolvedPlaybackFor(playbackDetail, page),
+          initialPositionMs: initialPositionMs,
+          presentationMode: presentationMode,
+        );
   await tester.pumpWidget(
     MaterialApp(theme: theme, home: previousPage ?? playbackPage),
   );

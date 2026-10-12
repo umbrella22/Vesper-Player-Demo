@@ -11,6 +11,19 @@ final class BiliPlatformInfo {
   bool? _cachedIsTv;
   bool? _cachedIsTablet;
 
+  Future<String> deviceBrand() => _deviceString('deviceBrand');
+  Future<String> deviceModel() => _deviceString('deviceModel');
+
+  Future<String> _deviceString(String method) async {
+    try {
+      return await _channel.invokeMethod<String>(method) ?? '';
+    } on MissingPluginException {
+      return '';
+    } on PlatformException {
+      return '';
+    }
+  }
+
   Future<bool> isTv() async {
     if (_cachedIsTv != null) {
       return _cachedIsTv!;

@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import '../services/bili_playback_target.dart';
+import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
@@ -25,11 +29,145 @@ import 'package:vesper_media/bili/tv_mode/widgets/tv_glass_dialog.dart';
 import 'bili_playback_content_surfaces.dart';
 import 'bili_playback_danmaku_composer.dart';
 
-/// Bilibili 播放页入口（薄包装）：构造 B 站内容状态与平台槽位，
-/// 渲染通用播放页壳 [MediaPlaybackPage]。
+/// Accept a resolved target, or navigate immediately and resolve in the route.
 class BiliPlaybackPage extends StatefulWidget {
   const BiliPlaybackPage({
     super.key,
+    required BiliVideoDetail this.detail,
+    required BiliVideoPageEntry this.initialPage,
+    required this.client,
+    required this.historyStore,
+    this.offlineController,
+    this.initialResolvedPlayback,
+    this.initialPositionMs = 0,
+    this.presentationMode = BiliPlaybackPresentationMode.phone,
+    this.danmakuSettingsController,
+    this.startupTiming,
+  }) : pendingTarget = null;
+
+  const BiliPlaybackPage.pending({
+    super.key,
+    required BiliPendingPlaybackTarget this.pendingTarget,
+    required this.client,
+    required this.historyStore,
+    this.offlineController,
+    this.initialPositionMs = 0,
+    this.presentationMode = BiliPlaybackPresentationMode.phone,
+    this.danmakuSettingsController,
+    this.startupTiming,
+  }) : detail = null,
+       initialPage = null,
+       initialResolvedPlayback = null;
+
+  final BiliVideoDetail? detail;
+  final BiliVideoPageEntry? initialPage;
+  final BiliPendingPlaybackTarget? pendingTarget;
+  final BiliClient client;
+  final BiliHistoryStore historyStore;
+  final BiliOfflineDownloadController? offlineController;
+  final BiliResolvedPlayback? initialResolvedPlayback;
+  final int initialPositionMs;
+  final BiliPlaybackPresentationMode presentationMode;
+  final DanmakuSettingsController? danmakuSettingsController;
+  final MediaPlaybackStartupTiming? startupTiming;
+
+  @override
+  State<BiliPlaybackPage> createState() => _BiliPlaybackEntryState();
+}
+
+class _BiliPlaybackEntryState extends State<BiliPlaybackPage> {
+  final _target = signal<BiliPlaybackTarget?>(null);
+  final _error = signal<Object?>(null);
+  int _generation = 0;
+  late final MediaPlaybackStartupTiming _timing;
+
+  @override
+  void initState() {
+    super.initState();
+    _timing = widget.startupTiming ?? MediaPlaybackStartupTiming();
+    _timing.markPushed();
+    if (widget.pendingTarget != null) {
+      unawaited(_resolve());
+    } else {
+      _target.value = BiliPlaybackTarget(
+        detail: widget.detail!,
+        initialPage: widget.initialPage!,
+      );
+    }
+  }
+
+  Future<void> _resolve() async {
+    final generation = ++_generation;
+    _error.value = null;
+    try {
+      final target = await widget.client.resolvePlaybackTarget(
+        widget.pendingTarget!,
+      );
+      if (mounted && generation == _generation) _target.value = target;
+    } catch (error) {
+      if (mounted && generation == _generation) _error.value = error;
+    }
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _target.dispose();
+    _error.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SignalBuilder(
+    builder: (context) {
+      final target = _target.value;
+      if (target != null) {
+        return _BiliResolvedPlaybackPage(
+          detail: target.detail,
+          initialPage: target.initialPage,
+          client: widget.client,
+          historyStore: widget.historyStore,
+          offlineController: widget.offlineController,
+          initialResolvedPlayback: widget.initialResolvedPlayback,
+          initialPositionMs: widget.initialPositionMs,
+          presentationMode: widget.presentationMode,
+          danmakuSettingsController: widget.danmakuSettingsController,
+          startupTiming: _timing,
+        );
+      }
+      final error = _error.value;
+      return Scaffold(
+        key: const ValueKey('bili-playback-pending'),
+        backgroundColor: AppVisualTheme.of(context).background,
+        body: error == null
+            ? const MediaPlaybackLoadingState()
+            : SafeArea(
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: BackButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    ),
+                    Expanded(
+                      child: MediaPlaybackErrorState(
+                        error: error,
+                        onRetry: _resolve,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      );
+    },
+  );
+}
+
+/// Bilibili 播放页入口（薄包装）：构造 B 站内容状态与平台槽位，
+/// 渲染通用播放页壳 [MediaPlaybackPage]。
+class _BiliResolvedPlaybackPage extends StatefulWidget {
+  const _BiliResolvedPlaybackPage({
     required this.detail,
     required this.initialPage,
     required this.client,
@@ -39,8 +177,10 @@ class BiliPlaybackPage extends StatefulWidget {
     this.initialPositionMs = 0,
     this.presentationMode = BiliPlaybackPresentationMode.phone,
     this.danmakuSettingsController,
+    this.startupTiming,
   });
 
+  final MediaPlaybackStartupTiming? startupTiming;
   final BiliVideoDetail detail;
   final BiliVideoPageEntry initialPage;
   final BiliClient client;
@@ -52,10 +192,10 @@ class BiliPlaybackPage extends StatefulWidget {
   final DanmakuSettingsController? danmakuSettingsController;
 
   @override
-  State<BiliPlaybackPage> createState() => _BiliPlaybackPageState();
+  State<_BiliResolvedPlaybackPage> createState() => _BiliPlaybackPageState();
 }
 
-class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
+class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
   late final BiliPlaybackViewModel _viewModel;
   late final MediaPlaybackBinding _playbackBinding;
   late final DanmakuSettingsController _danmakuSettingsController;
@@ -90,6 +230,7 @@ class _BiliPlaybackPageState extends State<BiliPlaybackPage> {
       offlineController: widget.offlineController,
       initialResolvedPlayback: widget.initialResolvedPlayback,
       initialPositionMs: widget.initialPositionMs,
+      startupTiming: widget.startupTiming,
     );
     _playbackBinding = MediaPlaybackBinding(
       engagementBuilder: _viewModel.buildEngagementCapability,

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:vesper_media/bili/common/services/bili_audio_policy.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -15,6 +17,7 @@ enum AppThemePreference { system, light, dark }
 final class AppSettingsSnapshot {
   const AppSettingsSnapshot({
     this.forceTvMode = false,
+    this.audioPolicyOverride = BiliAudioPolicyOverride.automatic,
     this.glassQuality,
     this.themePreference = AppThemePreference.system,
     this.danmakuSettings = const BiliDanmakuSettings(),
@@ -23,6 +26,7 @@ final class AppSettingsSnapshot {
   static const defaults = AppSettingsSnapshot();
 
   final bool forceTvMode;
+  final BiliAudioPolicyOverride audioPolicyOverride;
   final GlassQuality? glassQuality;
   final AppThemePreference themePreference;
   final BiliDanmakuSettings danmakuSettings;
@@ -36,6 +40,10 @@ final class AppSettingsStore {
 
   static final Map<String, Future<void>> _writeQueues =
       <String, Future<void>>{};
+
+  Future<void> setAudioPolicyOverride(BiliAudioPolicyOverride value) async {
+    await _update((settings) => settings['audioPolicyOverride'] = value.name);
+  }
 
   Future<bool> getForceTvMode() async {
     return (await loadSnapshot()).forceTvMode;
@@ -69,6 +77,11 @@ final class AppSettingsStore {
     final settings = await _loadAll();
     return AppSettingsSnapshot(
       forceTvMode: _boolValue(settings['forceTvMode'], false),
+      audioPolicyOverride:
+          BiliAudioPolicyOverride.values
+              .where((value) => value.name == settings['audioPolicyOverride'])
+              .firstOrNull ??
+          BiliAudioPolicyOverride.automatic,
       glassQuality: _glassQualityValue(settings['glassQuality']),
       themePreference: _themePreferenceValue(settings['themePreference']),
       danmakuSettings: _danmakuSettingsValue(settings['danmaku']),

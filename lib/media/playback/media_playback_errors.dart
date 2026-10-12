@@ -130,3 +130,65 @@ class MediaPlaybackErrorState extends StatelessWidget {
     );
   }
 }
+
+/// Stable stage and content placeholders while a route is preparing playback.
+class MediaPlaybackLoadingState extends StatelessWidget {
+  const MediaPlaybackLoadingState({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = AppVisualTheme.of(context);
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth > constraints.maxHeight;
+          final stage = ColoredBox(
+            color: visual.surface,
+            child: const Center(
+              child: CircularProgressIndicator(semanticsLabel: '正在准备播放'),
+            ),
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              BackButton(onPressed: () => Navigator.of(context).maybePop()),
+              Expanded(
+                child: wide
+                    ? stage
+                    : ListView(
+                        children: [
+                          AspectRatio(aspectRatio: 16 / 9, child: stage),
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final width in [0.8, 0.5, 0.65])
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: FractionallySizedBox(
+                                      widthFactor: width,
+                                      child: Container(
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          color: visual.surfaceRaised,
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}

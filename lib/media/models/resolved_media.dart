@@ -12,15 +12,18 @@ final class ResolvedMediaPlayback {
     required this.protocol,
     required this.transportLabel,
     required this.isLocalFile,
+    bool? canRefreshSource,
     this.headers = const <String, String>{},
     this.videoTracks = const <VesperMediaTrack>[],
+    this.audioTracks = const <VesperMediaTrack>[],
+    this.audioCompatibilityRestricted = false,
     this.subtitleTracks = const <ResolvedSubtitleTrack>[],
     this.subtitleError,
     this.debugPath,
     this.qualityOptions = const <MediaQualityOption>[],
     this.supportsCodecSelection = false,
     this.audioOnlySource,
-  });
+  }) : canRefreshSource = canRefreshSource ?? !isLocalFile;
 
   final String title;
   final String subtitle;
@@ -28,8 +31,13 @@ final class ResolvedMediaPlayback {
   final VesperPlayerSourceProtocol protocol;
   final String transportLabel;
   final bool isLocalFile;
+
+  /// Online media can be refreshed even when its generated manifest is local.
+  final bool canRefreshSource;
   final Map<String, String> headers;
   final List<VesperMediaTrack> videoTracks;
+  final List<VesperMediaTrack> audioTracks;
+  final bool audioCompatibilityRestricted;
   final List<ResolvedSubtitleTrack> subtitleTracks;
   final String? subtitleError;
   final String? debugPath;

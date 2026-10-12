@@ -7,10 +7,16 @@ import 'package:vesper_player/vesper_player.dart';
 /// not see progress-bar seeks. This proxy keeps the controller contract intact
 /// while letting the playback owner invalidate stale history-resume work.
 final class SeekAwarePlayerController implements VesperPlayerController {
-  SeekAwarePlayerController(this._inner, this._onUserSeek);
+  SeekAwarePlayerController(
+    this._inner,
+    this._runUserSeek, {
+    this.onPlaybackIntent,
+  });
+
+  final void Function(bool playing)? onPlaybackIntent;
 
   final VesperPlayerController _inner;
-  final VoidCallback _onUserSeek;
+  final Future<void> Function(Future<void> Function()) _runUserSeek;
 
   @override
   String get playerId => _inner.playerId;
@@ -70,40 +76,67 @@ final class SeekAwarePlayerController implements VesperPlayerController {
       _inner.selectSource(source);
 
   @override
+  Future<VesperSourceActivation> activate(
+    VesperSourceHandle source, {
+    VesperSourceActivationOptions options =
+        const VesperSourceActivationOptions(),
+  }) async {
+    onPlaybackIntent?.call(options.playWhenReady);
+    // Activation supplies a new position, so an older history lookup must
+    // not seek over it while native readiness is pending.
+    late VesperSourceActivation activation;
+    await _runUserSeek(() async {
+      activation = await _inner.activate(source, options: options);
+    });
+    return activation;
+  }
+
+  @override
   Future<void> refresh() => _inner.refresh();
 
   @override
-  Future<void> play() => _inner.play();
-
-  @override
-  Future<void> pause() => _inner.pause();
-
-  @override
-  Future<void> togglePause() => _inner.togglePause();
-
-  @override
-  Future<void> stop() => _inner.stop();
-
-  @override
-  Future<void> seekBy(int deltaMs) {
-    _onUserSeek();
-    return _inner.seekBy(deltaMs);
+  Future<void> play() {
+    onPlaybackIntent?.call(true);
+    return _inner.play();
   }
 
   @override
-  Future<void> seekToRatio(double ratio) {
-    _onUserSeek();
-    return _inner.seekToRatio(ratio);
+  Future<void> pause() {
+    onPlaybackIntent?.call(false);
+    return _inner.pause();
   }
 
   @override
-  Future<void> seekToLiveEdge() {
-    _onUserSeek();
-    return _inner.seekToLiveEdge();
+  Future<void> togglePause() {
+    onPlaybackIntent?.call(
+      snapshot.playbackState != VesperPlaybackState.playing,
+    );
+    return _inner.togglePause();
   }
+
+  @override
+  Future<void> stop() {
+    onPlaybackIntent?.call(false);
+    return _inner.stop();
+  }
+
+  @override
+  Future<void> seekBy(int deltaMs) =>
+      _runUserSeek(() => _inner.seekBy(deltaMs));
+
+  @override
+  Future<void> seekToRatio(double ratio) =>
+      _runUserSeek(() => _inner.seekToRatio(ratio));
+
+  @override
+  Future<void> seekToLiveEdge() => _runUserSeek(_inner.seekToLiveEdge);
 
   @override
   Future<void> setPlaybackRate(double rate) => _inner.setPlaybackRate(rate);
+
+  @override
+  Future<void> setPlaybackStallPolicy(VesperPlaybackStallPolicy policy) =>
+      _inner.setPlaybackStallPolicy(policy);
 
   @override
   Future<void> setVideoTrackSelection(VesperTrackSelection selection) =>

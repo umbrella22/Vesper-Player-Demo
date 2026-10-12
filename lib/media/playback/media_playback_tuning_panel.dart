@@ -57,6 +57,12 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     required this.resolvedUri,
     this.qualityHdrBadgeFor,
     this.hdrLabel,
+    this.startupTimingLabel,
+    this.nativeFirstFrameLabel,
+    this.audioDiagnosticsLabel,
+    this.audioDecoderCapabilityLabel,
+    this.playbackStallLabel,
+    this.lastPlaybackFailureLabel,
     this.debugPath,
     this.cacheEntry,
     this.quickActions,
@@ -68,6 +74,12 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     required this.onSelectSubtitle,
   });
 
+  final String? startupTimingLabel;
+  final String? nativeFirstFrameLabel;
+  final String? audioDiagnosticsLabel;
+  final String? audioDecoderCapabilityLabel;
+  final String? playbackStallLabel;
+  final String? lastPlaybackFailureLabel;
   final VesperPlayerSnapshot snapshot;
   final List<MediaQualitySelectionOption> qualityOptions;
   final String? Function(MediaQualitySelectionOption option)
@@ -194,6 +206,18 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
         children: [
           _SnapshotRow(label: '播放状态', value: playbackStateLabel),
           _SnapshotRow(label: '时间线', value: timelineLabel),
+          if (startupTimingLabel case final String timing)
+            _SnapshotRow(label: '起播耗时', value: timing),
+          if (nativeFirstFrameLabel case final value?)
+            _SnapshotRow(label: '原生首帧观测', value: value),
+          if (audioDiagnosticsLabel case final value?)
+            _SnapshotRow(label: '音频观测', value: value),
+          if (audioDecoderCapabilityLabel case final value?)
+            _SnapshotRow(label: '音频格式能力', value: value),
+          if (playbackStallLabel case final value?)
+            _SnapshotRow(label: '最近停滞观测', value: value),
+          if (lastPlaybackFailureLabel case final value?)
+            _SnapshotRow(label: '最近失败音频', value: value),
           _SnapshotRow(label: '当前链路', value: transportLabel ?? '未知'),
           _SnapshotRow(label: '资源地址', value: resolvedUri ?? '未知'),
           if ((debugPath ?? '').isNotEmpty)

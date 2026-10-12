@@ -48,11 +48,13 @@ final class BiliFeedVideo {
     required this.durationLabel,
     required this.playCountLabel,
     required this.danmakuCountLabel,
+    this.cid,
     this.description,
     this.publishedAtLabel,
   });
 
   final int aid;
+  final int? cid;
   final String bvid;
   final String title;
   final String author;
@@ -695,13 +697,16 @@ final class BiliResolvedPlayback {
     required this.protocol,
     required this.transportLabel,
     required this.isLocalFile,
+    bool? canRefreshSource,
     this.headers = const <String, String>{},
     this.videoTracks = const <VesperMediaTrack>[],
+    this.audioTracks = const <VesperMediaTrack>[],
+    this.dolbyAudioBlocked = false,
     this.subtitleTracks = const <BiliSubtitleTrack>[],
     this.subtitleError,
     this.debugPath,
     this.audioOnlySource,
-  });
+  }) : canRefreshSource = canRefreshSource ?? !isLocalFile;
 
   final String bvid;
   final int cid;
@@ -711,8 +716,13 @@ final class BiliResolvedPlayback {
   final VesperPlayerSourceProtocol protocol;
   final String transportLabel;
   final bool isLocalFile;
+
+  /// Online media can be refreshed even when its generated manifest is local.
+  final bool canRefreshSource;
   final Map<String, String> headers;
   final List<VesperMediaTrack> videoTracks;
+  final List<VesperMediaTrack> audioTracks;
+  final bool dolbyAudioBlocked;
   final List<BiliSubtitleTrack> subtitleTracks;
   final String? subtitleError;
   final String? debugPath;

@@ -176,6 +176,7 @@ class _AvatarButton extends StatelessWidget {
 final class _HomeVideoItem {
   const _HomeVideoItem({
     required this.bvid,
+    this.cid,
     required this.title,
     required this.author,
     required this.coverUrl,
@@ -187,6 +188,7 @@ final class _HomeVideoItem {
   factory _HomeVideoItem.fromFeed(BiliFeedVideo item) {
     return _HomeVideoItem(
       bvid: item.bvid,
+      cid: item.cid,
       title: item.title,
       author: item.author,
       coverUrl: item.coverUrl,
@@ -209,6 +211,7 @@ final class _HomeVideoItem {
   }
 
   final String bvid;
+  final int? cid;
   final String title;
   final String author;
   final String coverUrl;

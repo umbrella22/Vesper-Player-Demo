@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import '../services/bili_playback_target.dart';
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/download/download.dart';
@@ -12,15 +15,7 @@ import '../services/bili_text.dart';
 
 enum BiliHubTab { home, mine }
 
-final class BiliHubPlaybackTarget {
-  const BiliHubPlaybackTarget({
-    required this.detail,
-    required this.initialPage,
-  });
-
-  final BiliVideoDetail detail;
-  final BiliVideoPageEntry initialPage;
-}
+typedef BiliHubPlaybackTarget = BiliPlaybackTarget;
 
 final class BiliHubException implements Exception {
   const BiliHubException(this.message);
@@ -167,6 +162,7 @@ final class BiliHubViewModel {
       final items = await client.fetchRecommendedFeed(page: 1);
       if (generation != _feedRequestGeneration) return;
       _feedItems.value = items;
+      unawaited(client.prefetchFeedPlayback(items));
       _feedPage.value = 1;
       _hasMoreFeed.value = items.isNotEmpty;
     } catch (error) {
@@ -198,6 +194,7 @@ final class BiliHubViewModel {
           .where((item) => existingBvids.add(item.bvid))
           .toList(growable: false);
       _feedItems.value = <BiliFeedVideo>[..._feedItems.value, ...nextItems];
+      unawaited(client.prefetchFeedPlayback(nextItems));
       _feedPage.value = nextPage;
       _hasMoreFeed.value = items.isNotEmpty && nextItems.isNotEmpty;
       return null;
@@ -349,37 +346,14 @@ final class BiliHubViewModel {
     int? cid,
     int? episodeId,
   }) async {
-    final normalizedBvid = bvid.trim();
-    final normalizedAid = aid != null && aid > 0 ? aid : null;
-    final normalizedEpisodeId = episodeId != null && episodeId > 0
-        ? episodeId
-        : null;
-    if (normalizedBvid.isEmpty &&
-        normalizedAid == null &&
-        normalizedEpisodeId == null) {
-      throw const BiliHubException('无法识别该视频。');
-    }
-    final detail = normalizedEpisodeId != null
-        ? await client.fetchPgcEpisodeDetail(normalizedEpisodeId)
-        : normalizedBvid.isNotEmpty
-        ? await client.fetchVideoDetail(normalizedBvid)
-        : await client.fetchVideoDetailByAid(normalizedAid!);
-    if (detail.pages.isEmpty) {
-      throw const BiliHubException('这个视频没有可播放分 P。');
-    }
-
-    final initialPage = normalizedEpisodeId != null
-        ? detail.pages.firstWhere(
-            (page) => page.episodeId == normalizedEpisodeId,
-            orElse: () => throw const BiliHubException('无法找到对应的番剧分集。'),
-          )
-        : cid == null || cid <= 0
-        ? detail.pages.first
-        : detail.pages.firstWhere(
-            (page) => page.cid == cid,
-            orElse: () => detail.pages.first,
-          );
-    return BiliHubPlaybackTarget(detail: detail, initialPage: initialPage);
+    return client.resolvePlaybackTarget(
+      BiliPendingPlaybackTarget(
+        bvid: bvid,
+        aid: aid,
+        cid: cid,
+        episodeId: episodeId,
+      ),
+    );
   }
 
   Future<void> applyLoggedInProfile(BiliUserProfile nextProfile) async {
