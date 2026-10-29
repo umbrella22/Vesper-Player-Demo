@@ -236,6 +236,36 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // 最小高度比内容高时，多余空间必须上下平分：曾经全部堆在底部，看起来
+  // 像选项按钮多了一段 padding（分辨率 / 播放策略 / 倍速同款按钮都受影响）。
+  for (final immersive in [false, true]) {
+    testWidgets(
+      '选项按钮文字在最小高度内垂直居中：immersive=$immersive',
+      (tester) async {
+        final button = TuningOptionButton(
+          label: '1080P',
+          selected: false,
+          onTap: () {},
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Material(
+              child: Center(
+                child: immersive
+                    ? MediaPlaybackDrawerScope(child: button)
+                    : button,
+              ),
+            ),
+          ),
+        );
+        final buttonRect = tester.getRect(find.byType(TuningOptionButton));
+        final textRect = tester.getRect(find.text('1080P'));
+        expect(buttonRect.height, immersive ? 44 : 40);
+        expect(textRect.center.dy, closeTo(buttonRect.center.dy, 0.5));
+      },
+    );
+  }
 }
 
 Future<void> _openDrawer(

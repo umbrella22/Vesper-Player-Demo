@@ -11,6 +11,7 @@ import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/capabilities/media_audio_compatibility.dart';
 import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 import 'package:vesper_media/media/models/media_hdr_status.dart';
+import 'package:vesper_media/media/playback/media_video_content.dart';
 import 'package:vesper_player/vesper_player.dart';
 import 'package:vesper_player_ui/vesper_player_ui.dart' as vesper_ui;
 
@@ -1064,7 +1065,7 @@ void main() {
       expect(events, ['enter:true', 'exit', 'restore']);
     });
 
-    testWidgets('全屏替换视图后等待新几何', (tester) async {
+    testWidgets('全屏切换搬移同一舞台，几何更新后弹幕立即恢复', (tester) async {
       final harness = await pumpShell(
         tester,
         adapter: _ShellAdapter(danmakuProvider: _EmptyDanmakuProvider()),
@@ -1072,26 +1073,33 @@ void main() {
         surfaceSize: const Size(390, 844),
       );
       expect(find.byType(MediaDanmakuLayer), findsOneWidget);
-      final oldStage = stage(tester);
+      final contentState = tester.state(find.byType(MediaVideoContent));
+      final viewState = tester.state(find.byType(VesperPlayerView));
+      final layerState = tester.state(
+        find.byType(MediaDanmakuLayer, skipOffstage: false),
+      );
       harness.viewModel.setFullscreen(true);
       await tester.pumpAndSettle();
+      // 尺寸变了但原生几何还没更新：不把弹幕画到旧画面区域。
       expect(find.byType(MediaDanmakuLayer), findsNothing);
-      oldStage.onGeometryChanged!(
-        const VesperVideoSurfaceGeometry(
-          width: 390,
-          height: 844,
-          contentRect: VesperVideoRect(
-            left: 0,
-            top: 0,
-            width: 390,
-            height: 844,
-          ),
-        ),
+      // 舞台、平台视图、弹幕会话都被搬移而不是重建：重建会销毁 Android
+      // 平台视图，几何只能等新视图上报，弹幕会在整个全屏期间消失。
+      expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
+      expect(tester.state(find.byType(VesperPlayerView)), same(viewState));
+      expect(
+        tester.state(find.byType(MediaDanmakuLayer, skipOffstage: false)),
+        same(layerState),
       );
-      await tester.pump();
+      await _reportShellGeometry(tester, aspectRatio: 9 / 16);
+      expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+      expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
+
+      harness.viewModel.setFullscreen(false);
+      await tester.pumpAndSettle();
       expect(find.byType(MediaDanmakuLayer), findsNothing);
       await _reportShellGeometry(tester, aspectRatio: 9 / 16);
       expect(find.byType(MediaDanmakuLayer), findsOneWidget);
+      expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
     });
 
     testWidgets('TV 竖屏弹幕位于横屏容器中央的实际画面区域', (tester) async {
@@ -1193,12 +1201,18 @@ void main() {
         final controller = harness.viewModel.controller;
         final createCalls = harness.platform.createCalls;
         final playCalls = harness.platform.playCalls;
+        // 小窗同样只是布局分支：进小窗重建舞台会销毁 Android 平台视图，
+        // 正好发生在最需要保住画面的时候。
+        final contentState = tester.state(find.byType(MediaVideoContent));
+        final viewState = tester.state(find.byType(VesperPlayerView));
 
         harness.platform.emitPictureInPicture(
           VesperPictureInPictureStatus.entering,
           isActive: false,
         );
         await tester.pumpAndSettle();
+        expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
+        expect(tester.state(find.byType(VesperPlayerView)), same(viewState));
         expect(
           find.byKey(const ValueKey('playback-bottom-surface')),
           findsNothing,
@@ -1230,6 +1244,7 @@ void main() {
         expect(harness.viewModel.controller, same(controller));
         expect(harness.platform.createCalls, createCalls);
         expect(harness.platform.playCalls, playCalls);
+        expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
         expect(
           find.byKey(const ValueKey('playback-bottom-surface')),
           fullscreen ? findsNothing : findsOneWidget,
