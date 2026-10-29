@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.17.0...vesper_media-v1.18.0) (2026-10-29)
+
+
+### Features
+
+* **playback:** 添加舞台控制器和优化布局对齐 ([ba84ae0](https://github.com/umbrella22/Vesper-Player-Demo/commit/ba84ae0f0669f3fde01d1cacbb92674e6d439018))
+
 ## [1.17.0](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.16.3...vesper_media-v1.17.0) (2026-10-12)
 
 ### Features
