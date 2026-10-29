@@ -84,8 +84,11 @@ class TuningOptionButton extends StatelessWidget {
                   horizontal: 14,
                   vertical: 10,
                 ),
+                // 最小高度比内容高时，多出来的空间必须平分到上下；默认的
+                // start 对齐会把它全堆在底部，视觉上像多了一段底部 padding。
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,

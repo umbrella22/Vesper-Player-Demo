@@ -180,6 +180,13 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
   _performanceDiagnosticsController;
   String? _diagnosticsPlaybackTargetIdentity;
 
+  /// 播放舞台的稳定 key。内联 / 全屏 / 小窗只是同一页面内的布局分支：
+  /// 舞台连同平台视图与弹幕层必须被原地搬移，不能重建。重建会销毁
+  /// Android 平台视图，弹幕层把「几何未知」当作必须隐藏，只能等新视图
+  /// 重新上报；上报一旦没到，弹幕会在整个分支内消失（退出分支才恢复）。
+  VesperPlayerController? _stageKeyController;
+  GlobalKey _stageKey = GlobalKey(debugLabel: 'media-playback-stage');
+
   VesperPlayerController? _pictureInPictureController;
   StreamSubscription<VesperPlayerPictureInPictureEvent>?
   _pictureInPictureEvents;

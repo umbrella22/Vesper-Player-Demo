@@ -3,6 +3,16 @@ part of 'media_playback_page.dart';
 enum _PlaybackMenuAction { listen, projection, diagnostics }
 
 extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
+  /// 舞台 key 绑定控制器：换控制器必须重建（旧几何不能串到新会话），
+  /// 同一个控制器的布局切换必须搬移（保留平台视图与弹幕层状态）。
+  GlobalKey _stageKeyFor(VesperPlayerController controller) {
+    if (!identical(_stageKeyController, controller)) {
+      _stageKeyController = controller;
+      _stageKey = GlobalKey(debugLabel: 'media-playback-stage');
+    }
+    return _stageKey;
+  }
+
   Widget _buildStage({
     required VesperPlayerController controller,
     required VesperPlayerSnapshot snapshot,
@@ -12,7 +22,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     _maybePollPictureInPictureAvailability(snapshot);
     final danmakuProvider = _viewModel.adapter.danmaku;
     return MediaVideoContent(
-      key: ObjectKey(controller),
+      key: _stageKeyFor(controller),
       active:
           !_viewModel.isSourceTransitioning &&
           !_viewModel.isAudioOnlyPlaybackActive &&
