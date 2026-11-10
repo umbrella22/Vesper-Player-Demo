@@ -36,20 +36,20 @@ dependencies:
   vesper_player_external_playback: ^0.9.1
   vesper_player_source_normalizer_ffmpeg: ^0.9.1
   vesper_player_remux_ffmpeg: ^0.9.1
-  crypto: ^3.0.7
-  cupertino_ui: ^1.1.2
-  material_ui: ^1.6.0
+  crypto: ^3.0.8
+  cupertino_ui: ^1.1.6
+  material_ui: ^1.11.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
   signals: ^7.1.0
 
   cupertino_icons: ^2.0.0
   flutter_secure_storage: ^11.2.0
-  liquid_glass_widgets: ^1.11.1
+  liquid_glass_widgets: ^1.17.0
   package_info_plus: ^10.2.2
   pub_semver: ^2.2.1
-  cached_network_image: ^4.0.4
-  flutter_cache_manager: ^3.4.5
+  cached_network_image: ^4.0.6
+  flutter_cache_manager: ^3.5.0
 
 dev_dependencies:
   flutter_test:
