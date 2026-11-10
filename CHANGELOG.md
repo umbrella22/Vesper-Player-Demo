@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.1...vesper_media-v1.18.2) (2026-11-10)
+
+
+### Dependencies
+
+* **qr:** 用 qr 4.x 替换不再维护的 qr_flutter ([d308e4a](https://github.com/umbrella22/Vesper-Player-Demo/commit/d308e4a3eaec5b38c3a3ab1eb07a042a38d18bcf))
+
 ## [1.18.1](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.0...vesper_media-v1.18.1) (2026-11-10)
 
 
