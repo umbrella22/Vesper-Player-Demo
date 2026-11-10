@@ -1,8 +1,8 @@
 import 'package:flutter/widget_previews.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_qr_code_view.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 
@@ -992,17 +992,10 @@ class _MobileQrOverlay extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: QrImageView(
+                    child: AppQrCodeView(
                       data: 'https://vesper.local/login-preview',
-                      backgroundColor: Colors.white,
-                      eyeStyle: const QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: Colors.black,
-                      ),
-                      dataModuleStyle: const QrDataModuleStyle(
-                        dataModuleShape: QrDataModuleShape.square,
-                        color: Colors.black,
-                      ),
+                      color: Colors.black,
+                      background: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1437,9 +1430,10 @@ class _TvLoginPanel extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: QrImageView(
+            child: AppQrCodeView(
               data: 'https://vesper.local/tv-login-preview',
-              backgroundColor: Colors.white,
+              color: Colors.black,
+              background: Colors.white,
             ),
           ),
           const SizedBox(width: 42),

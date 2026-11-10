@@ -40,7 +40,6 @@ dependencies:
   cupertino_ui: ^1.1.6
   material_ui: ^1.11.0
   path_provider: ^2.1.6
-  qr_flutter: ^4.1.0
   signals: ^7.1.0
 
   cupertino_icons: ^2.0.0
@@ -50,6 +49,7 @@ dependencies:
   pub_semver: ^2.2.1
   cached_network_image: ^4.0.6
   flutter_cache_manager: ^3.5.0
+  qr: ^4.0.1
 
 dev_dependencies:
   flutter_test:

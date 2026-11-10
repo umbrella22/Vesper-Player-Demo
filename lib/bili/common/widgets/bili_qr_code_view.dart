@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/common/widgets/app_qr_code_view.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/bili_models.dart';
 
@@ -27,16 +27,9 @@ class BiliQrCodeView extends StatelessWidget {
         color: Color(0xFF7B8CA1),
       );
     }
-    return QrImageView(
+    return AppQrCodeView(
       data: ticket.url,
-      eyeStyle: const QrEyeStyle(
-        eyeShape: QrEyeShape.square,
-        color: Color(0xFF111A2B),
-      ),
-      dataModuleStyle: const QrDataModuleStyle(
-        dataModuleShape: QrDataModuleShape.square,
-        color: Color(0xFF111A2B),
-      ),
+      color: const Color(0xFF111A2B),
     );
   }
 }
