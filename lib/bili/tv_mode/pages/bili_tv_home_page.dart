@@ -6,7 +6,6 @@ import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dar
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/common/widgets/app_network_image.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:signals/signals_flutter.dart';
