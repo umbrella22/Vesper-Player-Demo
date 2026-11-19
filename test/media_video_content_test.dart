@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/playback/media_video_content.dart';
