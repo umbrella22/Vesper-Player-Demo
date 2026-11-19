@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.18.3](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.2...vesper_media-v1.18.3) (2026-11-19)
+
+
+### Dependencies
+
+* 升级直连依赖到 pub.dev 最新版本 ([d0cdf11](https://github.com/umbrella22/Vesper-Player-Demo/commit/d0cdf1125930f7f42525bb4a8b94aa78f6b09fbe))
+
+
+### Documentation
+
+* **readme:** 更新应用截图 ([1ae1b58](https://github.com/umbrella22/Vesper-Player-Demo/commit/1ae1b583bae0031d718d47622557cb6f38b8054a))
+
 ## [1.18.2](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.1...vesper_media-v1.18.2) (2026-11-10)
 
 
