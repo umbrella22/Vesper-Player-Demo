@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.18.4](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.3...vesper_media-v1.18.4) (2026-11-24)
+
+
+### Bug Fixes
+
+* **offline:** 修复 MP4 缓存任务重试并改善缓存空间不足时的提示 ([27291ff](https://github.com/umbrella22/Vesper-Player-Demo/commit/27291ffa34590bac47c35e26724c7d08c518f02d))
+* **ui:** 统一分区卡片与收藏夹排版，优化分区抽屉转场 ([320e5ed](https://github.com/umbrella22/Vesper-Player-Demo/commit/320e5ed55c1067595efef5e989ee640c6c5b4c10))
+
+
+### Dependencies
+
+* **player:** 接入 Vesper 0.11.0 并升级 Flutter 依赖 ([a5a1eb7](https://github.com/umbrella22/Vesper-Player-Demo/commit/a5a1eb7e840c0b232243f196bd9c36e6ab001c03))
+
 ## [1.18.3](https://github.com/umbrella22/Vesper-Player-Demo/compare/vesper_media-v1.18.2...vesper_media-v1.18.3) (2026-11-19)
 
 
