@@ -60,12 +60,6 @@ final class SeekAwarePlayerController implements VesperPlayerController {
   ) => _inner.probeAssociatedPlaybackCapability(request);
 
   @override
-  Future<VesperPerformanceDiagnosticsSession> startPerformanceDiagnostics({
-    VesperPerformanceDiagnosticsConfiguration configuration =
-        const VesperPerformanceDiagnosticsConfiguration(),
-  }) => _inner.startPerformanceDiagnostics(configuration: configuration);
-
-  @override
   Future<void> initialize() => _inner.initialize();
 
   @override

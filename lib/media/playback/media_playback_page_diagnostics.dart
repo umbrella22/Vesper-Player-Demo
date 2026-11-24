@@ -14,32 +14,60 @@ extension _MediaPlaybackPageDiagnostics on _MediaPlaybackPageState {
     });
     _performanceDiagnosticsController.setDrawerVisible(true);
     _PerformanceDiagnosticsDrawerAction? action;
+    final feedbackMessage = signal<String?>(null);
+    final feedbackIsError = signal(false);
+    void setDrawerFeedback(String message, {bool isError = false}) {
+      feedbackMessage.value = message;
+      feedbackIsError.value = isError;
+    }
+
     try {
       action = await showGeneralDialog<_PerformanceDiagnosticsDrawerAction>(
         context: context,
         barrierDismissible: true,
         barrierLabel: '关闭性能诊断',
         barrierColor: const Color(0x99000000),
-        transitionDuration: const Duration(milliseconds: 220),
+        transitionDuration: AppVisualTokens.motionDuration(
+          context,
+          AppVisualTokens.overlayDuration,
+        ),
         pageBuilder: (dialogContext, _, _) {
           final isTv = _isTvMode;
+          final darkDrawerTheme = MediaQuery.highContrastOf(dialogContext)
+              ? AppVisualTokens.mobileDarkHighContrastTheme()
+              : AppVisualTokens.mobileDarkTheme();
+          final drawerWidth = isTv
+              ? 520.0
+              : math.min(440.0, MediaQuery.sizeOf(dialogContext).width * 0.92);
           return Align(
             alignment: Alignment.centerRight,
-            child: Material(
-              color: Colors.transparent,
-              child: SizedBox(
-                width: isTv ? 520 : 440,
-                child: FractionallySizedBox(
-                  widthFactor: isTv ? 1 : 0.94,
+            child: Theme(
+              data: darkDrawerTheme,
+              child: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: drawerWidth,
                   child: _PerformanceDiagnosticsDrawer(
                     controller: _performanceDiagnosticsController,
                     isTv: isTv,
+                    feedbackMessage: feedbackMessage,
+                    feedbackIsError: feedbackIsError,
                     onClose: () => Navigator.of(dialogContext).pop(),
                     onRunGuidedAb: () => Navigator.of(
                       dialogContext,
                     ).pop(_PerformanceDiagnosticsDrawerAction.guidedAb),
-                    onCopy: (json) => _copyPerformanceDiagnosticsReport(json),
-                    onShare: (json) => _sharePerformanceDiagnosticsReport(json),
+                    onCopy: (json) async {
+                      await _copyPerformanceDiagnosticsReport(
+                        json,
+                        onFeedback: setDrawerFeedback,
+                      );
+                    },
+                    onShare: (json) async {
+                      await _sharePerformanceDiagnosticsReport(
+                        json,
+                        onFeedback: setDrawerFeedback,
+                      );
+                    },
                   ),
                 ),
               ),
@@ -60,6 +88,8 @@ extension _MediaPlaybackPageDiagnostics on _MediaPlaybackPageState {
         },
       );
     } finally {
+      feedbackMessage.dispose();
+      feedbackIsError.dispose();
       _performanceDiagnosticsController.setDrawerVisible(false);
       if (mounted) {
         _mutate(() {
@@ -72,31 +102,48 @@ extension _MediaPlaybackPageDiagnostics on _MediaPlaybackPageState {
     }
   }
 
-  Future<void> _copyPerformanceDiagnosticsReport(String json) async {
+  Future<void> _copyPerformanceDiagnosticsReport(
+    String json, {
+    void Function(String message, {bool isError})? onFeedback,
+  }) async {
     await Clipboard.setData(ClipboardData(text: json));
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('诊断报告已复制')));
+    if (!mounted) return;
+    if (onFeedback != null) {
+      onFeedback('诊断报告已复制');
+      return;
     }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('诊断报告已复制')));
   }
 
-  Future<void> _sharePerformanceDiagnosticsReport(String json) async {
+  Future<void> _sharePerformanceDiagnosticsReport(
+    String json, {
+    void Function(String message, {bool isError})? onFeedback,
+  }) async {
     try {
       await const MediaDiagnosticsReportShare().shareJson(
         json,
         clipboardOnly: _isTvMode,
       );
       if (mounted && _isTvMode) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('诊断报告已复制')));
+        if (onFeedback != null) {
+          onFeedback('诊断报告已复制');
+          return;
+        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('诊断报告已复制')));
       }
     } on PlatformException {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('无法打开系统分享面板')));
+        if (onFeedback != null) {
+          onFeedback('无法打开系统分享面板', isError: true);
+          return;
+        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('无法打开系统分享面板')));
       }
     }
   }
@@ -106,6 +153,8 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
   const _PerformanceDiagnosticsDrawer({
     required this.controller,
     required this.isTv,
+    required this.feedbackMessage,
+    required this.feedbackIsError,
     required this.onClose,
     required this.onRunGuidedAb,
     required this.onCopy,
@@ -114,21 +163,23 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
 
   final MediaPlaybackPerformanceDiagnosticsController controller;
   final bool isTv;
+  final ReadonlySignal<String?> feedbackMessage;
+  final ReadonlySignal<bool> feedbackIsError;
   final VoidCallback onClose;
   final VoidCallback onRunGuidedAb;
-  final ValueChanged<String> onCopy;
-  final ValueChanged<String> onShare;
+  final Future<void> Function(String) onCopy;
+  final Future<void> Function(String) onShare;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      left: false,
-      child: DecoratedBox(
-        key: const ValueKey<String>('performance-diagnostics-drawer'),
-        decoration: const BoxDecoration(
-          color: Color(0xF51A1A1C),
-          border: Border(left: BorderSide(color: Color(0x22FFFFFF))),
-        ),
+    return DecoratedBox(
+      key: const ValueKey<String>('performance-diagnostics-drawer'),
+      decoration: const BoxDecoration(
+        color: Color(0xF51A1A1C),
+        border: Border(left: BorderSide(color: Color(0x22FFFFFF))),
+      ),
+      child: SafeArea(
+        left: false,
         child: SignalBuilder(
           builder: (context) {
             final state = controller.state.value;
@@ -197,7 +248,7 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton.icon(
-                                onPressed: () => onCopy(report.toJson()),
+                                onPressed: () => unawaited(onCopy(report.toJson())),
                                 icon: const Icon(AppIcons.fileCopyLine),
                                 label: const Text('复制 JSON'),
                               ),
@@ -205,7 +256,8 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                             const SizedBox(width: 10),
                             Expanded(
                               child: FilledButton.icon(
-                                onPressed: () => onShare(report.toJson()),
+                                onPressed: () =>
+                                    unawaited(onShare(report.toJson())),
                                 icon: Icon(
                                   isTv
                                       ? AppIcons.fileCopyLine
@@ -216,6 +268,38 @@ class _PerformanceDiagnosticsDrawer extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (feedbackMessage.value case final String message) ...[
+                          const SizedBox(height: 12),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: feedbackIsError.value
+                                  ? const Color(0x33FF7B83)
+                                  : const Color(0x2669D8A3),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: feedbackIsError.value
+                                    ? const Color(0x66FF7B83)
+                                    : const Color(0x5569D8A3),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Text(
+                                message,
+                                style: TextStyle(
+                                  color: feedbackIsError.value
+                                      ? const Color(0xFFFFB4AB)
+                                      : const Color(0xFF9DF0C5),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -252,29 +336,14 @@ class _DiagnosticsStatus extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                state.status,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  height: 1.35,
-                ),
-              ),
-              if (state.errorCode case final code?) ...[
-                const SizedBox(height: 3),
-                Text(
-                  code,
-                  style: const TextStyle(
-                    color: Color(0x99FFFFFF),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
+          child: Text(
+            state.status,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
           ),
         ),
       ],
@@ -356,29 +425,16 @@ class _DiagnosticsEmptyReport extends StatelessWidget {
 class _DiagnosticsReportSummary extends StatelessWidget {
   const _DiagnosticsReportSummary({required this.report});
 
-  final VesperPerformanceDiagnosticsReport report;
+  final MediaPerformanceReport report;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _DiagnosticsSectionTitle('结论'),
+        const _DiagnosticsSectionTitle('采集概况'),
         const SizedBox(height: 10),
-        Text(
-          _diagnosisLabel(report.diagnosis.kind.rawValue),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        _DiagnosticsValueRow(
-          label: '置信度',
-          value: _confidenceLabel(report.diagnosis.confidence.rawValue),
-        ),
-        _DiagnosticsValueRow(label: '探针', value: report.probe.rawValue),
+        const _DiagnosticsValueRow(label: '帧探针', value: 'Flutter FrameTiming'),
         _DiagnosticsValueRow(
           label: '帧预算',
           value: '${report.frameBudgetMs.toStringAsFixed(2)} ms',
@@ -388,14 +444,10 @@ class _DiagnosticsReportSummary extends StatelessWidget {
           value: '${(report.durationMs / 1000).toStringAsFixed(1)} s',
         ),
         _DiagnosticsValueRow(
-          label: '接收 / 丢弃',
-          value: '${report.acceptedEvents} / ${report.droppedEvents}',
+          label: '过渡 / 排除帧',
+          value:
+              '${report.cohorts[MediaFrameGroup.transition]?.sampleCount ?? 0} / ${report.cohorts[MediaFrameGroup.excluded]?.sampleCount ?? 0}',
         ),
-        if (report.diagnosis.evidenceCodes.isNotEmpty)
-          _DiagnosticsValueRow(
-            label: '证据',
-            value: report.diagnosis.evidenceCodes.join(', '),
-          ),
       ],
     );
   }
@@ -404,12 +456,12 @@ class _DiagnosticsReportSummary extends StatelessWidget {
 class _DiagnosticsCohortTable extends StatelessWidget {
   const _DiagnosticsCohortTable({required this.report});
 
-  final VesperPerformanceDiagnosticsReport report;
+  final MediaPerformanceReport report;
 
   @override
   Widget build(BuildContext context) {
-    final off = report.cohorts['overlayInactive'];
-    final on = report.cohorts['overlayActive'];
+    final off = report.cohorts[MediaFrameGroup.overlayInactive];
+    final on = report.cohorts[MediaFrameGroup.overlayActive];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -418,6 +470,16 @@ class _DiagnosticsCohortTable extends StatelessWidget {
         _DiagnosticsCohortRow(label: '弹幕关闭', cohort: off),
         const Divider(height: 18, color: Color(0x18FFFFFF)),
         _DiagnosticsCohortRow(label: '弹幕开启', cohort: on),
+        const SizedBox(height: 8),
+        _DiagnosticsValueRow(
+          label: '开启后 Jank',
+          value: switch (report.overlayJankDeltaPoints) {
+            final delta? =>
+              '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(1)} 个百分点',
+            null =>
+              '等待开、关各 ${MediaPerformanceReport.minimumComparisonFrames} 帧',
+          },
+        ),
       ],
     );
   }
@@ -427,13 +489,13 @@ class _DiagnosticsCohortRow extends StatelessWidget {
   const _DiagnosticsCohortRow({required this.label, required this.cohort});
 
   final String label;
-  final VesperPerformanceFrameCohort? cohort;
+  final MediaFrameCohort? cohort;
 
   @override
   Widget build(BuildContext context) {
     final value = cohort;
     if (value == null) {
-      return Text(label, style: const TextStyle(color: Colors.white));
+      return Text('$label  暂无帧样本', style: const TextStyle(color: Colors.white));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,11 +511,13 @@ class _DiagnosticsCohortRow extends StatelessWidget {
         const SizedBox(height: 6),
         _DiagnosticsValueRow(
           label: 'Jank',
-          value: '${(value.jankRatio * 100).toStringAsFixed(1)}%',
+          value:
+              '${(value.jankCount * 100 / value.sampleCount).toStringAsFixed(1)}%',
         ),
         _DiagnosticsValueRow(
           label: '严重 Jank',
-          value: '${(value.severeJankRatio * 100).toStringAsFixed(1)}%',
+          value:
+              '${(value.severeJankCount * 100 / value.sampleCount).toStringAsFixed(1)}%',
         ),
         _DiagnosticsValueRow(
           label: 'P95',
@@ -467,26 +531,21 @@ class _DiagnosticsCohortRow extends StatelessWidget {
 class _DiagnosticsPlaybackSummary extends StatelessWidget {
   const _DiagnosticsPlaybackSummary({required this.report});
 
-  final VesperPerformanceDiagnosticsReport report;
+  final MediaPerformanceReport report;
 
   @override
   Widget build(BuildContext context) {
-    final playback = report.playback;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _DiagnosticsSectionTitle('播放压力'),
         const SizedBox(height: 10),
         _DiagnosticsValueRow(
-          label: '掉帧',
-          value: '${playback.droppedVideoFrames}',
-        ),
-        _DiagnosticsValueRow(
           label: '缓冲',
           value:
-              '${playback.bufferingCount} 次 / ${(playback.bufferingDurationMs / 1000).toStringAsFixed(2)} s',
+              '${report.bufferingCount} 次 / ${(report.bufferingDurationMs / 1000).toStringAsFixed(2)} s',
         ),
-        _DiagnosticsValueRow(label: 'Stall', value: '${playback.stallCount}'),
+        _DiagnosticsValueRow(label: 'Stall', value: '${report.stallCount}'),
       ],
     );
   }
@@ -544,20 +603,3 @@ class _DiagnosticsValueRow extends StatelessWidget {
     );
   }
 }
-
-String _diagnosisLabel(String rawValue) => switch (rawValue) {
-  'insufficientEvidence' => '样本不足',
-  'noSignificantPressure' => '未发现明显帧压力',
-  'overlayCorrelatedUiPressure' => '帧压力与 Overlay 活跃相关',
-  'hostUiPressureUncorrelated' => '存在 UI 帧压力，未发现 Overlay 相关性',
-  'playbackPressure' => '播放器侧存在播放压力',
-  'mixedPressure' => 'UI 与播放器侧均存在压力',
-  _ => rawValue,
-};
-
-String _confidenceLabel(String rawValue) => switch (rawValue) {
-  'low' => '低',
-  'medium' => '中',
-  'high' => '高',
-  _ => rawValue,
-};

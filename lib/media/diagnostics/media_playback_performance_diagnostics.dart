@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:signals/signals.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../danmaku/media_danmaku_overlay.dart';
+
+part 'media_host_performance_run.dart';
 
 // Public named parameters intentionally initialize private implementation state.
 // ignore_for_file: prefer_initializing_formals
@@ -42,7 +49,7 @@ final class MediaPerformanceDiagnosticsViewState {
   final bool? expectedOverlayActive;
   final String status;
   final String? errorCode;
-  final VesperPerformanceDiagnosticsReport? report;
+  final MediaPerformanceReport? report;
 
   bool get busy =>
       phase == MediaPerformanceDiagnosticsPhase.starting ||
@@ -74,32 +81,28 @@ final class MediaPerformanceDiagnosticsViewState {
           : errorCode as String?,
       report: identical(report, _unchanged)
           ? this.report
-          : report as VesperPerformanceDiagnosticsReport?,
+          : report as MediaPerformanceReport?,
     );
   }
 }
 
 abstract interface class MediaPerformanceDiagnosticsRun {
-  String get runId;
-
-  Future<void> updateOverlayState(VesperPerformanceOverlayState state);
+  Future<void> updateOverlayState(MediaPerformanceOverlayState state);
 
   Future<void> recordMarker(
     String name, {
-    double? value,
     int? sequenceIndex,
     bool? expectedOverlayActive,
   });
 
-  Future<VesperPerformanceDiagnosticsReport> snapshot();
+  Future<MediaPerformanceReport> snapshot();
 
-  Future<VesperPerformanceDiagnosticsReport> stop();
+  Future<MediaPerformanceReport> stop();
 }
 
 typedef MediaPerformanceDiagnosticsRunFactory =
     Future<MediaPerformanceDiagnosticsRun> Function(
       VesperPlayerController controller,
-      VesperPerformanceDiagnosticsConfiguration configuration,
     );
 
 typedef MediaDiagnosticsDelay = Future<void> Function(Duration duration);
@@ -115,7 +118,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     Duration transitionDuration = const Duration(seconds: 1),
     Duration cohortDuration = const Duration(seconds: 12),
   }) : _onDanmakuEnabledOverride = onDanmakuEnabledOverride,
-       _runFactory = runFactory ?? _startVesperDiagnosticsRun,
+       _runFactory = runFactory ?? _startHostRun,
        _delay = delay ?? Future<void>.delayed,
        _snapshotInterval = snapshotInterval,
        _readinessTimeout = readinessTimeout,
@@ -146,7 +149,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   VesperPlayerSnapshot? _latestPlaybackSnapshot;
   MediaPerformanceDiagnosticsRun? _run;
   Future<void>? _startFuture;
-  Future<VesperPerformanceDiagnosticsReport?>? _stopFuture;
+  Future<MediaPerformanceReport?>? _stopFuture;
   Timer? _snapshotTimer;
   Future<void>? _snapshotFuture;
   bool _drawerVisible = false;
@@ -154,8 +157,8 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   int _attachmentGeneration = 0;
   int _runGeneration = 0;
   int _guideGeneration = 0;
-  VesperPerformanceSampleClass _guidedSampleClass =
-      VesperPerformanceSampleClass.steady;
+  MediaPerformanceSampleClass _guidedSampleClass =
+      MediaPerformanceSampleClass.steady;
   bool? _guidedExpectedOverlayActive;
   MediaDanmakuOverlayMetrics _latestOverlayMetrics =
       const MediaDanmakuOverlayMetrics(
@@ -196,7 +199,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     }
     final controller = _controller;
     if (!mediaPerformanceDiagnosticsAvailable || controller == null) {
-      _fail('artifactUnavailable');
+      _fail('playerUnavailable');
       return Future<void>.value();
     }
 
@@ -221,13 +224,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     int generation,
   ) async {
     try {
-      final run = await _runFactory(
-        controller,
-        const VesperPerformanceDiagnosticsConfiguration(
-          includeRawEvents: false,
-          maxRawEvents: 256,
-        ),
-      );
+      final run = await _runFactory(controller);
       if (_disposed ||
           generation != _runGeneration ||
           !identical(_controller, controller)) {
@@ -243,16 +240,16 @@ final class MediaPlaybackPerformanceDiagnosticsController {
       _scheduleSnapshots();
       _queueOverlayUpdate();
       await refreshSnapshot();
-    } catch (error) {
+    } catch (_) {
       if (!_disposed &&
           generation == _runGeneration &&
           identical(_controller, controller)) {
-        _fail(_diagnosticsErrorCode(error));
+        _fail('internalFailure');
       }
     }
   }
 
-  Future<VesperPerformanceDiagnosticsReport?> stop() {
+  Future<MediaPerformanceReport?> stop() {
     final pending = _stopFuture;
     if (pending != null) {
       return pending;
@@ -262,9 +259,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     _snapshotTimer?.cancel();
     _snapshotTimer = null;
     if (_startFuture == null && _run == null) {
-      return Future<VesperPerformanceDiagnosticsReport?>.value(
-        _state.value.report,
-      );
+      return Future<MediaPerformanceReport?>.value(_state.value.report);
     }
     _publish(
       phase: MediaPerformanceDiagnosticsPhase.stopping,
@@ -280,7 +275,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     });
   }
 
-  Future<VesperPerformanceDiagnosticsReport?> _stopOnce() async {
+  Future<MediaPerformanceReport?> _stopOnce() async {
     final pendingStart = _startFuture;
     if (pendingStart != null) {
       try {
@@ -327,11 +322,11 @@ final class MediaPlaybackPerformanceDiagnosticsController {
         report: report,
       );
       return report;
-    } catch (error) {
+    } catch (_) {
       if (identical(_run, run)) {
         _run = null;
       }
-      _fail(_diagnosticsErrorCode(error));
+      _fail('internalFailure');
       return null;
     }
   }
@@ -363,12 +358,9 @@ final class MediaPlaybackPerformanceDiagnosticsController {
       if (!_disposed && identical(_run, run)) {
         _publish(report: report, errorCode: null);
       }
-    } catch (error) {
+    } catch (_) {
       if (!_disposed && identical(_run, run)) {
-        _publish(
-          status: '实时快照暂不可用，采集仍在继续',
-          errorCode: _diagnosticsErrorCode(error),
-        );
+        _publish(status: '实时快照暂不可用，采集仍在继续', errorCode: 'internalFailure');
       }
     }
   }
@@ -386,7 +378,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     }
 
     final generation = ++_guideGeneration;
-    _guidedSampleClass = VesperPerformanceSampleClass.excluded;
+    _guidedSampleClass = MediaPerformanceSampleClass.excluded;
     _guidedExpectedOverlayActive = null;
     _publish(
       phase: MediaPerformanceDiagnosticsPhase.waitingForPlayback,
@@ -425,7 +417,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
         _ensureGuideActive(generation);
         final enabled = sequence[index];
         _guidedExpectedOverlayActive = enabled;
-        _guidedSampleClass = VesperPerformanceSampleClass.transition;
+        _guidedSampleClass = MediaPerformanceSampleClass.transition;
         _onDanmakuEnabledOverride(enabled);
         _publish(
           phase: MediaPerformanceDiagnosticsPhase.sampling,
@@ -445,7 +437,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
             ? _cohortDuration
             : _transitionDuration;
         await _waitGuideDuration(transition, generation);
-        _guidedSampleClass = VesperPerformanceSampleClass.steady;
+        _guidedSampleClass = MediaPerformanceSampleClass.steady;
         _queueOverlayUpdate();
         await _waitGuideDuration(_cohortDuration - transition, generation);
       }
@@ -463,7 +455,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
       await stop();
     } on _GuidedCollectionCancelled {
       // Cancellation restores the in-memory override synchronously.
-    } catch (error) {
+    } catch (_) {
       _restoreDanmakuOverride();
       if (!_disposed && identical(_run, run)) {
         _publish(
@@ -472,7 +464,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
           guidedSegmentIndex: null,
           expectedOverlayActive: null,
           status: 'A/B 采集已中止',
-          errorCode: _diagnosticsErrorCode(error),
+          errorCode: 'internalFailure',
         );
       }
     }
@@ -534,7 +526,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
       try {
         await pendingStop;
       } catch (_) {
-        // Page disposal is best-effort; the SDK controller also owns cleanup.
+        // Other page resources still need disposal if the run failed to stop.
       }
     } else {
       final pendingStart = _startFuture;
@@ -542,7 +534,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
         try {
           await pendingStart;
         } catch (_) {
-          // A failed start has no native run left to release.
+          // A failed start has no active run to release.
         }
       }
       final pendingSnapshot = _snapshotFuture;
@@ -560,7 +552,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
           await _runCommandTail;
           await run.stop();
         } catch (_) {
-          // Page disposal is best-effort; the SDK controller also owns cleanup.
+          // Other page resources still need disposal if the run failed to stop.
         }
       }
     }
@@ -625,7 +617,7 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   }
 
   void _restoreDanmakuOverride() {
-    _guidedSampleClass = VesperPerformanceSampleClass.steady;
+    _guidedSampleClass = MediaPerformanceSampleClass.steady;
     _guidedExpectedOverlayActive = null;
     _onDanmakuEnabledOverride(null);
     _queueOverlayUpdate();
@@ -638,31 +630,24 @@ final class MediaPlaybackPerformanceDiagnosticsController {
     }
     final metrics = _latestOverlayMetrics;
     final expectedActive = _guidedExpectedOverlayActive;
-    final state = VesperPerformanceOverlayState(
+    final MediaPerformanceOverlayState state = (
       active: expectedActive ?? metrics.active,
       sampleClass: _drawerVisible
-          ? VesperPerformanceSampleClass.excluded
+          ? MediaPerformanceSampleClass.excluded
           : _guidedSampleClass,
-      loadedBasicItemCount: metrics.loadedBasicItemCount,
-      loadedAdvancedItemCount: metrics.loadedAdvancedItemCount,
-      advancedEffectsActive:
-          (expectedActive ?? metrics.active) && metrics.advancedEffectsActive,
     );
     unawaited(_submitOverlayUpdate(run, state));
   }
 
   Future<void> _submitOverlayUpdate(
     MediaPerformanceDiagnosticsRun run,
-    VesperPerformanceOverlayState state,
+    MediaPerformanceOverlayState state,
   ) async {
     try {
       await _enqueueRunCommand(run, () => run.updateOverlayState(state));
-    } catch (error) {
+    } catch (_) {
       if (!_disposed && identical(_run, run)) {
-        _publish(
-          status: '弹幕状态样本暂未提交，帧采集仍在继续',
-          errorCode: _diagnosticsErrorCode(error),
-        );
+        _publish(status: '弹幕状态样本暂未提交，帧采集仍在继续', errorCode: 'internalFailure');
       }
     }
   }
@@ -670,7 +655,6 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   Future<void> _recordMarker(
     MediaPerformanceDiagnosticsRun run,
     String name, {
-    double? value,
     int? sequenceIndex,
     bool? expectedOverlayActive,
   }) {
@@ -678,7 +662,6 @@ final class MediaPlaybackPerformanceDiagnosticsController {
       run,
       () => run.recordMarker(
         name,
-        value: value,
         sequenceIndex: sequenceIndex,
         expectedOverlayActive: expectedOverlayActive,
       ),
@@ -690,12 +673,9 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   ) async {
     try {
       await _recordMarker(run, 'guided_sequence_cancelled');
-    } catch (error) {
+    } catch (_) {
       if (!_disposed && identical(_run, run)) {
-        _publish(
-          status: 'A/B 取消标记未写入，诊断会话仍在运行',
-          errorCode: _diagnosticsErrorCode(error),
-        );
+        _publish(status: 'A/B 取消标记未写入，诊断会话仍在运行', errorCode: 'internalFailure');
       }
     }
   }
@@ -773,64 +753,12 @@ final class MediaPlaybackPerformanceDiagnosticsController {
   }
 }
 
-final class _VesperPerformanceDiagnosticsRun
-    implements MediaPerformanceDiagnosticsRun {
-  const _VesperPerformanceDiagnosticsRun(this.session);
-
-  final VesperPerformanceDiagnosticsSession session;
-
-  @override
-  String get runId => session.runId;
-
-  @override
-  Future<void> updateOverlayState(VesperPerformanceOverlayState state) =>
-      session.updateOverlayState(state);
-
-  @override
-  Future<void> recordMarker(
-    String name, {
-    double? value,
-    int? sequenceIndex,
-    bool? expectedOverlayActive,
-  }) => session.recordMarker(
-    name,
-    value: value,
-    sequenceIndex: sequenceIndex,
-    expectedOverlayActive: expectedOverlayActive,
-  );
-
-  @override
-  Future<VesperPerformanceDiagnosticsReport> snapshot() => session.snapshot();
-
-  @override
-  Future<VesperPerformanceDiagnosticsReport> stop() => session.stop();
-}
-
-Future<MediaPerformanceDiagnosticsRun> _startVesperDiagnosticsRun(
-  VesperPlayerController controller,
-  VesperPerformanceDiagnosticsConfiguration configuration,
-) async {
-  final session = await controller.startPerformanceDiagnostics(
-    configuration: configuration,
-  );
-  return _VesperPerformanceDiagnosticsRun(session);
-}
-
-String _diagnosticsErrorCode(Object error) {
-  if (error is VesperPerformanceDiagnosticsException) {
-    return error.code;
-  }
-  return 'internalFailure';
-}
+Future<MediaPerformanceDiagnosticsRun> _startHostRun(
+  VesperPlayerController player,
+) async => _HostPerformanceRun(player);
 
 String _diagnosticsErrorMessage(String code) => switch (code) {
-  'alreadyActive' => '当前播放器已有诊断任务',
-  'artifactUnavailable' => '当前构建未包含原生诊断插件',
-  'probeUnavailable' => '当前设备无法启用帧探针',
-  'invalidConfiguration' => '诊断配置无效',
-  'controllerDisposed' => '播放器会话已经结束',
-  'protocolViolation' => '诊断插件返回了不兼容的数据',
-  'readinessTimeout' => '等待播放或弹幕加载超时',
+  'playerUnavailable' => '播放器尚未就绪',
   _ => '诊断任务发生内部错误',
 };
 

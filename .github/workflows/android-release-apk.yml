@@ -131,6 +131,9 @@ jobs:
         if: always()
         run: rm -f "${RUNNER_TEMP}/vesper-android-release.p12"
 
+      - name: Verify packaged Vesper plugin digests
+        run: python3 scripts/verify_android_plugin_registry.py build/app/outputs/flutter-apk/app-release.apk
+
       - name: Verify release excludes performance diagnostics
         run: >-
           bash scripts/verify_performance_diagnostics_excluded.sh

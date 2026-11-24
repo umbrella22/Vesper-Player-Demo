@@ -273,18 +273,18 @@ packages:
     dependency: transitive
     description:
       name: jni
-      sha256: "2e91e6087291affd10b31b6c872f3e3ac7dc5d93b51b5ba485d930c8f08bde6c"
+      sha256: "19764f78f6b9e0d40f6395b04649d1046eb57f5ccf05afce50cc63e5a82777b0"
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.2"
+    version: "1.2.1"
   jni_flutter:
     dependency: transitive
     description:
       name: jni_flutter
-      sha256: "0dd33d67797560f66e961a6053882d4df54bd345bf063b8fe7ea133f7ad8b191"
+      sha256: "586594ad345b403bda8a794b0b8a9e34298238b86c2a7d7f15160b092fe9ef3d"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.4+1"
+    version: "1.1.0"
   jni_util:
     dependency: transitive
     description:
@@ -329,10 +329,10 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: dd6679e2df3fd30af08b50a0844c2f5f32f144032d64c82ebaf3ffc7b7ebba23
+      sha256: ce7e1a23731a5e697acc5ce82b3badf4bedcd7c298972d2856946a701e0245bd
       url: "https://pub.dev"
     source: hosted
-    version: "1.18.0"
+    version: "1.20.0"
   listen:
     dependency: transitive
     description:
@@ -694,66 +694,66 @@ packages:
     dependency: "direct main"
     description:
       name: vesper_player
-      sha256: "4d09073ed6edafa1f9c7c29832c56105873627470a89c686fa286510728fb57d"
+      sha256: "29cd7ecf88cd43edc255114b48ab505f4d2e81d142950f2881ddc2b1388b9a75"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_android:
     dependency: transitive
     description:
       name: vesper_player_android
-      sha256: "59a64abf6100f60cd5a5cab7521584cf9fda66223aeece4a571130e7e192df5e"
+      sha256: eb52029733c508994f84709aded00c50098b149fd5337bc057deb80f5e0a6334
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_external_playback:
     dependency: "direct main"
     description:
       name: vesper_player_external_playback
-      sha256: "4a25e9c608778dc36d1cd9845cbcb20e142436cdc15836981104fb6cfa58781d"
+      sha256: "18d5ffcfa156d7e2206b80e1afcdbf364decb3675a03309b8a9b76e88ddc37bc"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_ios:
     dependency: transitive
     description:
       name: vesper_player_ios
-      sha256: "80d80bfdf9ddc454854a12c708d3967de42951f3351d27f0d15ebf93f158fdba"
+      sha256: "88c916b6ba05a71f0af92479c7d63a8c506c49592e8282b629863f921e3d74d0"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_platform_interface:
     dependency: transitive
     description:
       name: vesper_player_platform_interface
-      sha256: "5b8cb0c743dd022664ad39aea94ec2b3c69f1c1b3ca439aa315978f48a8e5e90"
+      sha256: d3b52bb3c3b9c6eb85561876c263204cd0891a956fe51ea4f1a6d41c191e15e7
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_remux_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_remux_ffmpeg
-      sha256: "2dcdbe3565b4ecf7140115a8769311451c256890c96e0909348fbcade3ab20bb"
+      sha256: e03ecdfe1c2af50eb988f5febfbfae897607b88706763efd0e1c3d98efdc1c25
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_source_normalizer_ffmpeg:
     dependency: "direct main"
     description:
       name: vesper_player_source_normalizer_ffmpeg
-      sha256: "1aba8d139611c424e08816265c6782302c061570019d0b4b0bdb451c36030142"
+      sha256: "073891a78d6b8815cc5b2a3ef3c07393669db4ff8868819e46ba9b67c44ef05d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vesper_player_ui:
     dependency: "direct main"
     description:
       name: vesper_player_ui
-      sha256: d25a8f581418245194d80334e04737bd42538c3ce19067d57cee6a5d7266e2f8
+      sha256: "9f6ce4e1927a41b13d45449245d7e4330c4babb02a48513776889077cf558530"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.11.0"
   vm_service:
     dependency: transitive
     description:

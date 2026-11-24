@@ -92,6 +92,11 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // The SDK registry verifies the SHA-256 of these published AAR entries.
+            keepDebugSymbols += setOf(
+                "**/libvesper_source_normalizer_ffmpeg.so",
+                "**/libvesper_remux_ffmpeg.so",
+            )
             excludes += excludedAndroidAbiPatterns
         }
     }
@@ -123,11 +128,5 @@ flutter {
 }
 
 dependencies {
-    val coreKtx = "androidx.core:core-ktx:1.19.1"
-    val performanceDiagnostics =
-        "io.github.umbrella22.vesper:vesper-player-kit-performance-diagnostics:0.9.1"
-
-    implementation(coreKtx)
-    debugImplementation(performanceDiagnostics)
-    add("profileImplementation", performanceDiagnostics)
+    implementation("androidx.core:core-ktx:1.19.1")
 }

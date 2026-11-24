@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +42,7 @@ void main() {
   }
 
   MediaPlaybackPerformanceDiagnosticsController createDiagnostics({
-    required MediaPerformanceDiagnosticsRunFactory runFactory,
+    MediaPerformanceDiagnosticsRunFactory? runFactory,
     required ValueChanged<bool?> onOverride,
     MediaDiagnosticsDelay? delay,
     Duration readinessTimeout = const Duration(seconds: 10),
@@ -62,6 +64,75 @@ void main() {
     return controller;
   }
 
+  test(
+    'host report counts frame timings and Vesper playback observations',
+    () async {
+      platform.initialSnapshot = platform.initialSnapshot.copyWith(
+        isBuffering: true,
+        playbackDiagnostics: const VesperPlaybackDiagnosticsSnapshot(
+          playbackEpoch: 1,
+        ),
+      );
+      final player = await createPlayer();
+      final diagnostics = createDiagnostics(onOverride: (_) {})..attach(player);
+      await diagnostics.start();
+      final dispatcher = ui.PlatformDispatcher.instance;
+      final firstFrame = dispatcher.frameData.frameNumber + 1;
+      ui.FrameTiming timing(int frame, int loadUs) => ui.FrameTiming(
+        frameNumber: frame,
+        vsyncStart: 0,
+        buildStart: 0,
+        buildFinish: 100,
+        rasterStart: 100,
+        rasterFinish: 100 + loadUs,
+        rasterFinishWallTime: 100 + loadUs,
+      );
+      final budgetUs = (diagnostics.state.value.report!.frameBudgetMs * 1000)
+          .ceil();
+      dispatcher.onReportTimings!([
+        timing(firstFrame - 1, 10), // Delivered late from before collection.
+        timing(firstFrame, budgetUs + 1),
+      ]);
+      diagnostics.setDrawerVisible(true);
+      await Future<void>.delayed(Duration.zero);
+      dispatcher.onReportTimings!([timing(firstFrame + 1, budgetUs * 3)]);
+      platform._events.add(
+        VesperPlayerSnapshotEvent(
+          playerId: player.playerId,
+          snapshot: player.snapshot.copyWith(isBuffering: false),
+        ),
+      );
+      platform._events.add(
+        VesperPlayerWarningEvent(
+          playerId: player.playerId,
+          warning: const VesperRuntimeWarning.playback(
+            VesperPlaybackStallObservation(
+              playbackEpoch: 1,
+              kind: VesperPlaybackStallKind.bufferingTimeout,
+              stalledForMs: 1000,
+              elapsedSinceLoadStartMs: 3000,
+              mediaPositionMs: 2000,
+              audio: VesperAudioPlaybackDiagnostics(),
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final report = (await diagnostics.stop())!;
+      final steady = report.cohorts[MediaFrameGroup.overlayInactive]!;
+      expect(steady.sampleCount, 1);
+      expect(steady.jankCount, 1);
+      expect(steady.severeJankCount, 0);
+      expect(steady.p95LoadMs, (budgetUs + 1) / 1000);
+      expect(report.cohorts[MediaFrameGroup.excluded]!.severeJankCount, 1);
+      expect(report.bufferingCount, 1);
+      expect(report.stallCount, 1);
+      final wire = jsonDecode(report.toJson()) as Map<String, dynamic>;
+      expect(wire['schema'], 'vesper_media.host_performance.v1');
+      expect(wire['playback'], isNot(contains('droppedVideoFrames')));
+    },
+  );
+
   test('concurrent start requests create one diagnostics run', () async {
     final player = await createPlayer();
     final gate = Completer<void>();
@@ -69,7 +140,7 @@ void main() {
     var factoryCalls = 0;
     final diagnostics = createDiagnostics(
       onOverride: (_) {},
-      runFactory: (_, _) async {
+      runFactory: (_) async {
         factoryCalls += 1;
         await gate.future;
         return run;
@@ -94,7 +165,7 @@ void main() {
     final run = _FakeDiagnosticsRun();
     final diagnostics = createDiagnostics(
       onOverride: (_) {},
-      runFactory: (_, _) async {
+      runFactory: (_) async {
         await gate.future;
         return run;
       },
@@ -128,7 +199,7 @@ void main() {
       final run = _FakeDiagnosticsRun();
       final diagnostics = createDiagnostics(
         onOverride: (_) {},
-        runFactory: (_, _) async {
+        runFactory: (_) async {
           await gate.future;
           return run;
         },
@@ -152,7 +223,7 @@ void main() {
       final run = _FakeDiagnosticsRun();
       final diagnostics = createDiagnostics(
         onOverride: (_) {},
-        runFactory: (_, _) async => run,
+        runFactory: (_) async => run,
       )..attach(firstPlayer);
       await diagnostics.start();
 
@@ -171,7 +242,7 @@ void main() {
       final run = _FakeDiagnosticsRun();
       final diagnostics = createDiagnostics(
         onOverride: (_) {},
-        runFactory: (_, _) async => run,
+        runFactory: (_) async => run,
       )..attach(player);
       await diagnostics.start();
       expect(run.snapshotCount, 1);
@@ -206,7 +277,7 @@ void main() {
       final delays = <Duration>[];
       final diagnostics = createDiagnostics(
         onOverride: overrides.add,
-        runFactory: (_, _) async => run,
+        runFactory: (_) async => run,
         delay: (duration) async {
           delays.add(duration);
         },
@@ -239,11 +310,10 @@ void main() {
         run.overlayStates
             .where(
               (state) =>
-                  state.sampleClass ==
-                      VesperPerformanceSampleClass.transition ||
-                  state.sampleClass == VesperPerformanceSampleClass.steady,
+                  state.sampleClass == MediaPerformanceSampleClass.transition ||
+                  state.sampleClass == MediaPerformanceSampleClass.steady,
             )
-            .map((state) => '${state.sampleClass.rawValue}:${state.active}'),
+            .map((state) => '${state.sampleClass.name}:${state.active}'),
         containsAllInOrder(<String>[
           'transition:false',
           'steady:false',
@@ -271,7 +341,7 @@ void main() {
     final overrides = <bool?>[];
     final diagnostics = createDiagnostics(
       onOverride: overrides.add,
-      runFactory: (_, _) async => run,
+      runFactory: (_) async => run,
       readinessTimeout: Duration.zero,
     )..attach(player);
 
@@ -293,7 +363,7 @@ void main() {
     var delayCalls = 0;
     final diagnostics = createDiagnostics(
       onOverride: overrides.add,
-      runFactory: (_, _) async => run,
+      runFactory: (_) async => run,
       delay: (_) {
         delayCalls += 1;
         if (delayCalls == 1) {
@@ -338,31 +408,34 @@ void main() {
 }
 
 final class _FakeDiagnosticsRun implements MediaPerformanceDiagnosticsRun {
-  _FakeDiagnosticsRun() : report = _report('app-run');
-
-  final VesperPerformanceDiagnosticsReport report;
+  final report = const MediaPerformanceReport(
+    runId: 'app-run',
+    durationMs: 0,
+    frameBudgetMs: 16.67,
+    cohorts: {},
+    bufferingCount: 0,
+    bufferingDurationMs: 0,
+    stallCount: 0,
+    markers: [],
+  );
   final List<String> operations = <String>[];
   final List<String> markers = <String>[];
-  final List<VesperPerformanceOverlayState> overlayStates =
-      <VesperPerformanceOverlayState>[];
+  final List<MediaPerformanceOverlayState> overlayStates =
+      <MediaPerformanceOverlayState>[];
   Completer<void>? snapshotGate;
   Completer<void>? cancellationMarkerGate;
   int snapshotCount = 0;
   int stopCount = 0;
 
   @override
-  String get runId => report.runId;
-
-  @override
-  Future<void> updateOverlayState(VesperPerformanceOverlayState state) async {
+  Future<void> updateOverlayState(MediaPerformanceOverlayState state) async {
     overlayStates.add(state);
-    operations.add('overlay:${state.sampleClass.rawValue}:${state.active}');
+    operations.add('overlay:${state.sampleClass.name}:${state.active}');
   }
 
   @override
   Future<void> recordMarker(
     String name, {
-    double? value,
     int? sequenceIndex,
     bool? expectedOverlayActive,
   }) async {
@@ -377,7 +450,7 @@ final class _FakeDiagnosticsRun implements MediaPerformanceDiagnosticsRun {
   }
 
   @override
-  Future<VesperPerformanceDiagnosticsReport> snapshot() async {
+  Future<MediaPerformanceReport> snapshot() async {
     snapshotCount += 1;
     operations.add('snapshot');
     await snapshotGate?.future;
@@ -385,7 +458,7 @@ final class _FakeDiagnosticsRun implements MediaPerformanceDiagnosticsRun {
   }
 
   @override
-  Future<VesperPerformanceDiagnosticsReport> stop() async {
+  Future<MediaPerformanceReport> stop() async {
     stopCount += 1;
     operations.add('stop');
     return report;
@@ -420,8 +493,6 @@ final class _DiagnosticsPlayerPlatform extends VesperPlayerPlatform {
         const VesperFrameProcessorConfiguration(),
     VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
         const VesperNativeFramePipelineConfiguration(),
-    VesperPipelineEventHookConfiguration pipelineEventHookConfiguration =
-        const VesperPipelineEventHookConfiguration(),
   }) async => VesperPlatformCreateResult(
     playerId: 'app-diagnostics-player-${++_nextPlayerId}',
     snapshot: initialSnapshot,
@@ -438,61 +509,3 @@ final class _DiagnosticsPlayerPlatform extends VesperPlayerPlatform {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-VesperPerformanceDiagnosticsReport _report(String runId) =>
-    VesperPerformanceDiagnosticsReport.fromMap(<Object?, Object?>{
-      'schemaVersion': 1,
-      'runId': runId,
-      'sessionId': 'app-session',
-      'platform': 'test',
-      'probe': 'flutterFrameTiming',
-      'durationNs': 1,
-      'frameBudgetNs': 16666667,
-      'cohorts': <String, Object?>{
-        for (final name in <String>[
-          'overlayInactive',
-          'overlayActive',
-          'transition',
-          'excluded',
-        ])
-          name: <String, Object?>{
-            'sampleCount': 0,
-            'jankCount': 0,
-            'severeJankCount': 0,
-            'jankRatio': 0.0,
-            'severeJankRatio': 0.0,
-            'minLoadNs': 0,
-            'p50LoadNs': 0,
-            'p95LoadNs': 0,
-            'maxLoadNs': 0,
-          },
-      },
-      'playback': <String, Object?>{
-        'activeDurationNs': 0,
-        'droppedVideoFrames': 0,
-        'bufferingCount': 0,
-        'bufferingDurationNs': 0,
-        'stallCount': 0,
-      },
-      'diagnosis': <String, Object?>{
-        'kind': 'insufficientEvidence',
-        'confidence': 'low',
-        'evidenceCodes': <String>['steady_cohorts_below_120'],
-      },
-      'acceptedEvents': 0,
-      'droppedEvents': 0,
-      'rawEventsDropped': 0,
-      'diagnostics': <Object?>[
-        <String, Object?>{
-          'code': 'performance.diagnosis',
-          'severity': 'warning',
-          'message': 'Correlation only.',
-          'attributes': <String, String>{
-            'kind': 'insufficientEvidence',
-            'confidence': 'low',
-            'evidenceCodes': 'steady_cohorts_below_120',
-          },
-        },
-      ],
-      'rawEvents': <Object?>[],
-    });
