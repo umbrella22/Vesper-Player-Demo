@@ -7,6 +7,7 @@ import 'package:vesper_media/common/storage/application_storage.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../../bili/common/models/bili_models.dart';
+import '../../bili/common/services/bili_api_core.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_download_asset_id.dart';
 import '../models/offline_download_models.dart';
@@ -60,6 +61,8 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   List<VesperPluginReference> _postDownloadPluginReferences =
       const <VesperPluginReference>[];
   final Map<int, String> _lastTaskLogFingerprints = <int, String>{};
+  final _pendingEnqueues =
+      <String, ({int revision, Future<BiliOfflineDownloadEntry> operation})>{};
   Future<void>? _initializing;
   Future<void> _metadataWriteChain = Future<void>.value();
   Timer? _metadataPersistDebounce;
@@ -141,6 +144,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     _ensureAuthenticatedForOfflineCache(
       fallbackMessage: '请先登录 Bilibili 后再使用离线缓存。',
     );
+    final revision = _client.sessionRevision;
     await initialize();
     final manager = _manager;
     final cacheRoot = _cacheRoot;
@@ -156,7 +160,9 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     // collection enqueue does not re-fetch the DASH manifest and re-probe
     // every media URL per episode. Fall back to a fresh resolve otherwise.
     final BiliDownloadOptions resolvedOptions;
-    if (options != null && options.cid == page.cid) {
+    if (options != null &&
+        options.cid == page.cid &&
+        options.bvid == (page.bvid ?? detail.bvid)) {
       resolvedOptions = options;
     } else {
       resolvedOptions = await _client.resolveDownloadOptions(
@@ -169,43 +175,103 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       qualityId: qualityId,
       codecPreference: codecPreference,
     );
-    final existing = _metadataByAssetId[preview.assetId];
+    final assetId = preview.assetId;
+    final pending = _pendingEnqueues[assetId];
+    if (pending != null) {
+      if (pending.revision != revision) {
+        throw const BiliOfflineDownloadException('上一次缓存操作尚未完成，请稍后重试。');
+      }
+      return pending.operation;
+    }
+    final operation =
+        _enqueuePreparedPage(
+          detail: detail,
+          page: page,
+          qualityId: qualityId,
+          codecPreference: codecPreference,
+          options: resolvedOptions,
+          assetId: assetId,
+          manager: manager,
+          cacheRoot: cacheRoot,
+          sessionRevision: revision,
+        ).whenComplete(() {
+          _pendingEnqueues.remove(assetId);
+        });
+    _pendingEnqueues[assetId] = (revision: revision, operation: operation);
+    return operation;
+  }
+
+  Future<BiliOfflineDownloadEntry> _enqueuePreparedPage({
+    required BiliVideoDetail detail,
+    required BiliVideoPageEntry page,
+    required int qualityId,
+    required BiliVideoCodecPreference codecPreference,
+    required BiliDownloadOptions options,
+    required String assetId,
+    required BiliDownloadManagerHost manager,
+    required Directory cacheRoot,
+    required int sessionRevision,
+  }) async {
+    void checkSession() {
+      if (_disposed ||
+          sessionRevision != _client.sessionRevision ||
+          !_client.hasAuthenticatedSession) {
+        throw const BiliOfflineDownloadException('账号状态已变更，请重新选择缓存。');
+      }
+    }
+
+    checkSession();
+    final existing = _metadataByAssetId[assetId];
     final existingTask = existing == null
         ? null
         : _taskForMetadata(existing, manager.snapshot.tasks);
-    if (existing != null &&
-        (existing.errorMessage == null || existing.errorMessage!.isEmpty) &&
-        existingTask != null &&
-        existingTask.state != VesperDownloadState.failed &&
-        existingTask.state != VesperDownloadState.removed) {
-      if (existingTask.state == VesperDownloadState.paused) {
-        await manager.resumeTask(existingTask.taskId);
-      } else if (existingTask.state == VesperDownloadState.queued) {
-        await manager.startTask(existingTask.taskId);
-      }
-      return BiliOfflineDownloadEntry(metadata: existing, task: existingTask);
+    if (existingTask != null && existingTask.assetId != assetId) {
+      throw const BiliOfflineDownloadException('缓存任务与记录不匹配，请先检查失效缓存。');
     }
-
-    if (existingTask != null) {
-      // 与 remove()/removeEntry() 一致：SDK 任务存在但删除失败时不能继续
-      // 对同一 asset 重建任务——旧任务可能仍在运行或占用输出。
-      final removed = await manager.removeTask(existingTask.taskId);
-      if (!removed) {
-        throw const BiliOfflineDownloadException('缓存任务删除失败，请稍后重试。');
+    if (existing != null && (existing.errorMessage?.isEmpty ?? true)) {
+      final entry = BiliOfflineDownloadEntry(
+        metadata: existing,
+        task: existingTask,
+      );
+      if (entry.isCompleted) {
+        if (await resolvePlayableCachePath(entry) != null) return entry;
+      } else if (existingTask != null &&
+          existingTask.state != VesperDownloadState.failed &&
+          existingTask.state != VesperDownloadState.removed) {
+        if (existingTask.state == VesperDownloadState.paused &&
+            !await manager.resumeTask(existingTask.taskId)) {
+          throw const BiliOfflineDownloadException('继续缓存任务失败。');
+        }
+        if (existingTask.state == VesperDownloadState.queued &&
+            !await manager.startTask(existingTask.taskId)) {
+          throw const BiliOfflineDownloadException('启动缓存任务失败。');
+        }
+        checkSession();
+        return entry;
       }
-    } else {
-      await _deleteAssetDirectory(cacheRoot, preview.assetId);
     }
-
-    final assetDirectory = Directory(
-      '${cacheRoot.path}/assets/${preview.assetId}',
-    );
+    checkSession();
+    final assetDirectory = Directory('${cacheRoot.path}/assets/$assetId');
     final prepared = await _client.prepareVerifiedDownloadAsset(
-      options: resolvedOptions,
+      options: options,
       qualityId: qualityId,
       codecPreference: codecPreference,
       targetDirectory: assetDirectory.path,
     );
+    if (prepared.assetId != assetId) {
+      throw const BiliOfflineDownloadException('缓存音视频轨道已变更，请重新选择。');
+    }
+    await _checkSpaceForRemux(prepared.assetIndex.totalSizeBytes);
+    checkSession();
+    // A failed preflight must leave the previous task and its files intact.
+    if (existingTask != null) {
+      if (!await manager.removeTask(existingTask.taskId)) {
+        throw const BiliOfflineDownloadException('缓存任务删除失败，请稍后重试。');
+      }
+    } else {
+      await _deleteAssetDirectory(cacheRoot, assetId);
+    }
+    checkSession();
     _logPreparedAsset(prepared);
     final metadata = BiliOfflineDownloadMetadata(
       assetId: prepared.assetId,
@@ -228,6 +294,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
 
     int? taskId;
     try {
+      checkSession();
       taskId = await manager.createTask(
         assetId: prepared.assetId,
         source: prepared.source,
@@ -252,14 +319,28 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     }
     final updated = metadata.copyWith(taskId: taskId, clearError: true);
     _metadataByAssetId[updated.assetId] = updated;
-    await _persistMetadata();
-    final started = await manager.startTask(taskId);
-    if (!started) {
-      final failed = updated.copyWith(errorMessage: '启动缓存任务失败。');
-      _metadataByAssetId[failed.assetId] = failed;
+    try {
+      await _persistMetadata();
+      checkSession();
+      if (!await manager.startTask(taskId)) {
+        throw const BiliOfflineDownloadException('启动缓存任务失败。');
+      }
+      checkSession();
+    } catch (error) {
+      var removed = false;
+      try {
+        removed = await manager.removeTask(taskId);
+      } catch (_) {
+        // Retain the task id so the user can retry cleanup.
+      }
+      final failed = (removed ? metadata : updated).copyWith(
+        errorMessage: _formatDownloadError(error),
+      );
+      _snapshot = manager.snapshot;
+      _metadataByAssetId[assetId] = failed;
       await _persistMetadata();
       notifyListeners();
-      throw const BiliOfflineDownloadException('启动缓存任务失败。');
+      rethrow;
     }
     await manager.refresh();
     _snapshot = manager.snapshot;
@@ -270,6 +351,22 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       metadata: updated,
       task: _taskForMetadata(updated, _snapshot.tasks),
     );
+  }
+
+  Future<void> _checkSpaceForRemux(int? inputBytes) async {
+    if (inputBytes == null || inputBytes <= 0) return;
+    final BiliDeviceStorageSpace storage;
+    try {
+      storage = await resolveBiliDeviceStorageSpace();
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    }
+    // Both the downloaded tracks and the remuxed MP4 exist before cleanup.
+    if (storage.freeBytes < inputBytes * 2) {
+      throw const BiliOfflineDownloadException('存储空间不足以缓存并合成 MP4。');
+    }
   }
 
   Future<BiliOfflineStorageUsage> resolveStorageUsage() async {
@@ -414,6 +511,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     _metadataIntegrityErrors.removeWhere(
       (assetId, _) => matchingAssetIds.contains(assetId),
     );
+    if (manager != null) _snapshot = manager.snapshot;
     await _persistMetadata();
     notifyListeners();
   }
@@ -442,6 +540,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     if (entry.task?.assetId case final taskAssetId?) {
       _orphanAssetDirectories.remove(taskAssetId);
     }
+    if (manager != null) _snapshot = manager.snapshot;
     await _persistMetadata();
     notifyListeners();
   }
@@ -762,7 +861,9 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     } on FileSystemException catch (error) {
       // A transient directory permission/read error must not make the whole
       // offline page unusable. Keep the last known inventory and report it.
-      debugPrint('[BiliOffline] cache inventory scan failed: $error');
+      debugPrint(
+        '[BiliOffline] cache inventory scan failed: ${error.runtimeType}',
+      );
       return;
     }
     _orphanAssetDirectories
@@ -853,7 +954,9 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         notifyListeners();
       }
     } on FileSystemException catch (error) {
-      debugPrint('[BiliOffline] cache integrity refresh failed: $error');
+      debugPrint(
+        '[BiliOffline] cache integrity refresh failed: ${error.runtimeType}',
+      );
     }
   }
 
@@ -878,11 +981,11 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   }
 
   String _formatDownloadError(Object error) {
-    final message = error.toString();
-    if (_isStaleDownloadError(message)) {
+    final raw = error.toString();
+    if (_isStaleDownloadError(raw)) {
       return '缓存资源链接已过期或被拒绝，请重新打开页面后再试。';
     }
-    return message;
+    return biliErrorMessage(error);
   }
 
   bool _isStaleDownloadError(String message) {
@@ -952,69 +1055,20 @@ class BiliOfflineDownloadController extends ChangeNotifier {
   }
 
   void _logPreparedAsset(BiliPreparedDownloadAsset prepared) {
+    final index = prepared.assetIndex;
     debugPrint(
-      '[BiliOffline] create asset=${prepared.assetId} '
-      'quality=${prepared.qualityLabel} target=${prepared.profile.targetDirectory ?? ''} '
-      'total=${prepared.assetIndex.totalSizeBytes ?? 0}',
+      '[BiliOffline] create asset=${prepared.assetId} quality=${prepared.qualityLabel} '
+      'resources=${index.resources.length} segments=${index.segments.length} '
+      'total=${index.totalSizeBytes ?? 0}',
     );
-    debugPrint(
-      '[BiliOffline] headers ${_summarizeHeaders(prepared.source.source.headers)}',
-    );
-    for (final resource in prepared.assetIndex.resources) {
-      final byteRange = resource.byteRange;
-      debugPrint(
-        '[BiliOffline] resource ${resource.resourceId} '
-        'size=${resource.sizeBytes ?? 0} '
-        'range=${byteRange == null ? 'none' : '${byteRange.offset}+${byteRange.length}'} '
-        'path=${resource.relativePath ?? ''} '
-        'generated=${resource.generatedText != null} '
-        'uri=${resource.uri}',
-      );
-    }
-    for (final segment in prepared.assetIndex.segments) {
-      final byteRange = segment.byteRange;
-      debugPrint(
-        '[BiliOffline] segment ${segment.segmentId} '
-        'size=${segment.sizeBytes ?? 0} '
-        'range=${byteRange == null ? 'none' : '${byteRange.offset}+${byteRange.length}'} '
-        'path=${segment.relativePath ?? ''} uri=${segment.uri}',
-      );
-    }
-  }
-
-  String _summarizeHeaders(Map<String, String> headers) {
-    if (headers.isEmpty) {
-      return 'none';
-    }
-    final normalized = <String, String>{
-      for (final entry in headers.entries) entry.key.toLowerCase(): entry.value,
-    };
-    String valueFor(String name) {
-      final value = normalized[name.toLowerCase()];
-      if (value == null || value.isEmpty) {
-        return '$name=missing';
-      }
-      if (name.toLowerCase() == 'cookie') {
-        return '$name=len${value.length}';
-      }
-      return '$name=$value';
-    }
-
-    return <String>[
-      valueFor('User-Agent'),
-      valueFor('Referer'),
-      valueFor('Origin'),
-      valueFor('Accept'),
-      valueFor('Cookie'),
-    ].join(',');
   }
 
   void _logDownloadSnapshot(VesperDownloadSnapshot snapshot) {
     for (final task in snapshot.tasks) {
-      final error = task.error?.message ?? '';
+      final failed = task.error != null;
       final fingerprint =
           '${task.state.name}|${task.progress.receivedBytes}|'
-          '${task.progress.totalBytes ?? 0}|${task.assetIndex.completedPath ?? ''}|$error';
+          '${task.progress.totalBytes ?? 0}|$failed';
       if (_lastTaskLogFingerprints[task.taskId] == fingerprint) {
         continue;
       }
@@ -1022,8 +1076,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
       debugPrint(
         '[BiliOffline] task=${task.taskId} asset=${task.assetId} '
         'state=${task.state.name} progress=${task.progress.receivedBytes}/'
-        '${task.progress.totalBytes ?? 0} completed=${task.assetIndex.completedPath ?? ''}'
-        '${error.isEmpty ? '' : ' error=$error'}',
+        '${task.progress.totalBytes ?? 0} failed=$failed',
       );
     }
   }
@@ -1034,6 +1087,14 @@ class BiliOfflineDownloadController extends ChangeNotifier {
     VesperDownloadStaleResource staleResource,
   ) async {
     try {
+      final revision = _client.sessionRevision;
+      bool sessionIsCurrent() =>
+          !_disposed &&
+          revision == _client.sessionRevision &&
+          _client.hasAuthenticatedSession;
+      if (!sessionIsCurrent() || task.taskId != staleResource.taskId) {
+        return null;
+      }
       final assetId = task.assetId;
       final metadata = _metadataByAssetId[assetId];
       final cacheRoot = _cacheRoot;
@@ -1053,7 +1114,10 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         return null;
       }
 
-      final detail = await _client.fetchVideoDetail(metadata.bvid);
+      final episodeId = metadata.playbackMetadata?.episodeId;
+      final detail = episodeId != null && episodeId > 0
+          ? await _client.fetchPgcEpisodeDetail(episodeId)
+          : await _client.fetchVideoDetail(metadata.bvid);
       BiliVideoPageEntry? page;
       for (final candidate in detail.pages) {
         if (candidate.cid == metadata.cid &&
@@ -1062,7 +1126,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
           break;
         }
       }
-      if (page == null) {
+      if (!sessionIsCurrent() || page == null) {
         debugPrint(
           '[BiliOffline] stale recovery: original page is unavailable',
         );
@@ -1073,7 +1137,9 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         detail: detail,
         page: page,
       );
-      if (options.bvid != metadata.bvid || options.cid != metadata.cid) {
+      if (!sessionIsCurrent() ||
+          options.bvid != metadata.bvid ||
+          options.cid != metadata.cid) {
         return null;
       }
 
@@ -1084,7 +1150,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         targetDirectory: '${cacheRoot.path}/assets/$assetId',
       );
       if (prepared.assetId != assetId ||
-          _disposed ||
+          !sessionIsCurrent() ||
           !identical(_metadataByAssetId[assetId], metadata)) {
         return null;
       }
@@ -1100,7 +1166,7 @@ class BiliOfflineDownloadController extends ChangeNotifier {
         assetIndex: prepared.assetIndex,
       );
     } catch (error) {
-      debugPrint('[BiliOffline] stale recovery failed: $error');
+      debugPrint('[BiliOffline] stale recovery failed: ${error.runtimeType}');
       return null;
     }
   }

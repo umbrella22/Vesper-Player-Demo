@@ -51,12 +51,16 @@ final class MediaPlaybackEntry {
     required this.title,
     required this.durationSeconds,
     this.coverUrl,
+    this.historyMediaId,
     this.declaredAspectRatio,
     this.platformExtras = const <String, Object?>{},
   });
 
   /// 条目标识（如 Bilibili cid 的字符串形式），只由所属适配器解释。
   final String entryId;
+
+  /// Owning media ID when an episode is listed under another media item.
+  final String? historyMediaId;
 
   final int pageNumber;
   final String title;

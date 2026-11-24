@@ -25,7 +25,7 @@ final class BiliOfflineDownloadStore {
       return const <BiliOfflineDownloadMetadata>[];
     }
     try {
-      final text = await file.readAsString();
+      final text = utf8.decode(await file.readAsBytes());
       if (text.trim().isEmpty) {
         return const <BiliOfflineDownloadMetadata>[];
       }
@@ -37,17 +37,18 @@ final class BiliOfflineDownloadStore {
           'Unexpected offline cache metadata shape.',
         ),
       };
-      final entries = rawEntries
-          .whereType<Map<Object?, Object?>>()
-          .map((value) => Map<String, Object?>.from(value))
-          .map(BiliOfflineDownloadMetadata.fromJson)
-          .where((entry) => entry.assetId.isNotEmpty)
-          .toList(growable: false);
+      final entries = <BiliOfflineDownloadMetadata>[];
+      for (final row in rawEntries.whereType<Map<String, Object?>>()) {
+        try {
+          final entry = BiliOfflineDownloadMetadata.fromJson(row);
+          if (entry.assetId.isNotEmpty) entries.add(entry);
+        } on TypeError {
+          // Its SDK task/directory can still be surfaced for cleanup.
+          continue;
+        }
+      }
       return _dedupe(entries);
     } on FormatException {
-      await _quarantineCorruptFile(file);
-      return const <BiliOfflineDownloadMetadata>[];
-    } on TypeError {
       await _quarantineCorruptFile(file);
       return const <BiliOfflineDownloadMetadata>[];
     }

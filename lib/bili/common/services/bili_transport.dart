@@ -62,6 +62,9 @@ class BiliTransport {
 
   String? get subKey => _subKey;
 
+  bool get _hasWbiKeys =>
+      (_imgKey?.isNotEmpty ?? false) && (_subKey?.isNotEmpty ?? false);
+
   Map<String, String> get cookies => Map<String, String>.unmodifiable(_cookies);
 
   String? cookieValue(String name) => _cookies[name];
@@ -114,7 +117,7 @@ class BiliTransport {
     }
 
     if (generation != _sessionGeneration) return;
-    if (_imgKey == null || _subKey == null) {
+    if (!_hasWbiKeys) {
       await _refreshWbiKeys();
     }
   }
@@ -155,6 +158,9 @@ class BiliTransport {
   }) async {
     if (ensureReady) {
       await this.ensureReady();
+      if (useWbi && !_hasWbiKeys) {
+        await this.ensureReady();
+      }
     }
 
     for (var attempt = 0; attempt < 2; attempt += 1) {
@@ -197,6 +203,9 @@ class BiliTransport {
   }) async {
     if (ensureReady) {
       await this.ensureReady();
+      if (useWbi && !_hasWbiKeys) {
+        await this.ensureReady();
+      }
     }
 
     for (var attempt = 0; attempt < 2; attempt += 1) {
@@ -243,7 +252,10 @@ class BiliTransport {
 
     final imgKey = _imgKey;
     final subKey = _subKey;
-    if (imgKey == null || subKey == null) {
+    if (imgKey == null ||
+        imgKey.isEmpty ||
+        subKey == null ||
+        subKey.isEmpty) {
       throw const BiliApiException('WBI keys are unavailable.');
     }
     return _signer.sign(params: params, imgKey: imgKey, subKey: subKey);
@@ -609,8 +621,12 @@ class BiliTransport {
     final imgUrl = readString(wbiImg['img_url']) ?? '';
     final subUrl = readString(wbiImg['sub_url']) ?? '';
 
-    _imgKey = extractKey(imgUrl);
-    _subKey = extractKey(subUrl);
+    final nextImgKey = extractKey(imgUrl);
+    final nextSubKey = extractKey(subUrl);
+    if (nextImgKey.isNotEmpty && nextSubKey.isNotEmpty) {
+      _imgKey = nextImgKey;
+      _subKey = nextSubKey;
+    }
   }
 
   Future<void> _ensureBuvidCookies() async {

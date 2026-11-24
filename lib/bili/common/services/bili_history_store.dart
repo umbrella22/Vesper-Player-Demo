@@ -22,16 +22,23 @@ final class BiliHistoryStore {
       return const <BiliPlaybackHistoryEntry>[];
     }
 
-    final text = await file.readAsString();
-    if (text.trim().isEmpty) {
+    final bytes = await file.readAsBytes();
+    final List<Object?> rows;
+    try {
+      rows = readObjectList(jsonDecode(utf8.decode(bytes)));
+    } on FormatException {
       return const <BiliPlaybackHistoryEntry>[];
     }
-
-    return readObjectList(jsonDecode(text))
-        .whereType<Map<Object?, Object?>>()
-        .map(readObjectMap)
-        .map(BiliPlaybackHistoryEntry.fromJson)
-        .toList(growable: false);
+    final entries = <BiliPlaybackHistoryEntry>[];
+    for (final row in rows.whereType<Map<String, Object?>>()) {
+      try {
+        entries.add(BiliPlaybackHistoryEntry.fromJson(row));
+      } on TypeError {
+        // One malformed entry must not hide the remaining playback history.
+        continue;
+      }
+    }
+    return entries;
   }
 
   Future<void> saveEntry(BiliPlaybackHistoryEntry entry) async {

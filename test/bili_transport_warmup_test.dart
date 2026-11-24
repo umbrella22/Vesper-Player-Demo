@@ -52,12 +52,48 @@ void main() {
     await transport.ensureReady();
     expect(transport.paths.last, BiliApiPaths.nav);
   });
+
+  test(
+    'WBI request concurrent with restoreCookies completes ready checks and succeeds',
+    () async {
+      final transport = _WarmupTransport();
+      addTearDown(() => transport.httpClient.close(force: true));
+      final finger = transport.fingerGate = Completer<void>();
+      final wbiRequest = transport.getData(
+        host: biliApiHost,
+        path: '/foreground',
+        useWbi: true,
+      );
+      await pumpEventQueue();
+      transport.restoreCookies({
+        'buvid3': 'new-3',
+        'buvid4': 'new-4',
+        'SESSDATA': 'session',
+      });
+      finger.complete();
+      await wbiRequest;
+      expect(transport.paths.last, '/foreground');
+    },
+  );
+
+  test('empty nav wbi_img does not poison WBI keys', () async {
+    final transport = _WarmupTransport()..omitWbiOnce = true;
+    addTearDown(() => transport.httpClient.close(force: true));
+    transport.restoreCookies({'buvid3': 'b3', 'buvid4': 'b4'});
+    await transport.ensureReady();
+    expect(transport.imgKey, isNull);
+    expect(transport.subKey, isNull);
+    await transport.ensureReady();
+    expect(transport.imgKey, isNotEmpty);
+    expect(transport.subKey, isNotEmpty);
+  });
 }
 
 class _WarmupTransport extends BiliTransport {
   final paths = <String>[];
   Completer<void>? primeGate;
   Completer<void>? fingerGate;
+  bool omitWbiOnce = false;
   @override
   Future<BiliHttpResponse> sendRequest(
     Uri uri, {
@@ -77,14 +113,19 @@ class _WarmupTransport extends BiliTransport {
       await fingerGate?.future;
       data = {'b_3': 'old-3', 'b_4': 'old-4'};
     } else if (uri.path == BiliApiPaths.nav) {
-      data = {
-        'wbi_img': {
-          'img_url':
-              'https://example.test/abcdefghijklmnopqrstuvwxyz123456.png',
-          'sub_url':
-              'https://example.test/abcdefghijklmnopqrstuvwxyz654321.png',
-        },
-      };
+      if (omitWbiOnce) {
+        omitWbiOnce = false;
+        data = {'isLogin': false};
+      } else {
+        data = {
+          'wbi_img': {
+            'img_url':
+                'https://example.test/abcdefghijklmnopqrstuvwxyz123456.png',
+            'sub_url':
+                'https://example.test/abcdefghijklmnopqrstuvwxyz654321.png',
+          },
+        };
+      }
     }
     return BiliHttpResponse(
       statusCode: 200,

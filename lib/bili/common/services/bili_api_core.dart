@@ -55,12 +55,57 @@ bool isBiliSessionInvalidError(Object error) {
 
 /// Formats [error] for user-facing messages.
 ///
-/// [BiliApiException] already carries display copy; other exceptions get their
-/// leading Dart type prefix (e.g. `SocketException: `, `FormatException: `)
-/// stripped so raw implementation details never leak into the UI.
+/// Keep service codes on the exception for diagnostics, and show the action the user can take.
 String biliErrorMessage(Object error) {
   if (error is BiliApiException) {
-    return error.toString();
+    final code = error.code;
+    final trimmed = error.message.trim();
+    if (code == biliRiskControlCode) {
+      if (trimmed.contains('验证码')) {
+        return '请求触发安全验证，请稍后再试或重新登录后重试。';
+      }
+      return '请求暂时受限，请稍后再试。';
+    }
+    if (code == -412 || code == 429) {
+      return '请求过于频繁，已被暂时限制，请稍后再试。';
+    }
+    final hasCjk = RegExp(r'[\u4E00-\u9FFF]').hasMatch(trimmed);
+    if (code == -404) {
+      if (!hasCjk || trimmed == '啥都木有') {
+        return '内容不存在或已被删除。';
+      }
+      return trimmed;
+    }
+    if (code == -403) {
+      return hasCjk ? trimmed : '暂无访问权限。';
+    }
+    if (code == -101) {
+      return trimmed.isEmpty ? '请先登录哔哩哔哩账号。' : trimmed;
+    }
+    if (code != null && code >= 500 && code < 600) {
+      return '服务器暂时不可用，请稍后重试。';
+    }
+    if (error.outcomeUnknown && trimmed.toLowerCase().contains('timed out')) {
+      return '请求超时，请检查网络连接后重试。';
+    }
+    if (trimmed.startsWith('没有可缓存的 DASH 视频流')) {
+      return '当前视频暂无可缓存的视频流，请稍后重试。';
+    }
+    if (trimmed.startsWith('缓存资源链接不可用')) {
+      final lower = trimmed.toLowerCase();
+      if (lower.contains('timed out') || lower.contains('timeout')) {
+        return '检测缓存地址超时，请检查网络后重试。';
+      }
+      if (lower.contains('stale') ||
+          lower.contains('http 401') ||
+          lower.contains('http 403') ||
+          lower.contains('http 404') ||
+          lower.contains('http 410')) {
+        return '缓存资源链接已过期或被拒绝，请重新打开页面后再试。';
+      }
+      return '缓存资源链接不可用，请重新打开页面后再试。';
+    }
+    return sanitizeUserErrorMessage(trimmed, fallback: '请求失败，请稍后重试。');
   }
   return mediaErrorMessage(error);
 }
@@ -214,9 +259,11 @@ String? readPublishedAtLabel(Object? value) {
     return null;
   }
 
-  return DateTime.fromMillisecondsSinceEpoch(
-    unixSeconds * 1000,
-  ).toLocal().toString().split(' ').first;
+  return DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000)
+      .toLocal()
+      .toString()
+      .split(' ')
+      .first;
 }
 
 List<String> readStringList(Object? value) {
@@ -265,9 +312,8 @@ List<String> sortBiliMediaUrlCandidates(List<String> urls) {
   }
 
   entries.sort((left, right) {
-    final tierCompare = biliMediaUrlTier(
-      left.url,
-    ).compareTo(biliMediaUrlTier(right.url));
+    final tierCompare = biliMediaUrlTier(left.url)
+        .compareTo(biliMediaUrlTier(right.url));
     if (tierCompare != 0) {
       return tierCompare;
     }

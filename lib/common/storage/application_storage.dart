@@ -30,7 +30,7 @@ Future<File> resolveApplicationStorageFile({
   final legacyFile = File(
     '${(legacyDirectory ?? legacyApplicationStorageDirectory()).path}/$fileName',
   );
-  if (await legacyFile.exists()) {
+  if (legacyFile.path != file.path && await legacyFile.exists()) {
     await legacyFile.copy(file.path);
   }
   return file;

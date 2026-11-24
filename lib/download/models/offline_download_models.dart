@@ -1,3 +1,4 @@
+import 'package:vesper_media/media/player/media_text.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import '../../bili/common/models/bili_models.dart';
@@ -264,7 +265,7 @@ final class BiliOfflineDownloadEntry {
   }
 
   bool get isActive {
-    if (errorMessage != null && errorMessage!.isNotEmpty) {
+    if (isUnplayable || (errorMessage?.isNotEmpty ?? false)) {
       return false;
     }
     return switch (state) {
@@ -277,8 +278,13 @@ final class BiliOfflineDownloadEntry {
   }
 
   bool get isCompleted =>
-      state == VesperDownloadState.completed ||
-      (metadata.outputPath != null && metadata.outputPath!.isNotEmpty);
+      !isUnplayable &&
+      (state == VesperDownloadState.completed ||
+          (state == null &&
+              (errorMessage?.isNotEmpty != true) &&
+              (metadata.outputPath?.isNotEmpty ?? false)));
+
+  bool get needsAttention => !isUnplayable && !isActive && !isCompleted;
 
   String get statusLabel {
     if (isUnplayable) {
@@ -308,13 +314,14 @@ String? _friendlyOfflineDownloadError(String? message) {
   }
   final lower = message.toLowerCase();
   if (lower.contains('stale or expired') ||
+      lower.contains('media url is stale') ||
       lower.contains('http 401') ||
       lower.contains('http 403') ||
       lower.contains('http 404') ||
       lower.contains('http 410')) {
     return '缓存资源链接已过期或被拒绝，请重新打开页面后再试。';
   }
-  return message;
+  return sanitizeUserErrorMessage(message, fallback: '缓存失败，请重试。');
 }
 
 String biliFormatDownloadBytes(int bytes) {

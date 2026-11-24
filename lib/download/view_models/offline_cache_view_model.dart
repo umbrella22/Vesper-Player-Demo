@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:signals/signals_flutter.dart';
 import 'package:vesper_player/vesper_player.dart';
-import 'package:vesper_media/media/player/media_text.dart';
 
 import '../../bili/common/models/bili_models.dart';
+import '../../bili/common/services/bili_api_core.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_download_asset_id.dart';
 import '../../bili/common/services/bili_history_store.dart';
@@ -109,7 +109,12 @@ final class OfflineCacheViewModel {
     );
     completedEntries = computed(
       () => _entries.value
-          .where((entry) => !entry.isActive)
+          .where((entry) => entry.isCompleted)
+          .toList(growable: false),
+    );
+    attentionEntries = computed(
+      () => _entries.value
+          .where((entry) => entry.needsAttention)
           .toList(growable: false),
     );
     invalidEntries = computed(
@@ -125,6 +130,7 @@ final class OfflineCacheViewModel {
   final BiliOfflineMediaExporter _mediaExporter;
 
   Timer? _storageRefreshTimer;
+  bool _disposed = false;
   final _entries = signal<List<BiliOfflineDownloadEntry>>(
     const <BiliOfflineDownloadEntry>[],
   );
@@ -142,6 +148,7 @@ final class OfflineCacheViewModel {
   late final FlutterComputed<List<BiliOfflineDownloadEntry>> activeEntries;
   late final FlutterComputed<List<BiliOfflineDownloadEntry>> completedEntries;
   late final FlutterComputed<List<BiliOfflineDownloadEntry>> invalidEntries;
+  late final FlutterComputed<List<BiliOfflineDownloadEntry>> attentionEntries;
   late final ReadonlySignal<String?> errorMessage;
   late final ReadonlySignal<String?> storageErrorMessage;
   late final ReadonlySignal<BiliOfflineStorageUsage?> storageUsage;
@@ -166,7 +173,7 @@ final class OfflineCacheViewModel {
       _syncEntries();
       await loadStorageUsage();
     } catch (error) {
-      _errorMessage.value = mediaErrorMessage(error);
+      _errorMessage.value = biliErrorMessage(error);
     } finally {
       _loading.value = false;
     }
@@ -178,7 +185,7 @@ final class OfflineCacheViewModel {
     try {
       _storageUsage.value = await controller.resolveStorageUsage();
     } catch (error) {
-      _storageErrorMessage.value = mediaErrorMessage(error);
+      _storageErrorMessage.value = biliErrorMessage(error);
     } finally {
       _storageLoading.value = false;
     }
@@ -216,7 +223,10 @@ final class OfflineCacheViewModel {
         );
       }
 
-      final detail = await client.fetchVideoDetail(metadata.bvid);
+      final episodeId = metadata.playbackMetadata?.episodeId;
+      final detail = episodeId != null && episodeId > 0
+          ? await client.fetchPgcEpisodeDetail(episodeId)
+          : await client.fetchVideoDetail(metadata.bvid);
       if (detail.pages.isEmpty) {
         throw const BiliOfflineDownloadException('这个视频没有可播放分 P。');
       }
@@ -234,7 +244,15 @@ final class OfflineCacheViewModel {
         );
       }
 
-      unawaited(_continueCaching(entry: entry, detail: detail, page: page));
+      unawaited(
+        _continueCaching(entry: entry, detail: detail, page: page).catchError((
+          Object error,
+        ) {
+          if (!_disposed) {
+            _errorMessage.value = '继续缓存失败：${biliErrorMessage(error)}';
+          }
+        }),
+      );
 
       return OfflineCacheOpenResult(
         detail: detail,
@@ -262,7 +280,7 @@ final class OfflineCacheViewModel {
     } catch (error) {
       return OfflineCacheDeleteResult(
         deleted: false,
-        message: '删除失败：${mediaErrorMessage(error)}',
+        message: '删除失败：${biliErrorMessage(error)}',
       );
     } finally {
       _deletingAssetIds.value = <String>{..._deletingAssetIds.value}
@@ -330,7 +348,7 @@ final class OfflineCacheViewModel {
     } catch (error) {
       return OfflineCacheExportResult(
         exported: false,
-        message: '导出失败：${mediaErrorMessage(error)}',
+        message: '导出失败：${biliErrorMessage(error)}',
       );
     } finally {
       _exportingAssetIds.value = <String>{..._exportingAssetIds.value}
@@ -441,11 +459,13 @@ final class OfflineCacheViewModel {
   }
 
   void dispose() {
+    _disposed = true;
     _storageRefreshTimer?.cancel();
     controller.removeListener(_handleControllerChanged);
     activeEntries.dispose();
     completedEntries.dispose();
     invalidEntries.dispose();
+    attentionEntries.dispose();
     _entries.dispose();
     _errorMessage.dispose();
     _storageErrorMessage.dispose();

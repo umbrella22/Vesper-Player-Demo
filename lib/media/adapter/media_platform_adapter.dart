@@ -5,6 +5,7 @@ import '../capabilities/media_audio_compatibility.dart';
 import '../capabilities/media_history.dart';
 import '../models/media_detail.dart';
 import '../models/resolved_media.dart';
+import '../player/media_text.dart';
 
 /// 平台适配器：解析平台媒体，并声明平台级静态能力。
 ///
@@ -32,6 +33,9 @@ abstract base class MediaPlatformAdapter {
 
   /// 平台级清晰度能力声明。
   MediaQualityPolicy get qualityPolicy => const MediaQualityPolicy();
+
+  /// 把平台/播放链路异常转换为面向用户的提示文案。
+  String formatError(Object error) => mediaErrorMessage(error);
 
   /// DLNA 投屏格式适配配置。null 表示不支持投屏。
   MediaDlnaConfig? get dlnaConfig => null;

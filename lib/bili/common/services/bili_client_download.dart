@@ -32,6 +32,8 @@ extension _BiliClientDownloadImplementation on BiliClient {
           fallbackReasons.add('${variant.label}: ${dashParseResult.reason}');
           continue;
         }
+        final policy = await audioPolicy.resolve();
+        final filteredManifest = policy.filter(manifest);
         return BiliDownloadOptions(
           bvid: pageBvid,
           cid: page.cid,
@@ -40,8 +42,10 @@ extension _BiliClientDownloadImplementation on BiliClient {
           coverUrl: page.coverUrl ?? detail.coverUrl,
           referer: referer,
           headers: _transport.buildBiliMediaSourceHeaders(),
-          manifest: manifest,
-          qualities: _buildDownloadQualityOptions(manifest.videoStreams),
+          manifest: filteredManifest,
+          qualities: _buildDownloadQualityOptions(
+            filteredManifest.videoStreams,
+          ),
           variantLabel: variant.label,
         );
       } on BiliApiException catch (error) {
@@ -55,7 +59,10 @@ extension _BiliClientDownloadImplementation on BiliClient {
       }
     }
 
-    throw BiliApiException('没有可缓存的 DASH 视频流：${fallbackReasons.join(' | ')}');
+    debugPrint(
+      '[BiliOffline] resolveDownloadOptions failed: ${fallbackReasons.join(' | ')}',
+    );
+    throw const BiliApiException('当前视频暂无可缓存的视频流，请稍后重试。');
   }
 
   BiliPreparedDownloadAsset prepareDownloadAsset({

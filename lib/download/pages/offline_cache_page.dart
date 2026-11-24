@@ -8,8 +8,9 @@ import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
-import 'package:vesper_media/media/player/media_text.dart';
+
 import '../../bili/common/pages/bili_playback_page.dart';
+import '../../bili/common/services/bili_api_core.dart';
 import '../../bili/common/services/bili_client.dart';
 import '../../bili/common/services/bili_history_store.dart';
 import '../models/offline_download_models.dart';
@@ -122,8 +123,12 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
 
   Widget _buildEntryList(BuildContext context) {
     final entries = _viewModel.entries.value;
-    final active = _viewModel.activeEntries.value;
-    final completed = _viewModel.completedEntries.value;
+    final sections = [
+      ('正在缓存', _viewModel.activeEntries.value),
+      ('离线视频', _viewModel.completedEntries.value),
+      ('需要处理', _viewModel.attentionEntries.value),
+      ('无法播放的缓存', _viewModel.invalidEntries.value),
+    ];
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -136,33 +141,21 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
           )
         else if (entries.isEmpty)
           const OfflineEmptyState()
-        else ...[
-          if (active.isNotEmpty) ...[
-            const OfflineSectionHeader(title: '正在缓存'),
-            const SizedBox(height: 8),
-            _OfflineEntrySignalGroup(
-              entries: active,
-              viewModel: _viewModel,
-              onOpen: _openEntry,
-              onDelete: _deleteEntry,
-              onToggleTask: _toggleTaskCaching,
-              onMoreTap: _showEntryActions,
-            ),
-            const SizedBox(height: 18),
-          ],
-          if (completed.isNotEmpty) ...[
-            const OfflineSectionHeader(title: '离线视频'),
-            const SizedBox(height: 8),
-            _OfflineEntrySignalGroup(
-              entries: completed,
-              viewModel: _viewModel,
-              onOpen: _openEntry,
-              onDelete: _deleteEntry,
-              onToggleTask: _toggleTaskCaching,
-              onMoreTap: _showEntryActions,
-            ),
-          ],
-        ],
+        else
+          for (final (title, items) in sections)
+            if (items.isNotEmpty) ...[
+              OfflineSectionHeader(title: title),
+              const SizedBox(height: 8),
+              _OfflineEntrySignalGroup(
+                entries: items,
+                viewModel: _viewModel,
+                onOpen: _openEntry,
+                onDelete: _confirmDeleteEntry,
+                onToggleTask: _toggleTaskCaching,
+                onMoreTap: _showEntryActions,
+              ),
+              const SizedBox(height: 18),
+            ],
       ],
     );
   }
@@ -199,9 +192,23 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       }
     } catch (error) {
       if (mounted) {
-        _showMessage('打开视频失败：${mediaErrorMessage(error)}');
+        _showMessage('打开视频失败：${biliErrorMessage(error)}');
       }
     }
+  }
+
+  Future<bool> _confirmDeleteEntry(BiliOfflineDownloadEntry entry) async {
+    final confirmed = await showMediaGlassDialog<bool>(
+      context: context,
+      title: '删除缓存？',
+      message: '将删除“${entry.metadata.videoTitle}”的本地缓存，删除后不可恢复。',
+      actions: const [
+        MediaGlassDialogAction(label: '取消', value: false),
+        MediaGlassDialogAction(label: '确认删除', value: true, isDestructive: true),
+      ],
+    );
+    if (!mounted || confirmed != true) return false;
+    return _deleteEntry(entry);
   }
 
   Future<bool> _deleteEntry(BiliOfflineDownloadEntry entry) async {
@@ -217,7 +224,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       await _viewModel.toggleTaskCaching(entry);
     } catch (error) {
       if (mounted) {
-        _showMessage('缓存操作失败：${mediaErrorMessage(error)}');
+        _showMessage('缓存操作失败：${biliErrorMessage(error)}');
       }
     }
   }
@@ -227,38 +234,49 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     final action = await showMediaGlassSheet<_OfflineEntryAction>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentPadding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
       maxContentHeightFactor: 0.5,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(AppIcons.shareLine),
-                  title: const Text('导出到相册'),
-                  subtitle: const Text('导出为可在任意播放器中播放的 MP4'),
-                  enabled: canExport,
-                  onTap: canExport
-                      ? () => Navigator.of(
-                          context,
-                        ).pop(_OfflineEntryAction.export)
-                      : null,
+        final visualTheme = AppVisualTheme.of(context);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                entry.metadata.videoTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: visualTheme.textSecondary,
+                  fontWeight: FontWeight.w700,
                 ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  textColor: AppVisualTheme.of(context).destructive,
-                  iconColor: AppVisualTheme.of(context).destructive,
-                  leading: const Icon(AppIcons.deleteBinLine),
-                  title: const Text('删除'),
-                  onTap: () =>
-                      Navigator.of(context).pop(_OfflineEntryAction.delete),
-                ),
-              ],
+              ),
             ),
-          ),
+            Divider(height: 12, color: visualTheme.divider),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(AppIcons.shareLine),
+              title: const Text('导出到相册'),
+              subtitle: Text(
+                canExport ? '导出为可在任意播放器中播放的 MP4' : '缓存完成后可导出为 MP4',
+              ),
+              enabled: canExport,
+              onTap: canExport
+                  ? () => Navigator.of(context).pop(_OfflineEntryAction.export)
+                  : null,
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              textColor: visualTheme.destructive,
+              iconColor: visualTheme.destructive,
+              leading: const Icon(AppIcons.deleteBinLine),
+              title: const Text('删除'),
+              onTap: () =>
+                  Navigator.of(context).pop(_OfflineEntryAction.delete),
+            ),
+          ],
         );
       },
     );
@@ -267,7 +285,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
     }
     switch (action) {
       case _OfflineEntryAction.delete:
-        await _deleteEntry(entry);
+        await _confirmDeleteEntry(entry);
       case _OfflineEntryAction.export:
         await _exportEntry(entry);
     }

@@ -15,7 +15,9 @@ import 'package:vesper_media/bili/common/services/bili_transport.dart';
 import 'package:vesper_media/bili/common/services/bili_wbi.dart';
 import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/download/download.dart';
+import 'package:vesper_media/media/player/media_text.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_player/vesper_player.dart';
 
@@ -288,16 +290,136 @@ void main() {
   });
 
   group('biliErrorMessage', () {
-    test('preserves Bilibili API codes and display copy', () {
+    test('keeps actionable user copy while preserving codes on exception', () {
+      const unauthenticated = BiliApiException('账号未登录', code: -101);
+      expect(unauthenticated.toString(), '[-101] 账号未登录');
+      expect(biliErrorMessage(unauthenticated), '账号未登录');
       expect(
-        biliErrorMessage(const BiliApiException('账号未登录', code: -101)),
-        '[-101] 账号未登录',
+        biliErrorMessage(
+          const BiliApiException('风控', code: biliRiskControlCode),
+        ),
+        '请求暂时受限，请稍后再试。',
       );
     });
 
     test('delegates non-Bilibili failures to the media formatter', () {
+      expect(
+        biliErrorMessage(const SocketException('offline')),
+        '网络连接失败，请检查网络后重试。',
+      );
       expect(biliErrorMessage(Exception('连接失败')), '连接失败');
-      expect(biliErrorMessage(TimeoutException('ignored')), '请求超时，请检查网络连接');
+      expect(biliErrorMessage(TimeoutException('ignored')), '请求超时，请检查网络连接。');
+    });
+
+    test('sanitizes raw English, system, and internal diagnostic errors', () {
+      expect(
+        mediaErrorMessage(const SocketException("Failed host lookup: 'api.bilibili.com'")),
+        '网络连接失败，请检查网络后重试。',
+      );
+      expect(
+        mediaErrorMessage(const HandshakeException('Handshake terminated')),
+        '安全连接失败，请检查网络或系统时间后重试。',
+      );
+      expect(
+        mediaErrorMessage(
+          const FileSystemException(
+            'Write failed',
+            '/tmp/x',
+            OSError('No space left on device', 28),
+          ),
+        ),
+        '设备存储空间不足，请清理空间后重试。',
+      );
+      expect(
+        mediaErrorMessage(
+          const FileSystemException(
+            'Open failed',
+            '/tmp/x',
+            OSError('Permission denied', 13),
+          ),
+        ),
+        '没有访问本地文件的权限，请检查存储权限。',
+      );
+      expect(
+        mediaErrorMessage(
+          const FileSystemException(
+            'Stat failed',
+            '/tmp/x',
+            OSError('No such file or directory', 2),
+          ),
+        ),
+        '本地文件不存在或已被移除。',
+      );
+      expect(
+        mediaErrorMessage(const FileSystemException('Cannot open file')),
+        '读写本地文件失败，请稍后重试。',
+      );
+      expect(
+        mediaErrorMessage(const FormatException('Unexpected character (at character 1)')),
+        '数据解析失败，请稍后重试。',
+      );
+      expect(
+        mediaErrorMessage(PlatformException(code: 'ERR', message: 'Native boom')),
+        '系统操作失败，请稍后重试。',
+      );
+      expect(
+        mediaErrorMessage(PlatformException(code: 'ERR', message: '系统拒绝访问')),
+        '系统拒绝访问',
+      );
+      expect(
+        mediaErrorMessage(StateError('当前条目没有可用的纯音频源。')),
+        '当前条目没有可用的纯音频源。',
+      );
+      expect(
+        mediaErrorMessage(ArgumentError('bad arg')),
+        '请求参数无效，请重试。',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('precondition', code: -412)),
+        '请求过于频繁，已被暂时限制，请稍后再试。',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('nothing', code: -403)),
+        '暂无访问权限。',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('操作被拒绝', code: -403)),
+        '操作被拒绝',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('啥都木有', code: -404)),
+        '内容不存在或已被删除。',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('HTTP 500 from Bilibili.', code: 500)),
+        '服务器暂时不可用，请稍后重试。',
+      );
+      expect(
+        biliErrorMessage(const BiliApiException('WBI keys are unavailable.')),
+        '请求签名初始化失败，请稍后重试。',
+      );
+      expect(
+        biliErrorMessage(
+          const BiliApiException(
+            '缓存资源链接不可用，请重新打开页面后再试：media url probe timed out after 10s.',
+          ),
+        ),
+        '检测缓存地址超时，请检查网络后重试。',
+      );
+      expect(
+        biliErrorMessage(
+          const BiliApiException(
+            '缓存资源链接不可用，请重新打开页面后再试：media url is stale or rejected (HTTP 403)',
+          ),
+        ),
+        '缓存资源链接已过期或被拒绝，请重新打开页面后再试。',
+      );
+      expect(
+        biliErrorMessage(
+          const BiliApiException('没有可缓存的 DASH 视频流：web fnval=4048 | no dash object'),
+        ),
+        '当前视频暂无可缓存的视频流，请稍后重试。',
+      );
     });
   });
 
@@ -2266,6 +2388,34 @@ void main() {
       expect(joinedLogs, isNot(contains('csrf-secret-value')));
       expect(joinedLogs, isNot(contains('bili_jct')));
     });
+
+    test(
+      'stale fetchCurrentUserProfile does not poison _currentUserMid after session change',
+      () async {
+        final transport = _StaleProfileTransport();
+        addTearDown(() => transport.httpClient.close(force: true));
+        final client = BiliClient(transport: transport)
+          ..restoreCookies(const <String, String>{
+            'SESSDATA': 's1',
+            'bili_jct': 'c1',
+            'DedeUserID': '111',
+          });
+        final navGate = transport.navGate = Completer<void>();
+        final pending = client.fetchCurrentUserProfile();
+        await pumpEventQueue();
+        client.restoreCookies(const <String, String>{
+          'SESSDATA': 's2',
+          'bili_jct': 'c2',
+        });
+        transport
+          ..navGate = null
+          ..navMid = 222;
+        navGate.complete();
+        await pending;
+        await client.fetchFavoriteFolders();
+        expect(transport.requestedFolderMids, <int>[222]);
+      },
+    );
   });
 
   group('BiliFeedVideo parser', () {
@@ -3416,4 +3566,43 @@ final class _FakeRegionHttpHeaders implements HttpHeaders {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _StaleProfileTransport extends BiliTransport {
+  Completer<void>? navGate;
+  int navMid = 111;
+  final List<int> requestedFolderMids = <int>[];
+
+  @override
+  Future<void> ensureReady() async {}
+
+  @override
+  Future<Map<String, Object?>> getData({
+    required String host,
+    required String path,
+    Map<String, Object?> params = const <String, Object?>{},
+    bool useWbi = false,
+    String referer = 'https://www.bilibili.com/',
+    bool ensureReady = true,
+    Set<int> allowedCodes = const <int>{0},
+  }) async {
+    if (path == '/x/web-interface/nav') {
+      final mid = navMid;
+      await navGate?.future;
+      return <String, Object?>{
+        'isLogin': true,
+        'mid': mid,
+        'uname': 'User$mid',
+        'face': '',
+      };
+    }
+    if (path == '/x/web-interface/nav/stat') {
+      return const <String, Object?>{};
+    }
+    if (path == '/x/v3/fav/folder/created/list-all') {
+      requestedFolderMids.add(params['up_mid'] as int);
+      return const <String, Object?>{'list': <Object?>[]};
+    }
+    throw StateError('unexpected path: $path');
+  }
 }

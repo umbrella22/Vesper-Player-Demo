@@ -176,12 +176,13 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       return;
     }
     _historyResumeApplied = true;
-    final entryId = _selectedEntry.value.entryId;
+    final entry = _selectedEntry.value;
+    final entryId = entry.entryId;
     final sourceGeneration = _sourceGeneration;
     final userSeekGeneration = _userSeekGeneration;
     try {
       final stored = await historyStore.latestPositionMsFor(
-        detail.mediaId,
+        entry.historyMediaId ?? detail.mediaId,
         entryId,
       );
       if (_isDisposed ||
@@ -348,20 +349,24 @@ extension _MediaPlaybackControllerLifecycle on MediaPlaybackViewModel {
       return;
     }
     final selectedEntry = entry ?? _selectedEntry.value;
-    await historyStore.saveEntry(
-      MediaHistoryEntry(
-        mediaId: detail.mediaId,
-        entryId: selectedEntry.entryId,
-        videoTitle: detail.title,
-        pageTitle: selectedEntry.title,
-        coverUrl: selectedEntry.coverUrl ?? detail.coverUrl,
-        ownerName: detail.ownerName ?? '',
-        playedAtMs: DateTime.now().millisecondsSinceEpoch,
-        lastPositionMs: snapshot.timeline.positionMs,
-        durationMs: snapshot.timeline.durationMs,
-        platformExtras: selectedEntry.platformExtras,
-      ),
-    );
+    try {
+      await historyStore.saveEntry(
+        MediaHistoryEntry(
+          mediaId: selectedEntry.historyMediaId ?? detail.mediaId,
+          entryId: selectedEntry.entryId,
+          videoTitle: detail.title,
+          pageTitle: selectedEntry.title,
+          coverUrl: selectedEntry.coverUrl ?? detail.coverUrl,
+          ownerName: detail.ownerName ?? '',
+          playedAtMs: DateTime.now().millisecondsSinceEpoch,
+          lastPositionMs: snapshot.timeline.positionMs,
+          durationMs: snapshot.timeline.durationMs,
+          platformExtras: selectedEntry.platformExtras,
+        ),
+      );
+    } catch (error) {
+      debugPrint('[Playback] History save failed: ${error.runtimeType}');
+    }
   }
 
   Future<void> _persistLatestHistory(

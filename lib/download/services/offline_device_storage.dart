@@ -24,21 +24,16 @@ Future<BiliDeviceStorageSpace> resolveBiliDeviceStorageSpace() async {
       message: 'Storage usage payload is empty.',
     );
   }
-  return BiliDeviceStorageSpace(
-    freeBytes: _readStorageBytes(payload['freeBytes']),
-    totalBytes: _readStorageBytes(payload['totalBytes']),
-  );
+  final free = _readStorageBytes(payload['freeBytes']);
+  final total = _readStorageBytes(payload['totalBytes']);
+  if (free == null || total == null || free < 0 || total <= 0 || free > total) {
+    throw PlatformException(code: 'storage_usage_invalid');
+  }
+  return BiliDeviceStorageSpace(freeBytes: free, totalBytes: total);
 }
 
-int _readStorageBytes(Object? value) {
-  if (value is int) {
-    return value;
-  }
-  if (value is num) {
-    return value.toInt();
-  }
-  if (value is String) {
-    return int.tryParse(value) ?? 0;
-  }
-  return 0;
-}
+int? _readStorageBytes(Object? value) => switch (value) {
+  int bytes => bytes,
+  String bytes => int.tryParse(bytes),
+  _ => null,
+};

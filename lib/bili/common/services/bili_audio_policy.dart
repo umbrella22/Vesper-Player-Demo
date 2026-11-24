@@ -101,6 +101,7 @@ final class BiliAudioPolicy {
   static bool isDolbyCodec(String? codec) {
     final value = codec?.toLowerCase() ?? '';
     return value.contains('ec-3') ||
+        value.contains('ac-3') ||
         value.contains('eac3') ||
         value.contains('e-ac-3');
   }

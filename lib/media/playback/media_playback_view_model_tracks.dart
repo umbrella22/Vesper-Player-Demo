@@ -366,7 +366,7 @@ extension _MediaPlaybackTrackSelection on MediaPlaybackViewModel {
       'subtitle_default_track_ambiguous' ||
       'subtitle_request_identity_ambiguous' ||
       'subtitle_track_identity_ambiguous' => '字幕轨道无法唯一确定，请重新选择。',
-      'subtitle_selection_failed' => '字幕切换失败，请稍后重试。',
+      'subtitle_selection_failed' => '暂未完成，请稍后重试。',
       _ => error.retriable ? '字幕切换暂未完成，请稍后重试。' : '当前无法切换字幕。',
     };
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:vesper_media/media/player/media_text.dart';
 
 final class BiliOfflineMediaExportException implements Exception {
   const BiliOfflineMediaExportException(this.message);
@@ -36,7 +37,7 @@ class BiliOfflineMediaExporter {
         'displayName': _normalizedDisplayName(displayName),
       });
     } on PlatformException catch (error) {
-      throw BiliOfflineMediaExportException(error.message ?? '导出到相册失败。');
+      throw BiliOfflineMediaExportException(mediaErrorMessage(error));
     } on MissingPluginException {
       throw const BiliOfflineMediaExportException('当前平台不支持导出到相册。');
     }

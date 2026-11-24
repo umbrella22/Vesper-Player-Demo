@@ -142,7 +142,7 @@ extension _MediaPlaybackAudioRecovery on MediaPlaybackViewModel {
         if (current()) _emitMessage('检测到播放停滞，已尝试使用兼容音轨恢复播放。');
       });
     } catch (error) {
-      if (current()) _emitMessage('兼容音轨恢复失败，请重新加载：${mediaErrorMessage(error)}');
+      if (current()) _emitMessage('兼容音轨恢复失败，请重新加载：${adapter.formatError(error)}');
     } finally {
       _finishSourceTransition(transition);
       _audioWatchdog.reset();

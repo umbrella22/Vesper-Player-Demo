@@ -11,7 +11,9 @@ import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_audio_policy.dart';
 import 'package:vesper_media/bili/common/services/bili_audio_policy_controller.dart';
+import 'package:vesper_media/bili/common/services/bili_endpoints.dart';
 import 'package:vesper_media/bili/common/services/bili_platform_info.dart';
+import 'package:vesper_media/bili/common/services/bili_transport.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -246,6 +248,121 @@ void main() {
       messenger.setMockMethodCallHandler(channel, null);
     },
   );
+
+  test(
+    'isDolbyCodec matches ac-3 and resolveDownloadOptions filters Dolby when blocked',
+    () async {
+      expect(BiliAudioPolicy.isDolbyCodec('ac-3'), isTrue);
+      final transport = _DownloadAudioPolicyTransport();
+      addTearDown(() => transport.httpClient.close(force: true));
+      final client = BiliClient(
+        transport: transport,
+        audioPolicy: BiliAudioPolicyController(
+          initialOverride: BiliAudioPolicyOverride.blockDolby,
+        ),
+      )..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      const page = BiliVideoPageEntry(
+        cid: 22,
+        pageNumber: 1,
+        title: 'P1',
+        durationSeconds: 60,
+      );
+      const detail = BiliVideoDetail(
+        aid: 1,
+        bvid: 'BV1policy',
+        title: 'Audio Policy',
+        ownerMid: 2,
+        ownerName: 'UP',
+        ownerAvatarUrl: '',
+        coverUrl: '',
+        description: '',
+        publishedAtLabel: null,
+        playCountLabel: '',
+        danmakuCountLabel: '',
+        replyCountLabel: '',
+        likeCountLabel: '',
+        coinCountLabel: '',
+        favoriteCountLabel: '',
+        shareCountLabel: '',
+        pages: [page],
+      );
+      final options = await client.resolveDownloadOptions(
+        detail: detail,
+        page: page,
+      );
+      final prepared = client.prepareDownloadAsset(
+        options: options,
+        qualityId: 80,
+      );
+      expect(prepared.selectedAudio.id, 30280);
+    },
+  );
+}
+
+class _DownloadAudioPolicyTransport extends BiliTransport {
+  @override
+  String buildSessionValue() => 'test-session';
+
+  @override
+  Future<Map<String, Object?>> getData({
+    required String host,
+    required String path,
+    Map<String, Object?> params = const <String, Object?>{},
+    bool useWbi = false,
+    String referer = biliDefaultReferer,
+    bool ensureReady = true,
+    Set<int> allowedCodes = const <int>{0},
+  }) async {
+    return <String, Object?>{
+      'dash': <String, Object?>{
+        'duration': 60,
+        'min_buffer_time': 1.5,
+        'video': <Object?>[
+          <String, Object?>{
+            'id': 80,
+            'base_url': 'https://example.test/80.m4s',
+            'codecs': 'avc1.640028',
+            'bandwidth': 1000000,
+            'mime_type': 'video/mp4',
+            'width': 1920,
+            'height': 1080,
+            'SegmentBase': <String, Object?>{
+              'Initialization': '0-10',
+              'indexRange': '11-20',
+            },
+          },
+        ],
+        'audio': <Object?>[
+          <String, Object?>{
+            'id': 30280,
+            'base_url': 'https://example.test/30280.m4s',
+            'codecs': 'mp4a.40.2',
+            'bandwidth': 192000,
+            'mime_type': 'audio/mp4',
+            'SegmentBase': <String, Object?>{
+              'Initialization': '0-10',
+              'indexRange': '11-20',
+            },
+          },
+        ],
+        'dolby': <String, Object?>{
+          'audio': <Object?>[
+            <String, Object?>{
+              'id': 30255,
+              'base_url': 'https://example.test/30255.m4s',
+              'codecs': 'ec-3',
+              'bandwidth': 448000,
+              'mime_type': 'audio/mp4',
+              'SegmentBase': <String, Object?>{
+                'Initialization': '0-10',
+                'indexRange': '11-20',
+              },
+            },
+          ],
+        },
+      },
+    };
+  }
 }
 
 BiliDashStream audio(int id, String codec) => BiliDashStream(

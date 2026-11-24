@@ -23,7 +23,9 @@ Future<BiliLogoutResult> clearBiliAuthenticatedSession({
     await offlineController.pauseAllActive();
   } catch (error, stackTrace) {
     downloadPauseError = error;
-    debugPrint('[BiliAuth] failed to pause offline downloads: $error');
+    debugPrint(
+      '[BiliAuth] failed to pause offline downloads: ${error.runtimeType}',
+    );
     debugPrintStack(stackTrace: stackTrace);
   }
 

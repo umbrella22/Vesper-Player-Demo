@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import '../diagnostics/media_playback_startup_timing.dart';
 import '../diagnostics/media_native_playback_diagnostics.dart';
 import 'media_playback_stall_watchdog.dart';
@@ -80,6 +81,7 @@ final class MediaPlaybackViewModel {
     _dlnaManager = MediaExternalPlaybackManager(
       detail: detail,
       formatAdaptation: adapter.dlnaConfig?.formatAdaptation,
+      formatError: adapter.formatError,
     )..addListener(_handleDlnaChanged);
     _handleDlnaChanged();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -260,7 +262,7 @@ final class MediaPlaybackViewModel {
         identical(error, _suppressedPlaybackCommandError.value)) {
       return null;
     }
-    return error.message;
+    return sanitizeUserErrorMessage(error.message, fallback: '播放遇到异常，请重试。');
   }
 
   VesperSystemPlaybackPermissionStatus get systemPlaybackPermissionStatus =>
@@ -472,10 +474,11 @@ final class MediaPlaybackViewModel {
           _selectedEntry.value = entry;
           _resolvedPlayback.value = resolved;
           _resetRuntimeTrackCapabilityState();
-          if (_sourceMode == MediaPlaybackSourceMode.video) {
-            _selectedQualityOptionId.value = null;
-            _selectedCodecIdentity.value = null;
-          }
+          // Episode tracks belong to the previous source, including a video
+          // policy captured before entering listen mode.
+          _listenVideoPolicyRestore = null;
+          _selectedQualityOptionId.value = null;
+          _selectedCodecIdentity.value = null;
           return null;
         } on _PlaybackSourceObsoleted {
           return null;
@@ -501,13 +504,13 @@ final class MediaPlaybackViewModel {
               return '切换分 P 失败，且原播放源恢复失败，请重新加载。';
             }
           }
-          return '切换分 P 失败：${mediaErrorMessage(error)}';
+          return '切换分 P 失败：${adapter.formatError(error)}';
         }
       });
     } on _PlaybackSourceObsoleted {
       return null;
     } catch (error) {
-      return '切换分 P 失败：${mediaErrorMessage(error)}';
+      return '切换分 P 失败：${adapter.formatError(error)}';
     } finally {
       _finishSourceTransition(transitionGeneration);
     }
@@ -537,7 +540,7 @@ final class MediaPlaybackViewModel {
         refreshResolved: _refreshCurrentResolvedPlayback,
       );
     } catch (error) {
-      return '投屏播放地址刷新失败：${mediaErrorMessage(error)}';
+      return '投屏播放地址刷新失败：${adapter.formatError(error)}';
     }
   }
 
@@ -605,78 +608,100 @@ final class MediaPlaybackViewModel {
   }
 
   /// 选择清晰度选项；null 表示回到自动。
-  Future<String?> selectQualityOption(String? optionId) async {
-    final controller = _controller;
-    if (controller == null) {
-      return null;
-    }
-    final nextCodecIdentity = optionId == null
-        ? null
-        : _selectedCodecIdentity.value;
-    if (optionId != null) {
-      final option = _qualitySelectionOption(
-        controller.snapshot,
-        optionId,
+  Future<String?> selectQualityOption(String? optionId) => _queueTrackSelection(
+    () async {
+      final controller = _controller;
+      if (controller == null) {
+        return null;
+      }
+      final nextCodecIdentity = optionId == null
+          ? null
+          : _selectedCodecIdentity.value;
+      if (optionId != null) {
+        final option = _qualitySelectionOption(
+          controller.snapshot,
+          optionId,
+          codecIdentity: nextCodecIdentity,
+        );
+        if (option == null) {
+          return '当前视频没有可用的清晰度轨道。';
+        }
+        if (!option.canSelect) {
+          return _unavailableSelectionMessage(
+            option.unavailableReason,
+            noMatchingTracks: option.candidateTracks.isEmpty,
+          );
+        }
+      }
+      final selectionGeneration = ++_playbackSelectionGeneration;
+      final result = await _applyPlaybackSelection(
+        optionId: optionId,
         codecIdentity: nextCodecIdentity,
       );
-      if (option == null) {
-        return '当前视频没有可用的清晰度轨道。';
+      if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
+        return null;
       }
-      if (!option.canSelect) {
-        return _unavailableSelectionMessage(
-          option.unavailableReason,
-          noMatchingTracks: option.candidateTracks.isEmpty,
-        );
+      if (result == null) {
+        _selectedQualityOptionId.value = optionId;
+        _selectedCodecIdentity.value = nextCodecIdentity;
       }
-    }
-    final selectionGeneration = ++_playbackSelectionGeneration;
-    final result = await _applyPlaybackSelection(
-      optionId: optionId,
-      codecIdentity: nextCodecIdentity,
-    );
-    if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
-      return null;
-    }
-    if (result == null) {
-      _selectedQualityOptionId.value = optionId;
-      _selectedCodecIdentity.value = nextCodecIdentity;
-    }
-    return result;
-  }
+      return result;
+    },
+  );
 
   /// 选择 codec 子策略（AV1/HEVC/AVC 等身份）；null 表示默认。
-  Future<String?> selectCodecIdentity(String? identity) async {
-    final controller = _controller;
-    if (controller == null) {
-      return null;
-    }
-    final optionId = _selectedQualityOptionId.value;
-    if (identity != null) {
-      final availability = _codecSelectionAvailability(
-        controller.snapshot,
-        identity,
+  Future<String?> selectCodecIdentity(String? identity) => _queueTrackSelection(
+    () async {
+      final controller = _controller;
+      if (controller == null) {
+        return null;
+      }
+      final optionId = _selectedQualityOptionId.value;
+      if (identity != null) {
+        final availability = _codecSelectionAvailability(
+          controller.snapshot,
+          identity,
+          optionId: optionId,
+        );
+        final label = _codecDisplayLabel(identity);
+        if (availability.declaredTracks.isEmpty) {
+          return '当前分辨率没有 $label 策略。';
+        }
+        if (availability.availability == MediaQualityAvailability.unavailable) {
+          return '当前设备不支持 $label 策略。';
+        }
+      }
+      final selectionGeneration = ++_playbackSelectionGeneration;
+      final result = await _applyPlaybackSelection(
         optionId: optionId,
+        codecIdentity: identity,
       );
-      final label = _codecDisplayLabel(identity);
-      if (availability.declaredTracks.isEmpty) {
-        return '当前分辨率没有 $label 策略。';
+      if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
+        return null;
       }
-      if (availability.availability == MediaQualityAvailability.unavailable) {
-        return '当前设备不支持 $label 策略。';
+      if (result == null) {
+        _selectedCodecIdentity.value = identity;
       }
+      return result;
+    },
+  );
+
+  // A quality or codec command applies only to the source on which it was issued.
+  Future<String?> _queueTrackSelection(Future<String?> Function() select) {
+    if (_isDisposed || _playbackSourceTransitionInFlight.value) {
+      return Future.value(null);
     }
-    final selectionGeneration = ++_playbackSelectionGeneration;
-    final result = await _applyPlaybackSelection(
-      optionId: optionId,
-      codecIdentity: identity,
-    );
-    if (_isDisposed || selectionGeneration != _playbackSelectionGeneration) {
-      return null;
-    }
-    if (result == null) {
-      _selectedCodecIdentity.value = identity;
-    }
-    return result;
+    final controller = _controller;
+    final generation = _sourceGeneration;
+    return _runSourceTransaction(() async {
+      if (_isDisposed ||
+          controller != _controller ||
+          generation != _sourceGeneration ||
+          _playbackSourceTransitionInFlight.value) {
+        return null;
+      }
+      return select();
+    });
   }
 
   Future<String?> applyPlaybackSelection() {
@@ -824,7 +849,7 @@ final class MediaPlaybackViewModel {
     } on VesperSubtitleException catch (error) {
       return '字幕切换失败：${_subtitleSelectionErrorMessage(error)}';
     } catch (error) {
-      return '字幕切换失败：${mediaErrorMessage(error)}';
+      return '字幕切换失败：${adapter.formatError(error)}';
     }
   }
 
@@ -835,6 +860,18 @@ final class MediaPlaybackViewModel {
       VesperPlaybackState.paused => '已暂停',
       VesperPlaybackState.finished => '已结束',
     };
+  }
+
+  Future<void> saveBackgroundProgress() async {
+    final snapshot = _controller?.snapshot;
+    if (_isDisposed ||
+        historyStore == null ||
+        snapshot == null ||
+        _playbackSourceTransitionInFlight.value ||
+        _playbackRecoveryInFlight) {
+      return;
+    }
+    await _persistHistory(snapshot, entry: _selectedEntry.value);
   }
 
   void dispose() {
@@ -863,36 +900,33 @@ final class MediaPlaybackViewModel {
     _controller = null;
     _userController = null;
     if (controller != null) {
-      if (sourceTransitionWasInFlight) {
-        unawaited(() async {
-          await sourceTransaction;
-          if (snapshot != null) {
-            unawaited(_persistHistory(snapshot, entry: selectedEntry));
+      unawaited(() async {
+        try {
+          if (sourceTransitionWasInFlight) await sourceTransaction;
+          if (historyStore != null && snapshot != null) {
+            var finalSnapshot = snapshot;
+            if (!sourceTransitionWasInFlight && snapshot.lastError == null) {
+              try {
+                await controller.refresh();
+                finalSnapshot = controller.snapshot;
+              } catch (_) {
+                // Keep the last observation if the platform has already closed.
+              }
+            }
+            // Disk I/O no longer needs the player or its progress timer.
+            unawaited(_persistHistory(finalSnapshot, entry: selectedEntry));
           }
+        } finally {
           await _disposeController(controller);
-        }());
-      } else {
-        if (snapshot != null) {
-          if (snapshot.lastError != null) {
-            unawaited(_persistHistory(snapshot, entry: selectedEntry));
-          } else {
-            unawaited(
-              _persistLatestHistory(
-                controller,
-                fallback: snapshot,
-                entry: selectedEntry,
-              ),
-            );
-          }
         }
-        unawaited(_disposeController(controller));
-      }
+      }());
     }
     _selectedEntry.dispose();
     _controllerFuture.dispose();
     _resolvedPlayback.dispose();
     _selectedQualityOptionId.dispose();
     _selectedCodecIdentity.dispose();
+    _hdrStatus.dispose();
     _suppressedPlaybackCommandError.dispose();
     _systemPlaybackPermissionStatus.dispose();
     _castMessage.dispose();

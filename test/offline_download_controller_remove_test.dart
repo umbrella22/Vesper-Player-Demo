@@ -84,6 +84,7 @@ void main() {
 
     Future<BiliOfflineDownloadMetadata> seedMetadata({
       int? taskId,
+      int? episodeId,
       String? errorMessage,
     }) async {
       final metadata = BiliOfflineDownloadMetadata(
@@ -97,6 +98,19 @@ void main() {
         createdAtMs: 1,
         taskId: taskId,
         errorMessage: errorMessage,
+        playbackMetadata: episodeId == null
+            ? null
+            : BiliOfflinePlaybackMetadata(
+                aid: 1,
+                pageNumber: 1,
+                pageTitle: '',
+                durationSeconds: 0,
+                ownerMid: 1,
+                ownerName: '',
+                ownerAvatarUrl: '',
+                description: '',
+                episodeId: episodeId,
+              ),
       );
       await store.saveEntries(<BiliOfflineDownloadMetadata>[metadata]);
       return metadata;
@@ -109,59 +123,53 @@ void main() {
       ).create(recursive: true);
     }
 
-    test(
-      'removeEntry throws and keeps everything when removeTask fails',
-      () async {
-        await createController(knownTaskId: 42, removeResult: false);
-        final metadata = await seedMetadata(taskId: 42);
-        await seedAssetDirectory();
-        await controller.initialize();
+    test('removeEntry throws and keeps everything when removeTask fails', () async {
+      await createController(knownTaskId: 42, removeResult: false);
+      final metadata = await seedMetadata(taskId: 42);
+      await seedAssetDirectory();
+      await controller.initialize();
 
-        final entry = controller.entries.single;
-        await expectLater(
-          controller.removeEntry(entry),
-          throwsA(isA<BiliOfflineDownloadException>()),
-        );
+      final entry = controller.entries.single;
+      await expectLater(
+        controller.removeEntry(entry),
+        throwsA(isA<BiliOfflineDownloadException>()),
+      );
 
-        expect(manager.removedTaskIds, <int>[42]);
-        // 目录、元数据与内存状态都必须保留。
-        expect(
-          Directory(
-            '${root.path}/vesper-player/offline-cache/assets/bili-BV1xx411c7mD-11-q80-avc-audio30280',
-          ).existsSync(),
-          isTrue,
-        );
-        expect(controller.entries, hasLength(1));
-        expect(controller.entries.single.metadata.assetId, metadata.assetId);
-        // 元数据文件不能被写成"已删除"。
-        final reloaded = await store.loadEntries();
-        expect(reloaded, hasLength(1));
-      },
-    );
+      expect(manager.removedTaskIds, <int>[42]);
+      // 目录、元数据与内存状态都必须保留。
+      expect(
+        Directory(
+          '${root.path}/vesper-player/offline-cache/assets/bili-BV1xx411c7mD-11-q80-avc-audio30280',
+        ).existsSync(),
+        isTrue,
+      );
+      expect(controller.entries, hasLength(1));
+      expect(controller.entries.single.metadata.assetId, metadata.assetId);
+      // 元数据文件不能被写成"已删除"。
+      final reloaded = await store.loadEntries();
+      expect(reloaded, hasLength(1));
+    });
 
-    test(
-      'removeEntry deletes directory and metadata when removeTask succeeds',
-      () async {
-        await createController(knownTaskId: 42, removeResult: true);
-        await seedMetadata(taskId: 42);
-        await seedAssetDirectory();
-        await controller.initialize();
+    test('removeEntry deletes directory and metadata when removeTask succeeds', () async {
+      await createController(knownTaskId: 42, removeResult: true);
+      await seedMetadata(taskId: 42);
+      await seedAssetDirectory();
+      await controller.initialize();
 
-        final entry = controller.entries.single;
-        await controller.removeEntry(entry);
+      final entry = controller.entries.single;
+      await controller.removeEntry(entry);
 
-        expect(manager.removedTaskIds, <int>[42]);
-        expect(
-          Directory(
-            '${root.path}/vesper-player/offline-cache/assets/bili-BV1xx411c7mD-11-q80-avc-audio30280',
-          ).existsSync(),
-          isFalse,
-        );
-        expect(controller.entries, isEmpty);
-        final reloaded = await store.loadEntries();
-        expect(reloaded, isEmpty);
-      },
-    );
+      expect(manager.removedTaskIds, <int>[42]);
+      expect(
+        Directory(
+          '${root.path}/vesper-player/offline-cache/assets/bili-BV1xx411c7mD-11-q80-avc-audio30280',
+        ).existsSync(),
+        isFalse,
+      );
+      expect(controller.entries, isEmpty);
+      final reloaded = await store.loadEntries();
+      expect(reloaded, isEmpty);
+    });
 
     test('removeEntry cleans up an orphan task whose SDK task is gone', () async {
       // SDK 中任务已不存在（orphan）：本地清理必须继续，而不是被拒绝。
@@ -196,8 +204,177 @@ void main() {
       expect(controller.entries, hasLength(1));
     });
 
+    test(
+      'remove updates the inventory even without an SDK stream event',
+      () async {
+        await createController(knownTaskId: 42, snapshotIncludesTask: true);
+        await seedMetadata(taskId: 42);
+        await controller.initialize();
+        addTearDown(controller.dispose);
+        expect(controller.entries.single.task?.taskId, 42);
+        await controller.remove(42);
+        expect(controller.entries, isEmpty);
+      },
+    );
+
+    test('concurrent enqueue creates one SDK task per asset', () async {
+      final client = _RecoveryClient()
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      await createController(client: client);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      manager.createResult = 43;
+      final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+      final results = await Future.wait([
+        for (var i = 0; i < 2; i++)
+          controller.enqueueBiliPage(
+            detail: detail,
+            page: detail.pages.single,
+            qualityId: 80,
+          ),
+      ]);
+      expect(results.map((item) => item.metadata.taskId), [43, 43]);
+      expect(manager.createCalls, 1);
+      expect(client.preparedRequests, 1);
+    });
+
+    test('space preflight budgets for input tracks and remux output', () async {
+      final client = _RecoveryClient(totalSizeBytes: 100)
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      var freeBytes = 199;
+      const channel = MethodChannel('dev.ikaros.vesper_player/storage_space');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => {'freeBytes': freeBytes, 'totalBytes': 1000},
+      );
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await createController(client: client);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      manager.createResult = 43;
+      final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+      Future<BiliOfflineDownloadEntry> enqueue() => controller.enqueueBiliPage(
+        detail: detail,
+        page: detail.pages.single,
+        qualityId: 80,
+      );
+      await expectLater(
+        enqueue(),
+        throwsA(
+          isA<BiliOfflineDownloadException>().having(
+            (e) => e.message,
+            'message',
+            contains('存储空间不足'),
+          ),
+        ),
+      );
+      expect(manager.createCalls, 0);
+      expect(controller.entries, isEmpty);
+      freeBytes = 200;
+      await enqueue();
+      expect(manager.createCalls, 1);
+    });
+
+    test('low disk keeps the previous failed task, unavailable space lets the SDK proceed', () async {
+      final client = _RecoveryClient(totalSizeBytes: 100)
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      const channel = MethodChannel('dev.ikaros.vesper_player/storage_space');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Object? free = 0;
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => {'totalBytes': 1000, 'freeBytes': free},
+      );
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await createController(
+        client: client,
+        knownTaskId: 42,
+        taskState: VesperDownloadState.failed,
+        taskError: 'old failure',
+        snapshotIncludesTask: true,
+      );
+      await seedMetadata(taskId: 42);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      manager.createResult = 43;
+      final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+      Future<BiliOfflineDownloadEntry> enqueue() => controller.enqueueBiliPage(
+        detail: detail,
+        page: detail.pages.single,
+        qualityId: 80,
+      );
+      await expectLater(
+        enqueue(),
+        throwsA(isA<BiliOfflineDownloadException>()),
+      );
+      expect(manager.removedTaskIds, isEmpty);
+      expect(manager.createCalls, 0);
+      expect((await store.loadEntries()).single.taskId, 42);
+      free = null;
+      await enqueue();
+      expect(manager.removedTaskIds, [42]);
+      expect(manager.createCalls, 1);
+    });
+
+    test('stale download cannot renew its plan when signed out', () async {
+      final client = _RecoveryClient();
+      await createController(client: client, knownTaskId: 42);
+      await seedMetadata(taskId: 42, episodeId: 123);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      final plan = await controller.recoverStaleDownloadPlan(
+        manager.task(42)!,
+        const VesperDownloadStaleResource(taskId: 42, message: 'expired'),
+      );
+      expect(plan, isNull);
+      expect(client.requestedEpisodes, isEmpty);
+      expect(client.optionRequests, 0);
+    });
+
+    test('failed SDK start rolls back its newly created task', () async {
+      final client = _RecoveryClient()
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      await createController(client: client);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      manager
+        ..createResult = 43
+        ..startResult = false;
+      final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+      await expectLater(
+        controller.enqueueBiliPage(
+          detail: detail,
+          page: detail.pages.single,
+          qualityId: 80,
+        ),
+        throwsA(isA<BiliOfflineDownloadException>()),
+      );
+      expect(manager.removedTaskIds, [43]);
+      expect(controller.entries.single.metadata.taskId, isNull);
+      expect(controller.entries.single.needsAttention, isTrue);
+    });
+
+    test('stale episode recovery uses the persisted episode ID', () async {
+      final client = _RecoveryClient()
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
+      await createController(client: client, knownTaskId: 42);
+      await seedMetadata(taskId: 42, episodeId: 123);
+      await controller.initialize();
+      addTearDown(controller.dispose);
+      final plan = await controller.recoverStaleDownloadPlan(
+        manager.task(42)!,
+        const VesperDownloadStaleResource(taskId: 42, message: 'expired'),
+      );
+      expect(client.requestedEpisodes, [123]);
+      expect(plan, isNotNull);
+    });
+
     test('stale recovery stops when the original CID disappeared', () async {
-      final client = _RecoveryClient(pageCid: 22);
+      final client = _RecoveryClient(pageCid: 22)
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
       await createController(client: client, knownTaskId: 42);
       await seedMetadata(taskId: 42);
       await controller.initialize();
@@ -214,7 +391,8 @@ void main() {
     });
 
     test('stale recovery rejects a changed prepared asset identity', () async {
-      final client = _RecoveryClient(preparedAssetId: 'different-asset');
+      final client = _RecoveryClient(preparedAssetId: 'different-asset')
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
       await createController(client: client, knownTaskId: 42);
       await seedMetadata(taskId: 42);
       await controller.initialize();
@@ -230,7 +408,8 @@ void main() {
     });
 
     test('stale recovery accepts refreshed URLs for the same asset', () async {
-      final client = _RecoveryClient();
+      final client = _RecoveryClient()
+        ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
       await createController(client: client, knownTaskId: 42);
       await seedMetadata(taskId: 42);
       await controller.initialize();
@@ -341,6 +520,8 @@ void main() {
     test(
       'enqueueBiliPage fails fast when the stale SDK task cannot be removed',
       () async {
+        final client = _RecoveryClient()
+          ..restoreCookies({'SESSDATA': 's', 'bili_jct': 'c'});
         // 重建失败任务时必须先删除旧 SDK 任务：删除失败意味着旧任务可能
         // 仍在运行/占用输出，继续对同一 asset 创建新任务会冲突，必须中止。
         await createController(
@@ -349,92 +530,16 @@ void main() {
           taskState: VesperDownloadState.failed,
           taskError: '下载失败',
           snapshotIncludesTask: true,
-          client: BiliClient()
-            ..restoreCookies(const <String, String>{
-              'SESSDATA': 'sess',
-              'bili_jct': 'csrf',
-              'DedeUserID': '42',
-              'buvid3': 'b3',
-              'buvid4': 'b4',
-            }),
+          client: client,
         );
         await seedMetadata(taskId: 42);
         await controller.initialize();
-
-        final page = const BiliVideoPageEntry(
-          cid: 11,
-          pageNumber: 1,
-          title: '正片',
-          durationSeconds: 60,
-          bvid: 'BV1xx411c7mD',
-        );
-        final detail = BiliVideoDetail(
-          aid: 1,
-          bvid: 'BV1xx411c7mD',
-          title: '离线视频',
-          ownerMid: 1,
-          ownerName: 'UP',
-          ownerAvatarUrl: '',
-          coverUrl: '',
-          description: '',
-          publishedAtLabel: null,
-          playCountLabel: '0',
-          danmakuCountLabel: '0',
-          replyCountLabel: '0',
-          likeCountLabel: '0',
-          coinCountLabel: '0',
-          favoriteCountLabel: '0',
-          shareCountLabel: '0',
-          pages: <BiliVideoPageEntry>[page],
-        );
-        final video = BiliDashStream(
-          id: 80,
-          baseUrl: 'https://example.com/video.m4s',
-          backupUrls: const <String>[],
-          mimeType: 'video/mp4',
-          codecs: 'avc1.640028',
-          bandwidth: 1200000,
-          representationId: 'video-80-7-1200000-0',
-          segmentInfo: const BiliDashSegmentInfo(
-            initialization: '0-10',
-            indexRange: '11-20',
-          ),
-        );
-        final audio = BiliDashStream(
-          id: 30280,
-          baseUrl: 'https://example.com/audio.m4s',
-          backupUrls: const <String>[],
-          mimeType: 'audio/mp4',
-          codecs: 'mp4a.40.2',
-          bandwidth: 192000,
-          representationId: 'audio-30280-mp4a402-192000-0',
-          segmentInfo: const BiliDashSegmentInfo(
-            initialization: '0-10',
-            indexRange: '11-20',
-          ),
-        );
-        final options = BiliDownloadOptions(
-          bvid: 'BV1xx411c7mD',
-          cid: 11,
-          videoTitle: '离线视频',
-          pageTitle: 'P1 · 正片',
-          coverUrl: '',
-          referer: 'https://www.bilibili.com/video/BV1xx411c7mD',
-          headers: const <String, String>{},
-          manifest: BiliDashManifestData(
-            durationMs: 1000,
-            minBufferTimeMs: 1500,
-            videoStreams: <BiliDashStream>[video],
-            audioStreams: <BiliDashStream>[audio],
-          ),
-          qualities: <BiliDownloadQualityOption>[
-            BiliDownloadQualityOption(
-              qualityId: 80,
-              label: '1080P 高清',
-              videoStreams: <BiliDashStream>[video],
-            ),
-          ],
-          variantLabel: 'test',
+        addTearDown(controller.dispose);
+        final detail = await client.fetchVideoDetail('BV1xx411c7mD');
+        final page = detail.pages.single;
+        final options = await client.resolveDownloadOptions(
+          detail: detail,
+          page: page,
         );
 
         await expectLater(
@@ -594,6 +699,7 @@ final class _FakeDownloadManagerHost implements BiliDownloadManagerHost {
   int disposeCalls = 0;
   int createCalls = 0;
   int? createResult;
+  bool startResult = true;
   final StreamController<VesperDownloadSnapshot> snapshotsController =
       StreamController<VesperDownloadSnapshot>.broadcast();
 
@@ -621,7 +727,7 @@ final class _FakeDownloadManagerHost implements BiliDownloadManagerHost {
   Future<bool> resumeTask(int taskId) async => true;
 
   @override
-  Future<bool> startTask(int taskId) async => true;
+  Future<bool> startTask(int taskId) async => startResult;
 
   @override
   Future<void> refresh() async {}
@@ -682,7 +788,10 @@ final class _FakeDownloadManagerHost implements BiliDownloadManagerHost {
       return const VesperDownloadSnapshot.initial();
     }
     final taskId = knownTaskId;
-    final known = taskId == null ? null : task(taskId);
+    final known =
+        taskId == null || (removeResult && removedTaskIds.contains(taskId))
+        ? null
+        : task(taskId);
     return known == null
         ? const VesperDownloadSnapshot.initial()
         : VesperDownloadSnapshot(tasks: <VesperDownloadTaskSnapshot>[known]);
@@ -695,10 +804,13 @@ final class _FakeDownloadManagerHost implements BiliDownloadManagerHost {
 final class _RecoveryClient extends BiliClient {
   _RecoveryClient({
     this.pageCid = 11,
+    this.totalSizeBytes,
     this.preparedAssetId = 'bili-BV1xx411c7mD-11-q80-avc-audio30280',
   });
 
   final int pageCid;
+  final int? totalSizeBytes;
+  final requestedEpisodes = <int>[];
   final String preparedAssetId;
   int optionRequests = 0;
   int preparedRequests = 0;
@@ -727,6 +839,12 @@ final class _RecoveryClient extends BiliClient {
       indexRange: '11-20',
     ),
   );
+
+  @override
+  Future<BiliVideoDetail> fetchPgcEpisodeDetail(int episodeId) {
+    requestedEpisodes.add(episodeId);
+    return fetchVideoDetail('BV1xx411c7mD');
+  }
 
   @override
   Future<BiliVideoDetail> fetchVideoDetail(String bvid) async {
@@ -803,7 +921,7 @@ final class _RecoveryClient extends BiliClient {
         contentFormat: VesperDownloadContentFormat.singleFile,
       ),
       profile: VesperDownloadProfile(targetDirectory: targetDirectory),
-      assetIndex: const VesperDownloadAssetIndex(),
+      assetIndex: VesperDownloadAssetIndex(totalSizeBytes: totalSizeBytes),
       selectedVideo: _video,
       selectedAudio: _audio,
       qualityLabel: '1080P',

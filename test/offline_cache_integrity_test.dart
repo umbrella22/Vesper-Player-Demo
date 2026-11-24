@@ -122,6 +122,22 @@ void main() {
   });
 
   test(
+    'a malformed cache record preserves neighboring valid metadata',
+    () async {
+      final root = await Directory.systemTemp.createTemp('offline-records-');
+      addTearDown(() => root.delete(recursive: true));
+      final file = File('${root.path}/bili-offline-cache.json');
+      await file.writeAsString(
+        '{"entries":[{"assetId":"ok","cid":1},{"assetId":"bad","cid":"oops"}]}',
+      );
+      final entries = await BiliOfflineDownloadStore(baseDirectory: root)
+          .loadEntries();
+      expect(entries.map((entry) => entry.assetId), ['ok']);
+      expect(file.existsSync(), isTrue);
+    },
+  );
+
+  test(
     'unknown metadata shape is quarantined instead of read as empty',
     () async {
       final root = await Directory.systemTemp.createTemp(

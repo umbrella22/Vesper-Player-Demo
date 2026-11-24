@@ -538,6 +538,7 @@ class BiliClient {
   }
 
   Future<BiliUserProfile> fetchCurrentUserProfile() async {
+    final revision = sessionRevision;
     await _transport.ensureReady();
     final data = await _transport.getData(
       host: biliApiHost,
@@ -577,7 +578,9 @@ class BiliClient {
       followerCount:
           readInt(statInfo['follower']) ?? readInt(statInfo['follower_count']),
     );
-    _currentUserMid = profile.mid;
+    if (sessionRevision == revision) {
+      _currentUserMid = profile.mid;
+    }
     return profile;
   }
 
@@ -609,7 +612,7 @@ class BiliClient {
     final code = readInt(map['code']) ?? -1;
     if (code != 0) {
       throw BiliApiException(
-        readString(map['message']) ?? 'QR login generation failed.',
+        readString(map['message']) ?? '二维码生成失败，请重试。',
         code: code,
       );
     }
@@ -1445,6 +1448,7 @@ class BiliClient {
       return cookieMid;
     }
 
+    final revision = sessionRevision;
     final data = await _transport.getData(
       host: biliApiHost,
       path: BiliApiPaths.nav,
@@ -1452,6 +1456,9 @@ class BiliClient {
       ensureReady: false,
       allowedCodes: const <int>{0, -101},
     );
+    if (sessionRevision != revision) {
+      return null;
+    }
     final mid = readInt(data['mid']);
     if (mid != null && mid > 0) {
       _currentUserMid = mid;

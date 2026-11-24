@@ -91,6 +91,7 @@ final class BiliMediaMapper {
   }) {
     return MediaPlaybackEntry(
       entryId: page.cid.toString(),
+      historyMediaId: page.bvid ?? fallbackBvid,
       pageNumber: page.pageNumber,
       title: page.title,
       durationSeconds: page.durationSeconds,

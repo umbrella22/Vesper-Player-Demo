@@ -60,9 +60,22 @@ final class BiliSessionStore {
       _secureStorage == null &&
       (_baseDirectory != null || _legacyDirectory != null);
 
-  Future<Map<String, String>> loadCookies() async {
+  // Reading can migrate a legacy file, so serialize it with writes and logout
+  // on the session store shared by the composition root.
+  static final _pending = Expando<Future<void>>();
+
+  Future<T> _inOrder<T>(Future<T> Function() action) {
+    final previous = _pending[this] ?? Future<void>.value();
+    final next = previous.then((_) => action());
+    _pending[this] = next.then<void>((_) {}, onError: (Object _) {});
+    return next;
+  }
+
+  Future<Map<String, String>> loadCookies() => _inOrder(_loadCookies);
+
+  Future<Map<String, String>> _loadCookies({bool forRollback = false}) async {
     if (_usesPlainFileStorage) {
-      return _loadCookiesFromFile();
+      return _loadCookiesFromFile(forRollback: forRollback);
     }
 
     final secureStorage =
@@ -72,6 +85,7 @@ final class BiliSessionStore {
     try {
       secureText = await secureStorage.read(key: _secureSessionKey);
     } catch (error) {
+      if (forRollback) rethrow;
       secureReadFailed = true;
       // Keychain read failures (backup migration, key invalidation,
       // PlatformException) must not fail app bootstrap. Degrade to the
@@ -86,8 +100,8 @@ final class BiliSessionStore {
       return secureCookies;
     }
 
-    final fileCookies = await _loadCookiesFromFile();
-    if (fileCookies.isNotEmpty) {
+    final fileCookies = await _loadCookiesFromFile(forRollback: forRollback);
+    if (!forRollback && fileCookies.isNotEmpty) {
       try {
         await secureStorage.write(
           key: _secureSessionKey,
@@ -109,7 +123,33 @@ final class BiliSessionStore {
     return fileCookies;
   }
 
-  Future<void> saveCookies(Map<String, String> cookies) async {
+  Future<void> saveCookies(Map<String, String> cookies) =>
+      _inOrder(() => _saveCookies(cookies));
+
+  /// Commit a verified login only while its owning attempt is current. A
+  /// native write can finish after the sheet closes or another session starts.
+  Future<void> saveCookiesWhileCurrent(
+    Map<String, String> cookies, {
+    required bool Function() isCurrent,
+  }) => _inOrder(() async {
+    if (!isCurrent()) return;
+    // A bootstrap fallback cannot establish which credentials a cancelled
+    // write should restore when secure storage is temporarily unreadable.
+    final previous = await _loadCookies(forRollback: true);
+    if (!isCurrent()) return;
+    Future<void> restorePrevious() =>
+        previous.isEmpty ? _clear() : _saveCookies(previous);
+    try {
+      await _saveCookies(cookies);
+    } catch (_) {
+      // A secure write may succeed before legacy-file cleanup fails.
+      await restorePrevious();
+      rethrow;
+    }
+    if (!isCurrent()) await restorePrevious();
+  });
+
+  Future<void> _saveCookies(Map<String, String> cookies) async {
     if (_usesPlainFileStorage) {
       await _saveCookiesToFile(cookies);
       return;
@@ -124,29 +164,36 @@ final class BiliSessionStore {
     await _clearSessionFile();
   }
 
-  Future<void> clear() async {
-    if (!_usesPlainFileStorage) {
+  Future<void> clear() => _inOrder(_clear);
+
+  Future<void> _clear() async {
+    try {
+      if (_usesPlainFileStorage) return;
       final secureStorage =
           _secureStorage ?? const BiliFlutterSessionSecureStorage();
       await secureStorage.delete(key: _secureSessionKey);
+    } finally {
+      await _clearSessionFile();
     }
-    await _clearSessionFile();
   }
 
-  Future<Map<String, String>> _loadCookiesFromFile() async {
+  Future<Map<String, String>> _loadCookiesFromFile({
+    required bool forRollback,
+  }) async {
     try {
       final file = await _sessionFile();
       if (!await file.exists()) {
         return const <String, String>{};
       }
 
-      final text = await file.readAsString();
+      final text = utf8.decode(await file.readAsBytes());
       if (text.trim().isEmpty) {
         return const <String, String>{};
       }
 
       return _parseCookiesPayload(text);
     } catch (error) {
+      if (forRollback && error is! FormatException) rethrow;
       // A corrupt session file (interrupted write, partial migration) must
       // not fail bootstrap. Treat it as "no persisted session"; a later
       // successful login overwrites the file.

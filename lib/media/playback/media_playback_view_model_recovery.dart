@@ -182,7 +182,9 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     }
     if (_playbackRecoveryAttempts >=
         MediaPlaybackViewModel._maxPlaybackRecoveryAttempts) {
-      _emitPlaybackRecoveryFailure(error.message);
+      _emitPlaybackRecoveryFailure(
+        sanitizeUserErrorMessage(error.message, fallback: '播放遇到异常，请重试。'),
+      );
       return;
     }
     unawaited(
@@ -247,7 +249,20 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
     _resetNativePlaybackDiagnostics();
     _resetHdrStatus();
     _playbackRecoverySuccessTimer?.cancel();
-    var lastFailureMessage = triggerError.message;
+    final previous = controller.snapshot;
+    final timeline = previous.timeline;
+    final resumeRatio =
+        timeline.durationMs != null &&
+            timeline.durationMs! > 0 &&
+            timeline.positionMs > 0
+        ? (timeline.positionMs / timeline.durationMs!)
+              .clamp(0.0, 1.0)
+              .toDouble()
+        : null;
+    var lastFailureMessage = sanitizeUserErrorMessage(
+      triggerError.message,
+      fallback: '播放遇到异常，请重试。',
+    );
     try {
       while (!_isDisposed &&
           controllerGeneration == _controllerGeneration &&
@@ -270,15 +285,6 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
           }
         }
 
-        final timeline = controller.snapshot.timeline;
-        final resumeRatio =
-            timeline.durationMs != null &&
-                timeline.durationMs! > 0 &&
-                timeline.positionMs > 0
-            ? (timeline.positionMs / timeline.durationMs!)
-                  .clamp(0.0, 1.0)
-                  .toDouble()
-            : null;
         try {
           final resolved = await adapter.resolvePlayback(
             detail: detail,
@@ -338,7 +344,24 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
             )) {
               return null;
             }
-            await controller.play();
+            if (previous.playbackRate != 1 &&
+                previous.playbackRate.isFinite &&
+                previous.playbackRate > 0) {
+              await controller.setPlaybackRate(previous.playbackRate);
+              if (!_isCurrentPlaybackRecovery(
+                controller: controller,
+                recoveryEntry: recoveryEntry,
+                controllerGeneration: controllerGeneration,
+                recoveryGeneration: recoveryGeneration,
+              )) {
+                return null;
+              }
+            }
+            if (previous.playbackState == VesperPlaybackState.paused) {
+              await controller.pause();
+            } else {
+              await controller.play();
+            }
             if (!_isCurrentPlaybackRecovery(
               controller: controller,
               recoveryEntry: recoveryEntry,
@@ -358,7 +381,10 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
             }
             final deferredError = _deferredPlaybackRecoveryError;
             if (deferredError != null) {
-              lastFailureMessage = deferredError.message;
+              lastFailureMessage = sanitizeUserErrorMessage(
+                deferredError.message,
+                fallback: '播放遇到异常，请重试。',
+              );
               return true;
             }
             _resolvedPlayback.value = resolved;
@@ -378,7 +404,7 @@ extension _MediaPlaybackRecovery on MediaPlaybackViewModel {
           }
           return;
         } catch (error) {
-          lastFailureMessage = '重新解析失败：${mediaErrorMessage(error)}';
+          lastFailureMessage = '重新解析失败：${adapter.formatError(error)}';
         }
       }
     } finally {

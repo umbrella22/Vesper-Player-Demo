@@ -6,6 +6,7 @@ import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_player/vesper_player.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
+
 import '../models/offline_download_models.dart';
 import '../models/offline_storage_models.dart';
 
@@ -85,7 +86,7 @@ class OfflineStorageSummary extends StatelessWidget {
                     child: OfflineStorageStat(
                       label: '缓存占用',
                       value: biliFormatDownloadBytes(usage.cacheBytes),
-                      valueColor: AppVisualTokens.primaryBlue,
+                      valueColor: visualTheme.accent,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -133,17 +134,9 @@ class OfflineStorageSummary extends StatelessWidget {
                     backgroundColor: visualTheme.surfaceRaised,
                   ),
                 ),
-              )
-            else if (errorMessage != null && errorMessage!.isNotEmpty)
-              Text(
-                '无法读取设备存储空间',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: visualTheme.destructive,
-                  fontWeight: FontWeight.w700,
-                ),
               ),
             if (errorMessage != null && errorMessage!.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              if (usage != null || loading) const SizedBox(height: 8),
               Text(
                 errorMessage!,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -194,10 +187,8 @@ class OfflineStorageStat extends StatelessWidget {
           value,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: valueColor,
-            fontWeight: FontWeight.w900,
-          ),
+          style: Theme.of(context).textTheme.titleSmall
+              ?.copyWith(color: valueColor, fontWeight: FontWeight.w900),
         ),
       ],
     );
@@ -301,7 +292,7 @@ class OfflineEntryGroup extends StatelessWidget {
         for (final entry in entries) ...[
           Dismissible(
             key: ValueKey<String>('offline-cache-${entry.metadata.assetId}'),
-            direction: DismissDirection.startToEnd,
+            direction: DismissDirection.endToStart,
             confirmDismiss: (_) => onDelete(entry),
             background: const OfflineDeleteBackground(),
             child: Material(
@@ -368,17 +359,22 @@ class OfflineCacheTile extends StatelessWidget {
         : '${biliFormatDownloadBytes(entry.receivedBytes)} / ${biliFormatDownloadBytes(totalBytes)}';
     final error = entry.displayErrorMessage;
     final isBusy = opening || deleting || exporting;
+    final showProgress =
+        entry.isActive ||
+        (!entry.isUnplayable &&
+            !entry.isCompleted &&
+            entry.progressRatio != null);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+      padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 126,
-              height: 78,
+              width: 128,
+              height: 72,
               child: metadata.coverUrl.isEmpty
                   ? ColoredBox(color: visualTheme.surfaceRaised)
                   : AppNetworkImage(
@@ -389,7 +385,7 @@ class OfflineCacheTile extends StatelessWidget {
                     ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,7 +397,7 @@ class OfflineCacheTile extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: visualTheme.textPrimary,
                     fontWeight: FontWeight.w900,
-                    height: 1.1,
+                    height: 1.15,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -415,61 +411,55 @@ class OfflineCacheTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                SizedBox(
-                  height: 26,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          error == null || error.isEmpty
-                              ? '${entry.statusLabel} · $byteText'
-                              : '${entry.statusLabel} · $error',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                color: error == null
-                                    ? visualTheme.textSecondary
-                                    : visualTheme.destructive,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
+                Builder(
+                  builder: (context) {
+                    final hasError = error != null && error.isNotEmpty;
+                    return Text(
+                      hasError
+                          ? '${entry.statusLabel} · $error'
+                          : '${entry.statusLabel} · $byteText',
+                      maxLines: hasError ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: hasError
+                            ? visualTheme.destructive
+                            : visualTheme.textSecondary,
+                        fontWeight: FontWeight.w700,
                       ),
-                      if (!entry.isUnplayable)
-                        if (entry.task case final task?)
-                          OfflineTaskAction(
-                            task: task,
-                            pending: taskActionPending,
-                            onTap: onToggleTask,
-                          ),
-                      OfflineEntryMoreButton(
-                        enabled: !isBusy,
-                        onTap: onMoreTap,
-                      ),
-                      if (isBusy)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 4),
-                          child: SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-                const SizedBox(height: 5),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    minHeight: 3,
-                    value: progress,
-                    color: AppVisualTokens.primaryBlue,
-                    backgroundColor: visualTheme.surfaceRaised,
+                if (showProgress) ...[
+                  const SizedBox(height: 5),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      value: progress,
+                      color: visualTheme.accent,
+                      backgroundColor: visualTheme.surfaceRaised,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
+          if (!entry.isUnplayable)
+            if (entry.task case final task?)
+              OfflineTaskAction(
+                task: task,
+                pending: taskActionPending,
+                onTap: onToggleTask,
+              ),
+          OfflineEntryMoreButton(enabled: !isBusy, onTap: onMoreTap),
+          if (isBusy)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
         ],
       ),
     );
@@ -482,28 +472,27 @@ class OfflineDeleteBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final foreground = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF2B070B)
+        : Colors.white;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: visualTheme.destructive,
         borderRadius: BorderRadius.circular(AppVisualTokens.contentRadius),
       ),
       child: Align(
-        alignment: Alignment.centerLeft,
+        alignment: AlignmentDirectional.centerEnd,
         child: Padding(
-          padding: const EdgeInsets.only(left: 18),
+          padding: const EdgeInsetsDirectional.only(end: 18),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                AppIcons.deleteBinLine,
-                color: Colors.white,
-                size: 22,
-              ),
+              Icon(AppIcons.deleteBinLine, color: foreground, size: 22),
               const SizedBox(width: 6),
               Text(
                 '删除',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Colors.white,
+                  color: foreground,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -529,49 +518,38 @@ class OfflineTaskAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = switch (task.state) {
+    final (icon, tooltip) = switch (task.state) {
       VesperDownloadState.downloading ||
       VesperDownloadState.preparing ||
-      VesperDownloadState.queued => AppIcons.pauseFill,
-      VesperDownloadState.paused ||
-      VesperDownloadState.failed => AppIcons.playFill,
-      _ => AppIcons.moreFill,
+      VesperDownloadState.queued => (AppIcons.pauseFill, '暂停'),
+      VesperDownloadState.paused => (AppIcons.playFill, '继续'),
+      VesperDownloadState.failed => (AppIcons.playFill, '重试'),
+      _ => (null, ''),
     };
-    final action = switch (task.state) {
-      VesperDownloadState.downloading ||
-      VesperDownloadState.preparing ||
-      VesperDownloadState.queued => () => unawaited(onTap()),
-      VesperDownloadState.paused ||
-      VesperDownloadState.failed => () => unawaited(onTap()),
-      _ => null,
-    };
-    final tooltip = switch (task.state) {
-      VesperDownloadState.downloading ||
-      VesperDownloadState.preparing ||
-      VesperDownloadState.queued => '暂停',
-      VesperDownloadState.paused || VesperDownloadState.failed => '继续',
-      _ => '更多',
-    };
+    final visualTheme = AppVisualTheme.of(context);
+    if (icon == null) return const SizedBox.shrink();
     return Tooltip(
       message: pending ? '$tooltip中' : tooltip,
       child: InkResponse(
         key: ValueKey<String>('offline-task-action-${task.taskId}'),
         radius: 18,
-        onTap: pending ? null : action,
+        onTap: pending ? null : () => unawaited(onTap()),
         child: SizedBox.square(
-          dimension: 26,
+          dimension: AppVisualTokens.minimumTapTarget,
           child: pending
-              ? Padding(
-                  padding: const EdgeInsets.all(5),
-                  child: CircularProgressIndicator(
-                    key: ValueKey<String>(
-                      'offline-task-action-pending-${task.taskId}',
+              ? Center(
+                  child: SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(
+                      key: ValueKey<String>(
+                        'offline-task-action-pending-${task.taskId}',
+                      ),
+                      strokeWidth: 2,
+                      color: visualTheme.accent,
                     ),
-                    strokeWidth: 2,
-                    color: AppVisualTokens.primaryBlue,
                   ),
                 )
-              : Icon(icon, color: AppVisualTokens.primaryBlue, size: 22),
+              : Icon(icon, color: visualTheme.accent, size: 22),
         ),
       ),
     );
