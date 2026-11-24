@@ -635,7 +635,7 @@ void main() {
 
       final message = await vm.toggleWatchLater();
 
-      expect(message, '操作失败：[-403] 操作被拒绝');
+      expect(message, '操作失败：操作被拒绝');
       expect(vm.isInWatchLater, isFalse);
       expect(vm.watchLaterKnown, isTrue);
       expect(vm.pendingEngagementAction, isNull);

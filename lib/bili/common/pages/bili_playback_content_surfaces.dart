@@ -37,6 +37,7 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
     required this.viewModel,
     required this.detail,
     required this.host,
+    this.onOpenOwner,
   }) {
     // 评论列表滚动到底部时的加载更多（壳的滚动监听触发）。
     host.onLoadMoreComments = viewModel.loadMoreComments;
@@ -46,6 +47,7 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
   final BiliPlaybackViewModel viewModel;
   final BiliVideoDetail detail;
   final MediaPlaybackContentHost host;
+  final VoidCallback? onOpenOwner;
 
   @override
   String get introTabLabel => '简介';
@@ -78,7 +80,9 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
     final selection = await showMediaGlassSheet<BiliFavoriteSelection>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentHandlesScrolling: true,
       maxContentHeightFactor: 0.82,
+      contentPadding: EdgeInsets.zero,
       builder: (context) => _FavoriteFolderPickerSheet(
         loadFolders: viewModel.loadFavoriteFolders,
       ),
@@ -99,6 +103,7 @@ final class BiliPlaybackContentSurfaces implements MediaContentSurfaces {
     await showMediaGlassSheet<void>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentHandlesScrolling: true,
       maxContentHeightFactor: 0.82,
       contentPadding: EdgeInsets.zero,
       builder: (context) {
@@ -164,7 +169,9 @@ Future<void> _runAction(
 }
 
 void _showSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 // ---- 展示组件（B 站内容槽） ----

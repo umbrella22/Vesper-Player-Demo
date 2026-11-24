@@ -690,9 +690,8 @@ void main() {
         builder: displayCornerRadii == null
             ? null
             : (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).applyDisplayCornerRadii(displayCornerRadii),
+                data: MediaQuery.of(context)
+                    .applyDisplayCornerRadii(displayCornerRadii),
                 child: child!,
               ),
         home: MediaPlaybackPage(
@@ -1211,7 +1210,10 @@ void main() {
           isActive: false,
         );
         await tester.pumpAndSettle();
-        expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
+        expect(
+          tester.state(find.byType(MediaVideoContent)),
+          same(contentState),
+        );
         expect(tester.state(find.byType(VesperPlayerView)), same(viewState));
         expect(
           find.byKey(const ValueKey('playback-bottom-surface')),
@@ -1244,7 +1246,10 @@ void main() {
         expect(harness.viewModel.controller, same(controller));
         expect(harness.platform.createCalls, createCalls);
         expect(harness.platform.playCalls, playCalls);
-        expect(tester.state(find.byType(MediaVideoContent)), same(contentState));
+        expect(
+          tester.state(find.byType(MediaVideoContent)),
+          same(contentState),
+        );
         expect(
           find.byKey(const ValueKey('playback-bottom-surface')),
           fullscreen ? findsNothing : findsOneWidget,
@@ -1326,9 +1331,8 @@ void main() {
         point.dy,
       );
       expect(
-        stage(tester).onContentTap!(
-          blackBarPoint - tester.getTopLeft(stageFinder),
-        ),
+        stage(tester)
+            .onContentTap!(blackBarPoint - tester.getTopLeft(stageFinder)),
         isFalse,
       );
       await tester.tapAt(blackBarPoint);
@@ -1407,6 +1411,29 @@ void main() {
       );
       expect(harness.platform.disposeCalls, 0);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('听视频拖动进度时本地预览，松手只发一次 seek', (tester) async {
+      final harness = await pumpShell(
+        tester,
+        surfaceSize: const Size(390, 844),
+      );
+      await enterListenMode(tester);
+      await tester.pumpAndSettle();
+      final slider = find.byType(Slider).hitTestable();
+      final rect = tester.getRect(slider);
+      final before = harness.platform.seekRatios.length;
+      final drag = await tester.startGesture(rect.center);
+      await drag.moveBy(Offset(rect.width * .16, 0));
+      await tester.pump();
+      await drag.moveBy(Offset(rect.width * .12, 0));
+      await tester.pump();
+      expect(tester.widget<Slider>(slider).value, greaterThan(.65));
+      expect(harness.platform.seekRatios, hasLength(before));
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(harness.platform.seekRatios, hasLength(before + 1));
+      expect(harness.platform.seekRatios.last, greaterThan(.65));
     });
 
     testWidgets('手机系统返回先退出伴听且不销毁播放会话', (tester) async {
@@ -2591,10 +2618,18 @@ void main() {
       await tester.pump();
       final latestRequest = harness.viewModel.selectQualityOption('120');
 
-      expect(await latestRequest, isNull);
-      expect(harness.viewModel.selectedQualityOptionId, '120');
+      await tester.pump();
+      expect(
+        harness.platform.abrPolicyCalls.last.policy.trackId,
+        selectableTrack.id,
+      );
       firstRequestGate.complete();
       expect(await firstRequest, isNull);
+      expect(await latestRequest, isNull);
+      expect(
+        harness.platform.abrPolicyCalls.last.policy.trackId,
+        secondTrack.id,
+      );
       expect(harness.viewModel.selectedQualityOptionId, '120');
     });
 
@@ -2891,6 +2926,22 @@ void main() {
       expect(adapter.resolveCallCount, 1);
       expect(harness.platform.selectSourceCalls, 0);
       expect(find.text('播放器错误'), findsNothing);
+
+      harness
+          .platform
+          .setSubtitleSelectionError = const VesperSubtitleException(
+        code: 'subtitle_selection_failed',
+        phase: VesperSubtitleErrorPhase.selection,
+        retriable: true,
+        message: 'failed',
+        trackId: 'subtitle:test:zh-CN',
+      );
+      final genericFailure = await harness.viewModel.selectSubtitle(
+        const VesperTrackSelection.track('subtitle:test:zh-CN'),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isA<VesperSubtitleException>());
+      expect(genericFailure, '字幕切换失败：暂未完成，请稍后重试。');
     });
   });
 
@@ -3529,9 +3580,19 @@ void main() {
         );
         await tester.pump();
         await tester.pump();
-        expect(harness.platform.performanceDiagnosticsStarts, 1);
+        expect(
+          find.byKey(const ValueKey('stop-performance-diagnostics')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('stop-performance-diagnostics')),
+        );
+        await tester.pump();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        expect(find.text('采集已完成'), findsOneWidget);
+        expect(harness.platform.createCalls, 1);
         expect(harness.platform.pictureInPictureConfigurations, hasLength(1));
-        expect(find.text('artifactUnavailable'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -4422,7 +4483,6 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
   final pictureInPictureConfigurations =
       <VesperPictureInPictureConfiguration>[];
   int pictureInPictureAvailabilityCalls = 0;
-  int performanceDiagnosticsStarts = 0;
   int failSelectSourceCallsRemaining = 0;
   int failPlayCallsRemaining = 0;
   final Map<int, Completer<void>> _disposeWaiters = <int, Completer<void>>{};
@@ -4537,8 +4597,6 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
         const VesperFrameProcessorConfiguration(),
     VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
         const VesperNativeFramePipelineConfiguration(),
-    VesperPipelineEventHookConfiguration pipelineEventHookConfiguration =
-        const VesperPipelineEventHookConfiguration(),
   }) async {
     createCalls += 1;
     createdNormalizer = sourceNormalizerConfiguration;
@@ -4639,15 +4697,6 @@ final class _ShellFakePlatform extends VesperPlayerPlatform {
     VesperPictureInPictureConfiguration configuration,
   ) async {
     pictureInPictureConfigurations.add(configuration);
-  }
-
-  @override
-  Future<String> startPerformanceDiagnostics(
-    String playerId,
-    VesperPerformanceDiagnosticsConfiguration configuration,
-  ) async {
-    performanceDiagnosticsStarts += 1;
-    return super.startPerformanceDiagnostics(playerId, configuration);
   }
 
   @override

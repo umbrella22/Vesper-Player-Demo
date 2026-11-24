@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter 移动端 UI 走查"
+  short_description: "走查手机媒体卡片、跨页导航动效、字体缩放与触控可访问性，并验证实际操作"
+  default_prompt: "用 $flutter-mobile-ui-audit 走查这次手机界面改动，并验证相邻页面的同类问题。"

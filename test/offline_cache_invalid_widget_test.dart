@@ -27,6 +27,15 @@ void main() {
     );
     await _pumpOfflinePage(tester);
 
+    expect(find.text('无法播放的缓存'), findsOneWidget);
+    expect(find.text('离线视频'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(Dismissible),
+        matching: find.byType(LinearProgressIndicator),
+      ),
+      findsNothing,
+    );
     expect(find.textContaining('发现 1 条失效缓存'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('offline-clean-invalid-cache')),

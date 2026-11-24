@@ -234,6 +234,7 @@ final class _BiliDanmakuSession
   bool _specialRequestStarted = false;
   bool _legacyLoading = false;
   Object? _error;
+  Stopwatch? _failedSegmentAge;
   bool _closed = false;
   BiliDanmakuSourceFilterSettings _sourceFilter;
 
@@ -258,19 +259,22 @@ final class _BiliDanmakuSession
     }
 
     final segment = _segmentForPosition(positionMs);
-    if (_currentSegment == segment) {
+    if (_currentSegment == segment &&
+        (_failedSegmentAge == null ||
+            _failedSegmentAge!.elapsed < const Duration(seconds: 5))) {
       return;
     }
     _currentSegment = segment;
+    _failedSegmentAge = null;
     _error = null;
     _desiredSegments = _segmentsAround(segment);
     _segments.removeWhere((index, _) => !_desiredSegments.contains(index));
     _emitSnapshot();
 
-    unawaited(_loadSegment(segment, requiredForDisplay: true));
+    unawaited(_loadSegment(segment));
     for (final adjacent in _desiredSegments) {
       if (adjacent != segment) {
-        unawaited(_loadSegment(adjacent, requiredForDisplay: false));
+        unawaited(_loadSegment(adjacent));
       }
     }
   }
@@ -301,10 +305,7 @@ final class _BiliDanmakuSession
     }
   }
 
-  Future<void> _loadSegment(
-    int segmentIndex, {
-    required bool requiredForDisplay,
-  }) async {
+  Future<void> _loadSegment(int segmentIndex) async {
     if (_closed ||
         _legacyRequest != null ||
         _legacyEntries != null ||
@@ -324,7 +325,7 @@ final class _BiliDanmakuSession
         _segments[segmentIndex] = entries;
       }
     } catch (error) {
-      if (!_closed && requiredForDisplay && _currentSegment == segmentIndex) {
+      if (!_closed && _currentSegment == segmentIndex) {
         await _loadLegacyFallback(error);
       }
     } finally {
@@ -341,6 +342,7 @@ final class _BiliDanmakuSession
       return existing;
     }
     _legacyLoading = true;
+    _error = segmentError;
     final request = () async {
       try {
         final entries = await _repository.loadLegacyEntries(
@@ -355,15 +357,17 @@ final class _BiliDanmakuSession
       } catch (legacyError) {
         if (!_closed) {
           _error = legacyError;
+          _failedSegmentAge = Stopwatch()..start();
         }
       } finally {
         _legacyLoading = false;
       }
     }();
-    _legacyRequest = request;
-    _error = segmentError;
+    _legacyRequest = request.whenComplete(() {
+      _legacyRequest = null;
+    });
     _emitSnapshot();
-    return request;
+    return _legacyRequest!;
   }
 
   void _emitSnapshot() {
@@ -447,7 +451,8 @@ final class _BiliDanmakuSession
         ),
         isLoading:
             _legacyLoading ||
-            (_currentSegment != null &&
+            (_error == null &&
+                _currentSegment != null &&
                 !_segments.containsKey(_currentSegment) &&
                 _legacyEntries == null),
         error: _error,
@@ -526,6 +531,12 @@ final class _BiliDanmakuSession
       if (error.outcomeUnknown) {
         return const MediaDanmakuSendResult.pending();
       }
+      return MediaDanmakuSendResult.failure(biliErrorMessage(error));
+    } on ArgumentError catch (error) {
+      return MediaDanmakuSendResult.failure(biliErrorMessage(error));
+    } on FormatException catch (error) {
+      return MediaDanmakuSendResult.failure(biliErrorMessage(error));
+    } on StateError catch (error) {
       return MediaDanmakuSendResult.failure(biliErrorMessage(error));
     } catch (error) {
       // 超时等结果未知的情况保留草稿，由对账决定，不自动重发。

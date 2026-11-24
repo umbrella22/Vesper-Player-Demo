@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import '../../common/services/bili_playback_target.dart';
+
 import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -19,12 +21,16 @@ import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_session_store.dart';
+import 'package:vesper_media/bili/common/services/bili_text.dart'
+    show biliFormatCount;
 import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/widgets/bili_qr_login_sheet.dart';
 import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+
+import '../widgets/bili_video_grid_card.dart';
 import 'bili_region_hub_page.dart';
 import 'bili_library_page.dart';
 import 'bili_favorites_page.dart';
@@ -71,6 +77,8 @@ class _BiliHubPageState extends State<BiliHubPage> {
   late final GlassTabBarMinimizeController _bottomBarMinimizeController;
   late final BiliHubViewModel _viewModel;
   final _isSearchActive = signal(false);
+  final _feedPageFailed = signal(false);
+  final _searchPageFailed = signal(false);
 
   String get _query => _queryController.text.trim();
 
@@ -111,6 +119,8 @@ class _BiliHubPageState extends State<BiliHubPage> {
     _searchFocusNode.dispose();
     _queryController.dispose();
     _isSearchActive.dispose();
+    _feedPageFailed.dispose();
+    _searchPageFailed.dispose();
     _viewModel.dispose();
     super.dispose();
   }
@@ -125,10 +135,19 @@ class _BiliHubPageState extends State<BiliHubPage> {
       await _openPlayback(directBvid);
       return;
     }
+    _resetHomeScroll();
+    _searchPageFailed.value = false;
     await _viewModel.runSearch();
   }
 
+  void _resetHomeScroll() {
+    if (_homeScrollController.hasClients && _homeScrollController.offset != 0) {
+      _homeScrollController.jumpTo(0);
+    }
+  }
+
   void _clearSearch() {
+    if (_viewModel.showsSearchResults.value) _resetHomeScroll();
     _queryController.clear();
     _viewModel.clearSearch();
   }
@@ -136,7 +155,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
   void _updateSearchQuery(String value) {
     _viewModel.updateQuery(value);
     if (value.trim().isEmpty) {
-      _viewModel.clearSearch();
+      _clearSearch();
     }
   }
 
@@ -212,22 +231,26 @@ class _BiliHubPageState extends State<BiliHubPage> {
       return;
     }
     if (_viewModel.showsSearchResults.value) {
-      unawaited(_loadMoreSearch());
+      if (!_searchPageFailed.value) unawaited(_loadMoreSearch());
       return;
     }
-    unawaited(_loadMoreFeed());
+    if (!_feedPageFailed.value) unawaited(_loadMoreFeed());
   }
 
   Future<void> _loadMoreFeed() async {
+    _feedPageFailed.value = false;
     final message = await _viewModel.loadMoreFeed();
     if (message != null && mounted) {
+      _feedPageFailed.value = true;
       _showMessage(message);
     }
   }
 
   Future<void> _loadMoreSearch() async {
+    _searchPageFailed.value = false;
     final message = await _viewModel.loadMoreSearch();
     if (message != null && mounted) {
+      _searchPageFailed.value = true;
       _showMessage(message);
     }
   }
@@ -255,6 +278,8 @@ class _BiliHubPageState extends State<BiliHubPage> {
       await showMediaGlassSheet<void>(
         context: context,
         appearance: MediaGlassSheetAppearance.readable,
+        contentHandlesScrolling: true,
+        contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
         builder: (_) => _HomeCacheSurface(
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
@@ -269,6 +294,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
     await showMediaReadableSideDrawer<void>(
       context: context,
       surfaceKey: const ValueKey<String>('media-readable-home-cache-drawer'),
+      scrollable: false,
       builder: (_) => _HomeCacheSurface(
         client: _viewModel.client,
         historyStore: _viewModel.historyStore,
@@ -307,9 +333,27 @@ class _BiliHubPageState extends State<BiliHubPage> {
         return;
       }
     }
+    final duration = AppVisualTokens.motionDuration(
+      context,
+      AppVisualTokens.overlayDuration,
+    );
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => BiliRegionHubPage(
+      PageRouteBuilder<void>(
+        transitionDuration: duration,
+        reverseTransitionDuration: duration,
+        transitionsBuilder: (_, animation, _, child) {
+          if (duration == Duration.zero) return child;
+          return SlideTransition(
+            position: animation.drive(
+              Tween<Offset>(
+                begin: const Offset(-1, 0),
+                end: Offset.zero,
+              ).chain(CurveTween(curve: Curves.easeOutCubic)),
+            ),
+            child: child,
+          );
+        },
+        pageBuilder: (_, _, _) => BiliRegionHubPage(
           client: _viewModel.client,
           historyStore: _viewModel.historyStore,
           offlineController: _viewModel.offlineController,
@@ -371,7 +415,9 @@ class _BiliHubPageState extends State<BiliHubPage> {
   }
 
   void _handleAccountEntry() {
-    if (_viewModel.profile.value.isLoggedIn) {
+    if (_viewModel.isBootstrapping.value ||
+        _viewModel.profile.value.isLoggedIn ||
+        _viewModel.profilePendingVerification.value) {
       _selectTab(BiliHubTab.mine);
       return;
     }
@@ -465,7 +511,7 @@ class _BiliHubPageState extends State<BiliHubPage> {
                         onTap: _openRegionHub,
                       ),
                       title: Text(
-                        '推荐',
+                        _viewModel.showsSearchResults.value ? '搜索结果' : '推荐',
                         key: const ValueKey<String>('bili-home-title'),
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
@@ -478,7 +524,9 @@ class _BiliHubPageState extends State<BiliHubPage> {
                           key: const ValueKey<String>(
                             'bili-home-avatar-button',
                           ),
-                          name: _viewModel.profile.value.name,
+                          name: _viewModel.profilePendingVerification.value
+                              ? ''
+                              : _viewModel.profile.value.name,
                           avatarUrl: _viewModel.profile.value.avatarUrl,
                           onTap: _handleAccountEntry,
                         ),
@@ -492,10 +540,13 @@ class _BiliHubPageState extends State<BiliHubPage> {
                 scrollController: _mineScrollController,
                 profile: _viewModel.profile.value,
                 profileErrorMessage: _viewModel.profileErrorMessage.value,
-                isRefreshingProfile: _viewModel.isRefreshingProfile.value,
+                hasUnverifiedProfile:
+                    _viewModel.profilePendingVerification.value,
+                isRefreshingProfile:
+                    _viewModel.isBootstrapping.value ||
+                    _viewModel.isRefreshingProfile.value,
                 historyCount: _viewModel.history.value.length,
                 onLoginTap: _openQrLogin,
-                onLogoutTap: _viewModel.logout,
                 onSpaceTap: () => unawaited(_openOwnSpace()),
                 onFavoritesTap: () => unawaited(_openFavorites()),
                 onCacheTap: () => unawaited(_openOfflineCachePage()),
@@ -534,7 +585,21 @@ class _BiliHubPageState extends State<BiliHubPage> {
 
   Widget _buildHomeTab() {
     return RefreshIndicator(
-      onRefresh: _viewModel.refreshAll,
+      onRefresh: () async {
+        if (_viewModel.showsSearchResults.value) {
+          // Refresh the submitted results even if the field now contains a draft.
+          final submitted = _viewModel.activeSearchKeyword.value!;
+          final draft = _viewModel.query.value;
+          _viewModel.updateQuery(submitted);
+          _searchPageFailed.value = false;
+          final request = _viewModel.runSearch();
+          _viewModel.updateQuery(draft);
+          await request;
+        } else {
+          _feedPageFailed.value = false;
+          await _viewModel.refreshAll();
+        }
+      },
       child: CustomScrollView(
         key: const PageStorageKey<String>('bili-hub-home-scroll'),
         controller: _homeScrollController,
@@ -603,9 +668,10 @@ class _BiliHubPageState extends State<BiliHubPage> {
               ),
             ),
           ),
-        if (!showsSearchResults &&
-            _viewModel.isRefreshingFeed.value &&
-            itemCount == 0)
+        if (itemCount == 0 &&
+            (showsSearchResults
+                ? _viewModel.isSearching.value
+                : _viewModel.isRefreshingFeed.value))
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: 32),
@@ -634,14 +700,26 @@ class _BiliHubPageState extends State<BiliHubPage> {
           ),
         if (itemCount > 0)
           SliverToBoxAdapter(
-            child: _LoadMoreFooter(
-              isLoading: showsSearchResults
-                  ? _viewModel.isLoadingMoreSearch.value
-                  : _viewModel.isLoadingMoreFeed.value,
-              hasMore: showsSearchResults
-                  ? _viewModel.hasMoreSearch.value
-                  : _viewModel.hasMoreFeed.value,
-            ),
+            child:
+                (showsSearchResults
+                    ? _searchPageFailed.value
+                    : _feedPageFailed.value)
+                ? Center(
+                    child: TextButton(
+                      onPressed: showsSearchResults
+                          ? _loadMoreSearch
+                          : _loadMoreFeed,
+                      child: const Text('重试加载更多'),
+                    ),
+                  )
+                : _LoadMoreFooter(
+                    isLoading: showsSearchResults
+                        ? _viewModel.isLoadingMoreSearch.value
+                        : _viewModel.isLoadingMoreFeed.value,
+                    hasMore: showsSearchResults
+                        ? _viewModel.hasMoreSearch.value
+                        : _viewModel.hasMoreFeed.value,
+                  ),
           ),
       ],
     );

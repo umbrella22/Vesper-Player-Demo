@@ -130,6 +130,8 @@ abstract final class AppIcons {
   static const IconData informationLine = IconData(0xee59, fontFamily: 'RemixIcon');
   // install-line
   static const IconData installLine = IconData(0xee68, fontFamily: 'RemixIcon');
+  // list-unordered
+  static const IconData listUnordered = IconData(0xeebe, fontFamily: 'RemixIcon');
   // live-line
   static const IconData liveLine = IconData(0xeec0, fontFamily: 'RemixIcon');
   // lock-line

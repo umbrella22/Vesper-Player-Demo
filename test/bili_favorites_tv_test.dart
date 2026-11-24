@@ -7,8 +7,60 @@ import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
+import 'package:vesper_media/bili/tv_mode/pages/bili_tv_home_page.dart';
 
 void main() {
+  testWidgets(
+    'TV favorites route handles remote Back once for selection and once for the route',
+    (tester) async {
+      final client = _TvFavoritesClient();
+      await tester.binding.setSurfaceSize(const Size(1280, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: BiliTvHomePage(client: client, skipBootstrap: true)),
+      );
+      await tester.pump();
+      await tester.tap(find.text('我的').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bili-tv-mine-favorites')));
+      await tester.pumpAndSettle();
+      final manage = find.byKey(const ValueKey('bili-tv-favorites-manage'));
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'tv_favorites_folder_1',
+      );
+      await tester.tap(manage);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bili-tv-favorite-card-1:2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bili-tv-favorites-remove')));
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_dialog_取消');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(client.removals, isEmpty);
+      expect(find.text('已选 1 项'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(BiliFavoritesTvView), findsOneWidget);
+      expect(find.text('已选 1 项'), findsNothing);
+      await tester.sendKeyEvent(
+        LogicalKeyboardKey.goBack,
+        physicalKey: PhysicalKeyboardKey.escape,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(BiliFavoritesTvView), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(BiliFavoritesTvView), findsNothing);
+      expect(
+        find.byKey(const ValueKey('bili-tv-mine-favorites')),
+        findsOneWidget,
+      );
+      expect(find.text('退出 Vesper？'), findsNothing);
+    },
+  );
+
   testWidgets('an account without folders can create one with the remote', (
     tester,
   ) async {
@@ -118,6 +170,33 @@ void main() {
     expect(client.requests, isEmpty);
     // 焦点抬升层会再渲染一份 builder，因此按「至少一个」断言。
     expect(find.text('登录'), findsWidgets);
+  });
+
+  testWidgets('tapping login refreshes TV favorites after authentication', (
+    tester,
+  ) async {
+    final client = _TvFavoritesClient()..authenticated = false;
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.tvTheme(),
+        home: Scaffold(
+          body: BiliFavoritesTvView(
+            client: client,
+            onLoginTap: () async {
+              client.authenticated = true;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('登录后查看收藏'), findsOneWidget);
+    await tester.tap(find.text('登录').first);
+    await tester.pumpAndSettle();
+    expect(find.text('我的收藏'), findsOneWidget);
+    expect(find.text('收藏视频 1'), findsOneWidget);
   });
 
   testWidgets('empty folder and load more states stay actionable', (

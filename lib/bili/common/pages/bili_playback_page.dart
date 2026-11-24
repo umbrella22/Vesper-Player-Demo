@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import '../services/bili_playback_target.dart';
+import '../../app_mode/pages/bili_user_space_page.dart';
+
 import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
@@ -20,6 +22,7 @@ import 'package:vesper_media/danmaku/widgets/bili_danmaku_settings_panel.dart';
 import 'package:vesper_media/media/media.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/services/bili_media_mapper.dart';
@@ -152,7 +155,9 @@ class _BiliPlaybackEntryState extends State<BiliPlaybackPage> {
                     ),
                     Expanded(
                       child: MediaPlaybackErrorState(
+                        title: '无法打开视频',
                         error: error,
+                        errorFormatter: biliErrorMessage,
                         onRetry: _resolve,
                       ),
                     ),
@@ -238,6 +243,25 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
         viewModel: _viewModel,
         detail: widget.detail,
         host: host,
+        onOpenOwner: widget.detail.ownerMid > 0 ? _openOwnerSpace : null,
+      ),
+    );
+  }
+
+  void _openOwnerSpace() {
+    final detail = widget.detail;
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BiliUserSpacePage(
+          client: widget.client,
+          historyStore: widget.historyStore,
+          offlineController: widget.offlineController,
+          user: BiliFollowingUser(
+            mid: detail.ownerMid,
+            name: detail.ownerName,
+            avatarUrl: detail.ownerAvatarUrl,
+          ),
+        ),
       ),
     );
   }
@@ -296,6 +320,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
       danmakuSettingsSurface: BiliDanmakuSettingsPanel(
         settings: _danmakuSettingsController.listenable,
         onChanged: _setDanmakuSettings,
+        onPreviewOverlay: _danmakuSettingsController.previewOverlay,
       ),
       danmakuSettingsListenable: _danmakuSettingsController.overlayListenable,
       onDanmakuSettingsChanged: (settings) {
@@ -348,9 +373,9 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 点选一条可见弹幕：弹出操作面板。
@@ -366,6 +391,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
         event.senderHash.isNotEmpty && blockedHashes.contains(event.senderHash);
     final action = await showMediaGlassSheet<DanmakuEventAction>(
       context: context,
+      contentHandlesScrolling: true,
       appearance: MediaGlassSheetAppearance.readable,
       builder: (context) => SignalBuilder(
         builder: (_) => DanmakuEventSheet(
@@ -432,6 +458,11 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
   }
 
   MediaPlaybackPresentation _buildPresentation() {
+    final appOverlay = appSystemUiStyleForBrightness(
+      Theme.of(context).brightness,
+    );
+    final useTabletOrientations =
+        MediaQuery.sizeOf(context).shortestSide >= 600;
     return MediaPlaybackPresentation(
       enterPlaybackTv: () => _applyPresentation(
         orientations: biliLandscapeOrientations,
@@ -439,6 +470,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
         overlayStyle: biliDarkSurfaceSystemUiStyle,
       ),
       enterPlaybackPhone: () => _applyPresentation(
+        useAppOrientationPolicy: useTabletOrientations,
         orientations: biliPortraitOrientations,
         systemUiMode: SystemUiMode.edgeToEdge,
         overlayStyle: biliDarkSurfaceSystemUiStyle,
@@ -451,6 +483,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
         overlayStyle: biliDarkSurfaceSystemUiStyle,
       ),
       exitFullscreen: () => _applyPresentation(
+        useAppOrientationPolicy: useTabletOrientations,
         orientations: biliPortraitOrientations,
         systemUiMode: SystemUiMode.edgeToEdge,
         overlayStyle: biliDarkSurfaceSystemUiStyle,
@@ -464,7 +497,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
           : _applyPresentation(
               useAppOrientationPolicy: true,
               systemUiMode: SystemUiMode.edgeToEdge,
-              overlayStyle: biliAppSystemUiStyle,
+              overlayStyle: appOverlay,
             ),
       darkSurfaceStyle: biliDarkSurfaceSystemUiStyle,
       playbackStyleForBrightness: playbackSystemUiStyleForBrightness,
@@ -573,6 +606,7 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
         'media-readable-playback-cache-drawer',
       ),
       contentPadding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+      scrollable: false,
       builder: (_) => BiliCacheDownloadPanel(
         detail: widget.detail,
         currentPage: _viewModel.selectedPage,
@@ -590,7 +624,8 @@ class _BiliPlaybackPageState extends State<_BiliResolvedPlaybackPage> {
     return showMediaGlassSheet<void>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
-      contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      contentHandlesScrolling: true,
+      contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
       builder: (_) => BiliCacheDownloadPanel(
         detail: widget.detail,
         currentPage: _viewModel.selectedPage,

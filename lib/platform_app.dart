@@ -60,6 +60,7 @@ class PlatformApp extends StatefulWidget {
 
 class _PlatformAppState extends State<PlatformApp> {
   late final BiliClient _client;
+  late final BiliOfflineDownloadController _offlineController;
   late final BiliUiModeController _uiModeController;
   late final DanmakuSettingsController _danmakuSettingsController;
   late final AppUpdateController _updateController;
@@ -72,6 +73,9 @@ class _PlatformAppState extends State<PlatformApp> {
   void initState() {
     super.initState();
     _client = widget.client ?? BiliClient();
+    _offlineController =
+        widget.offlineController ??
+        BiliOfflineDownloadController(client: _client);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_client.prepareSession().catchError((Object _) {}));
@@ -96,6 +100,9 @@ class _PlatformAppState extends State<PlatformApp> {
     final imageCache = _imageCacheManager;
     if (widget.imageCacheManager == null && imageCache != null) {
       unawaited(imageCache.dispose());
+    }
+    if (widget.offlineController == null) {
+      _offlineController.dispose();
     }
     if (widget.updateController == null) {
       _updateController.dispose();
@@ -128,10 +135,11 @@ class _PlatformAppState extends State<PlatformApp> {
               systemUiStyleForBrightness: appSystemUiStyleForBrightness,
               homeBuilder: (_) => AppUpdateStartupCheck(
                 controller: _updateController,
+                tvModeListenable: _uiModeController.tvModeListenable,
                 child: HomePage(
                   uiModeController: _uiModeController,
                   client: _client,
-                  offlineController: widget.offlineController,
+                  offlineController: _offlineController,
                   appSettings: widget.appSettings,
                 ),
               ),
@@ -209,7 +217,18 @@ class _PlatformAppBootstrapState extends State<PlatformAppBootstrap> {
         return;
       }
       setState(() {
-        _configuredApp = PlatformApp(appSettings: _appSettings);
+        _configuredApp = LiquidGlassWidgets.wrap(
+          brightnessResolver: Theme.maybeBrightnessOf,
+          adaptiveQuality: true,
+          // ignore: experimental_member_use
+          adaptiveConfig: const GlassAdaptiveScopeConfig(
+            minQuality: GlassQuality.minimal,
+            maxQuality: GlassQuality.minimal,
+            initialQuality: GlassQuality.minimal,
+            allowStepUp: false,
+          ),
+          child: const PlatformApp(appSettings: _appSettings),
+        );
       });
     }
   }
@@ -298,7 +317,6 @@ Future<({Widget app, bool isTvMode})> _createConfiguredApp() async {
       initialOverride: settings.audioPolicyOverride,
     ),
   );
-  final offlineController = BiliOfflineDownloadController(client: biliClient);
   final app = LiquidGlassWidgets.wrap(
     brightnessResolver: Theme.maybeBrightnessOf,
     adaptiveQuality: true,
@@ -320,7 +338,6 @@ Future<({Widget app, bool isTvMode})> _createConfiguredApp() async {
       initialDanmakuSettings: settings.danmakuSettings,
       uiModeController: uiModeController,
       client: biliClient,
-      offlineController: offlineController,
     ),
   );
   return (app: app, isTvMode: uiModeController.tvModeListenable.value);
@@ -351,9 +368,8 @@ Future<bool> _readHcppSupport({required bool isAndroid}) async {
 
 Future<void> _applyInitialSystemUiMode() async {
   try {
-    await setBiliSystemUiMode(
-      SystemUiMode.edgeToEdge,
-    ).timeout(_startupPlatformTimeout);
+    await setBiliSystemUiMode(SystemUiMode.edgeToEdge)
+        .timeout(_startupPlatformTimeout);
   } catch (error) {
     _logStartupFallback('system UI setup', error);
   }

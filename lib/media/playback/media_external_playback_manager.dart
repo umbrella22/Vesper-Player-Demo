@@ -24,8 +24,10 @@ class MediaExternalPlaybackManager {
     required this._detail,
     VesperExternalFormatAdaptationConfig? formatAdaptation,
     VesperExternalPlaybackController? dlnaController,
+    String Function(Object error)? formatError,
   }) : _formatAdaptation = formatAdaptation,
-       _dlnaController = dlnaController ?? VesperExternalPlaybackController() {
+       _dlnaController = dlnaController ?? VesperExternalPlaybackController(),
+       _formatError = formatError ?? mediaErrorMessage {
     if (!kIsWeb &&
         defaultTargetPlatform == TargetPlatform.android &&
         formatAdaptation != null) {
@@ -36,6 +38,7 @@ class MediaExternalPlaybackManager {
   final MediaDetail _detail;
   final VesperExternalFormatAdaptationConfig? _formatAdaptation;
   final VesperExternalPlaybackController _dlnaController;
+  final String Function(Object error) _formatError;
 
   /// 平台是否声明 DLNA 能力（有格式适配配置才允许投屏）。
   bool get enabled => _formatAdaptation != null;
@@ -119,7 +122,7 @@ class MediaExternalPlaybackManager {
     } catch (error) {
       _routesSubscription?.cancel();
       _routesSubscription = null;
-      _message = 'DLNA 设备发现启动失败：${mediaErrorMessage(error)}';
+      _message = 'DLNA 设备发现启动失败：${_formatError(error)}';
       _setState(MediaDlnaState.error);
     }
   }
@@ -162,7 +165,7 @@ class MediaExternalPlaybackManager {
       return _message;
     } catch (error) {
       if (_disposed) return null;
-      await _failConnection('DLNA 连接失败：${mediaErrorMessage(error)}');
+      await _failConnection('DLNA 连接失败：${_formatError(error)}');
       return _message;
     }
   }
@@ -222,7 +225,7 @@ class MediaExternalPlaybackManager {
           refreshed = await refreshResolved();
         } catch (error) {
           if (!isCurrent()) return null;
-          await _failConnection('播放地址刷新失败：${mediaErrorMessage(error)}');
+          await _failConnection('播放地址刷新失败：${_formatError(error)}');
           return _message;
         }
         if (!isCurrent()) return null;
@@ -253,7 +256,7 @@ class MediaExternalPlaybackManager {
       return _message;
     } catch (error) {
       if (!isCurrent()) return null;
-      await _failConnection('投屏播放失败：${mediaErrorMessage(error)}');
+      await _failConnection('投屏播放失败：${_formatError(error)}');
       return _message;
     } finally {
       _loadingMedia = false;
@@ -382,7 +385,7 @@ class MediaExternalPlaybackManager {
       }
     } catch (error) {
       if (!_disposed) {
-        _message = '恢复本地播放失败：${mediaErrorMessage(error)}';
+        _message = '恢复本地播放失败：${_formatError(error)}';
         _notify();
       }
     }

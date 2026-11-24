@@ -49,6 +49,18 @@ void main() {
     expect(policy.shouldPersistAdaptiveQuality, isTrue);
   });
 
+  test('iOS shader failure bounds quality to minimal', () {
+    final policy = AppGlassStartupPolicy.resolve(
+      platform: TargetPlatform.iOS,
+      isHcppPlatformSupported: true,
+      areShaderFiltersSupported: false,
+      savedQuality: GlassQuality.premium,
+    );
+    expect(policy.initialQuality, GlassQuality.minimal);
+    expect(policy.allowStepUp, isFalse);
+    expect(policy.shouldInitializeShaders, isFalse);
+  });
+
   test('iOS glass quality does not depend on Android HCPP', () {
     final policy = AppGlassStartupPolicy.resolve(
       platform: TargetPlatform.iOS,

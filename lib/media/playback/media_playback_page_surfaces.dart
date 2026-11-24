@@ -320,9 +320,9 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildContentTabView(VesperPlayerSnapshot snapshot) {
@@ -473,6 +473,7 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       target = await showMediaGlassSheet<_ProjectionTarget>(
         context: context,
         maxContentHeightFactor: 0.5,
+        contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
         builder: (sheetContext) {
           return ProjectionPickerContent(
             onDlna: () =>
@@ -516,6 +517,8 @@ extension _MediaPlaybackPageSurfaces on _MediaPlaybackPageState {
       await showMediaGlassSheet<void>(
         context: context,
         appearance: MediaGlassSheetAppearance.readable,
+        contentHandlesScrolling: true,
+        contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
         maxContentHeightFactor: 0.7,
         builder: (sheetContext) {
           return DlnaPickerContent(

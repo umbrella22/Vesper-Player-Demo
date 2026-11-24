@@ -51,6 +51,7 @@ class BiliTvQrLoginDialog extends StatefulWidget {
 class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
   late final BiliQrLoginController _controller;
   late final ScrollController _scrollController;
+  final _cancelFocusNode = FocusNode(debugLabel: 'tv_qr_login_cancel');
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _cancelFocusNode.dispose();
     super.dispose();
   }
 
@@ -144,9 +146,12 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                     label: '刷新二维码',
                     icon: AppIcons.refreshLine,
                     autofocus: true,
-                    enabled: !_controller.isLoading.value,
+                    enabled: _controller.canRefresh,
                     debugLabel: 'tv_qr_login_refresh',
-                    onTap: () => unawaited(_controller.refresh()),
+                    onTap: () {
+                      _cancelFocusNode.requestFocus();
+                      unawaited(_controller.refresh());
+                    },
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -154,7 +159,8 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
                   child: BiliTvDialogButton(
                     label: '取消',
                     icon: AppIcons.closeFill,
-                    debugLabel: 'tv_qr_login_cancel',
+                    focusNode: _cancelFocusNode,
+                    autofocus: !_controller.canRefresh,
                     onTap: _dismiss,
                   ),
                 ),
@@ -167,6 +173,19 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
   }
 
   Widget _buildQrColumn(double qrSize, {required bool compact}) {
+    const valid = Color(0xFF57D38C);
+    const invalid = Color(0xFFFF7B83);
+    const pending = Color(0xB3FFFFFF);
+    final (badge, color) = switch (_controller.pollResult.value?.status) {
+      BiliQrLoginStatus.expired => ('二维码已失效', invalid),
+      BiliQrLoginStatus.failed => ('二维码需要刷新', invalid),
+      _ when _controller.isLoading.value => ('正在获取二维码', pending),
+      _ when _controller.ticket.value == null => ('未能获取二维码', invalid),
+      _ when _controller.errorMessage.value != null => ('扫码状态暂不可用', pending),
+      BiliQrLoginStatus.scannedAwaitingConfirm => ('已扫码，等待手机确认', pending),
+      BiliQrLoginStatus.confirmed => ('已确认，正在登录', valid),
+      BiliQrLoginStatus.waitingForScan || null => ('二维码有效，请使用手机扫码', valid),
+    };
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2D34),
@@ -208,19 +227,12 @@ class _BiliTvQrLoginDialogState extends State<BiliTvQrLoginDialog> {
               Container(
                 width: 7,
                 height: 7,
-                decoration: BoxDecoration(
-                  color: _controller.errorMessage.value == null
-                      ? const Color(0xFF57D38C)
-                      : const Color(0xFFFF7B83),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  _controller.errorMessage.value == null
-                      ? '二维码有效，请使用手机扫码'
-                      : '二维码需要刷新',
+                  badge,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

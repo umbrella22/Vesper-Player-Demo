@@ -2,16 +2,6 @@ part of 'bili_tv_home_page.dart';
 
 extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
   Widget _buildRegionsPage() {
-    if (_regionItems.isEmpty &&
-        !_regionLoading &&
-        _regionErrorMessage == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _selectedNav == _TvNavItem.regions) {
-          unawaited(_loadRegion());
-        }
-      });
-    }
-
     return Column(
       children: [
         SizedBox(
@@ -67,6 +57,8 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
               const SizedBox(height: 16),
               TvGlassSelectable(
                 borderRadius: 12,
+                focusArea: TvFocusArea.regionGrid,
+                debugLabel: 'tv_region_retry',
                 onTap: () => unawaited(_loadRegion()),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -227,11 +219,46 @@ extension _BiliTvHomeBrowseContent on _BiliTvHomePageState {
                 final searchErrorMessage = _viewModel.searchErrorMessage.value;
                 if (searchErrorMessage != null && results.isEmpty) {
                   return Center(
-                    child: Text(
-                      searchErrorMessage,
-                      style: const TextStyle(
-                        color: Color(0x88FFFFFF),
-                        fontSize: 15,
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            AppIcons.errorWarningLine,
+                            color: AppVisualTheme.of(context).destructive,
+                            size: 44,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            searchErrorMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TvGlassSelectable(
+                            borderRadius: 12,
+                            focusArea: TvFocusArea.content,
+                            debugLabel: 'tv_search_retry',
+                            onTap: _runSearch,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                            builder: (context, state) => const Text(
+                              '重新搜索',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );

@@ -15,7 +15,7 @@ class _FavoriteFolderPickerSheetState
     extends State<_FavoriteFolderPickerSheet> {
   List<BiliFavoriteFolder>? _folders;
   Set<int> _selected = <int>{};
-  bool _loadFailed = false;
+  String? _loadErrorMessage;
 
   @override
   void initState() {
@@ -33,13 +33,13 @@ class _FavoriteFolderPickerSheetState
             .where((folder) => folder.containsCurrentVideo)
             .map((folder) => folder.id)
             .toSet();
-        _loadFailed = false;
+        _loadErrorMessage = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _folders = const <BiliFavoriteFolder>[];
-        _loadFailed = true;
+        _loadErrorMessage = '收藏夹加载失败：${biliErrorMessage(error)}';
       });
     }
   }
@@ -73,8 +73,34 @@ class _FavoriteFolderPickerSheetState
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final folders = _folders;
+    final showFooter =
+        folders != null && _loadErrorMessage == null && folders.isNotEmpty;
     return PlaybackBottomSheetScaffold(
       title: '选择收藏夹',
+      bodyPadding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+      footer: !showFooter
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _selected.isEmpty
+                      ? '不选择任何收藏夹并确认，将取消收藏。'
+                      : '将收藏到已选的 ${_selected.length} 个收藏夹。',
+                  style: TextStyle(
+                    color: visualTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                AppGlassButton(
+                  label: '确认',
+                  onPressed: _confirm,
+                  width: double.infinity,
+                ),
+              ],
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -83,18 +109,25 @@ class _FavoriteFolderPickerSheetState
               padding: EdgeInsets.symmetric(vertical: 32),
               child: Center(child: CircularProgressIndicator()),
             )
-          else if (_loadFailed)
+          else if (_loadErrorMessage != null)
             Column(
               children: [
                 Text(
-                  '收藏夹加载失败。',
-                  style: TextStyle(color: visualTheme.textSecondary),
+                  _loadErrorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: visualTheme.destructive,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 AppGlassButton(
                   label: '重试',
                   onPressed: () {
-                    setState(() => _folders = null);
+                    setState(() {
+                      _folders = null;
+                      _loadErrorMessage = null;
+                    });
                     unawaited(_load());
                   },
                 ),
@@ -105,7 +138,7 @@ class _FavoriteFolderPickerSheetState
               '还没有收藏夹，请先在收藏页新建。',
               style: TextStyle(color: visualTheme.textSecondary),
             )
-          else ...[
+          else
             for (final folder in folders)
               CheckboxListTile(
                 key: ValueKey('favorite-folder-${folder.id}'),
@@ -117,20 +150,6 @@ class _FavoriteFolderPickerSheetState
                     ? null
                     : Text('${folder.mediaCount} 个内容'),
               ),
-            const SizedBox(height: 8),
-            Text(
-              _selected.isEmpty
-                  ? '不选择任何收藏夹并确认，将取消收藏。'
-                  : '将收藏到已选的 ${_selected.length} 个收藏夹。',
-              style: TextStyle(color: visualTheme.textSecondary, fontSize: 12),
-            ),
-            const SizedBox(height: 14),
-            AppGlassButton(
-              label: '确认',
-              onPressed: _confirm,
-              width: double.infinity,
-            ),
-          ],
         ],
       ),
     );
@@ -197,6 +216,7 @@ class _IntroSurfaceState extends State<_IntroSurface> {
           isFollowing: vm.engagement?.isFollowingOwner ?? false,
           isBusy: vm.pendingEngagementAction == BiliEngagementAction.follow,
           onFollow: () => _runAction(context, vm.toggleFollow),
+          onOpenOwner: s.onOpenOwner,
         ),
         const SizedBox(height: 18),
       ],
@@ -279,7 +299,6 @@ class _IntroSurfaceState extends State<_IntroSurface> {
                 style: TextButton.styleFrom(
                   minimumSize: const Size(58, 40),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
-                  foregroundColor: AppVisualTokens.primaryBlue,
                   textStyle: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
@@ -307,6 +326,7 @@ class _IntroSurfaceState extends State<_IntroSurface> {
               loading: vm.relatedVideosLoading,
               errorMessage: vm.relatedVideosError,
               openingBvid: _openingRelatedBvid,
+              onRetry: () => unawaited(vm.loadRelatedVideos()),
               onTap: (video) {
                 setState(() {
                   _openingRelatedBvid = video.bvid;
@@ -356,7 +376,7 @@ class DanmakuEntryPill extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: visualTheme.textTertiary,
+                    color: visualTheme.textSecondary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -735,6 +755,7 @@ class _OwnerSummary extends StatelessWidget {
     required this.isFollowing,
     required this.isBusy,
     required this.onFollow,
+    this.onOpenOwner,
   });
 
   final String name;
@@ -743,74 +764,117 @@ class _OwnerSummary extends StatelessWidget {
   final bool isFollowing;
   final bool isBusy;
   final VoidCallback onFollow;
+  final VoidCallback? onOpenOwner;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final scheme = Theme.of(context).colorScheme;
     final imageProvider = avatarUrl.isEmpty
         ? null
-        : ResizeImage.resizeIfNeeded(96, 96, appNetworkImageProvider(context, avatarUrl));
+        : ResizeImage.resizeIfNeeded(
+            96,
+            96,
+            appNetworkImageProvider(context, avatarUrl),
+          );
+    final followButtonStyle = isFollowing
+        ? FilledButton.styleFrom(
+            minimumSize: const Size(78, 34),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            backgroundColor: visualTheme.surfaceRaised,
+            foregroundColor: visualTheme.textSecondary,
+            side: BorderSide(color: visualTheme.divider),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+          )
+        : FilledButton.styleFrom(
+            minimumSize: const Size(78, 34),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            backgroundColor: scheme.primary,
+            foregroundColor: scheme.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+          );
+    final busyIndicatorColor = isFollowing
+        ? visualTheme.textSecondary
+        : scheme.onPrimary;
     return Row(
       children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: AppVisualTokens.primaryBlue,
-          backgroundImage: imageProvider,
-          child: imageProvider == null
-              ? Text(
-                  name.isEmpty ? 'UP' : name.characters.first,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
-                )
-              : null,
-        ),
-        const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: visualTheme.textPrimary,
-                  fontWeight: FontWeight.w900,
-                ),
+          child: InkWell(
+            key: const ValueKey('playback-owner-space'),
+            onTap: onOpenOwner,
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: scheme.primary,
+                    backgroundImage: imageProvider,
+                    child: imageProvider == null
+                        ? Text(
+                            name.isEmpty ? 'UP' : name.characters.first,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: scheme.onPrimary,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: visualTheme.textPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: visualTheme.textTertiary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: visualTheme.textTertiary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
         const SizedBox(width: 12),
         FilledButton(
           onPressed: isBusy ? null : onFollow,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(78, 34),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
+          style: followButtonStyle,
           child: isBusy
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: busyIndicatorColor,
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Text(isFollowing ? '已关注' : '关注'),

@@ -342,14 +342,19 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
                     if (AppUpdateScope.maybeOf(context)
                         case final controller?) ...[
                       const SizedBox(height: 12),
-                      TextButton.icon(
-                        onPressed: () => showAppUpdateDialog(
-                          context,
-                          controller,
-                          check: true,
+                      TvFocusAreaScope(
+                        area: TvFocusArea.content,
+                        child: BiliTvDialogButton(
+                          label: '检查更新',
+                          icon: AppIcons.installLine,
+                          debugLabel: 'tv_settings_update',
+                          onTap: () => showAppUpdateDialog(
+                            context,
+                            controller,
+                            check: true,
+                            tvRemote: true,
+                          ),
                         ),
-                        icon: const Icon(AppIcons.installLine),
-                        label: const Text('检查更新'),
                       ),
                     ],
                   ],
@@ -361,7 +366,8 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
             SizedBox(height: compact ? 12 : 20),
             Center(
               child: TvFocusable(
-                autofocus: false,
+                focusArea: TvFocusArea.content,
+                debugLabel: 'tv_settings_apply',
                 scale: 1.05,
                 focusCornerRadius: 14,
                 baseCornerRadius: 14,
@@ -421,7 +427,7 @@ extension _BiliTvHomeAccountContent on _BiliTvHomePageState {
                     vertical: 14,
                   ),
                   decoration: BoxDecoration(
-                    color: AppVisualTokens.primaryBlue,
+                    color: AppVisualTokens.primaryActionBlueDark,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Text(

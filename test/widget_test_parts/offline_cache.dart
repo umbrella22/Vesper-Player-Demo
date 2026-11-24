@@ -125,7 +125,7 @@ void _registerOfflineCacheWidgetTests() {
     );
   });
 
-  testWidgets('offline cache page deletes item on right swipe', (
+  testWidgets('offline cache page confirms deletion on end-to-start swipe', (
     WidgetTester tester,
   ) async {
     final controller = _FakeOfflineController(
@@ -181,7 +181,23 @@ void _registerOfflineCacheWidgetTests() {
     );
     await tester.pump();
 
+    expect(find.byTooltip('更多'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('offline-task-action-1')),
+      findsNothing,
+    );
     await tester.drag(find.byType(Dismissible), const Offset(500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('删除缓存？'), findsNothing);
+    await tester.drag(find.byType(Dismissible), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(controller.removedAssetIds, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('缓存视频'), findsOneWidget);
+    await tester.drag(find.byType(Dismissible), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认删除'));
     await tester.pumpAndSettle();
 
     expect(controller.removedAssetIds, <String>['asset-1']);
@@ -189,7 +205,7 @@ void _registerOfflineCacheWidgetTests() {
     expect(find.text('还没有离线缓存'), findsOneWidget);
   });
 
-  testWidgets('offline cache item opens action sheet from more button', (
+  testWidgets('offline cache menu confirms deletion of the selected item', (
     WidgetTester tester,
   ) async {
     final controller = _FakeOfflineController(<BiliOfflineDownloadEntry>[
@@ -219,6 +235,71 @@ void _registerOfflineCacheWidgetTests() {
 
     expect(find.text('导出到相册'), findsOneWidget);
     expect(find.text('导出为可在任意播放器中播放的 MP4'), findsOneWidget);
-    expect(find.text('删除'), findsOneWidget);
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除缓存？'), findsOneWidget);
+    expect(controller.removedAssetIds, isEmpty);
+    await tester.tap(find.text('确认删除'));
+    await tester.pumpAndSettle();
+    expect(controller.removedAssetIds, ['asset-1']);
   });
+
+  testWidgets(
+    'offline cache delete dialog uses opaque readable surface and avoids duplicate storage error',
+    (WidgetTester tester) async {
+      for (final theme in [
+        AppVisualTokens.mobileLightTheme(),
+        AppVisualTokens.mobileDarkTheme(),
+      ]) {
+        final controller = _FakeOfflineController(
+          <BiliOfflineDownloadEntry>[
+            BiliOfflineDownloadEntry(
+              metadata: const BiliOfflineDownloadMetadata(
+                assetId: 'asset-delete-readable',
+                taskId: 1,
+                bvid: 'BV1',
+                cid: 11,
+                videoTitle: '缓存视频',
+                pageTitle: 'P1 · 正片',
+                coverUrl: '',
+                qualityLabel: '1080P',
+                outputPath: '/tmp/offline.mp4',
+                createdAtMs: 100,
+              ),
+            ),
+          ],
+          storageError: const BiliOfflineDownloadException('无法读取设备存储空间。'),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: OfflineCachePage(controller: controller),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('无法读取设备存储空间'), findsNothing);
+        expect(find.text('无法读取设备存储空间。'), findsOneWidget);
+
+        await tester.tap(find.byIcon(AppIcons.more2Fill));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('删除'));
+        await tester.pumpAndSettle();
+
+        final dialog = find.byKey(
+          const ValueKey<String>('media-readable-glass-dialog'),
+        );
+        expect(dialog, findsOneWidget);
+        expect(find.byType(GlassDialog), findsNothing);
+        expect(
+          tester.widget<Material>(dialog).color!.a,
+          equals(1.0),
+        );
+        expect(find.widgetWithText(FilledButton, '确认删除'), findsOneWidget);
+        await tester.tap(find.widgetWithText(OutlinedButton, '取消'));
+        await tester.pumpAndSettle();
+      }
+    },
+  );
 }

@@ -98,10 +98,53 @@ class _BiliVideoDetailPageState extends State<BiliVideoDetailPage> {
         future: _detailFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(biliErrorMessage(snapshot.error!)),
+            return SafeArea(
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: BackButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              AppIcons.errorWarningLine,
+                              size: 42,
+                              color: visualTheme.destructive,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              biliErrorMessage(snapshot.error!),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: visualTheme.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _detailFuture = widget.client
+                                      .fetchVideoDetail(widget.bvid);
+                                });
+                              },
+                              icon: const Icon(AppIcons.refreshLine, size: 18),
+                              label: const Text('重试'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           }

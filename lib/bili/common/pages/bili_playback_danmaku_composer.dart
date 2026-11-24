@@ -46,8 +46,9 @@ class DanmakuEventSheet extends StatelessWidget {
           const SizedBox(height: 10),
           DecoratedBox(
             decoration: BoxDecoration(
-              color: visualTheme.surface,
+              color: visualTheme.surfaceRaised,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: visualTheme.divider),
             ),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -60,7 +61,7 @@ class DanmakuEventSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (event.hasServerId && interaction.canLike)
+          if (event.hasServerId && interaction.canLike) ...[
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-like'),
               icon: interaction.liked
@@ -73,11 +74,13 @@ class DanmakuEventSheet extends StatelessWidget {
               },
               onTap: interaction.pending
                   ? null
-                  : () => Navigator.of(
-                      context,
-                    ).pop(DanmakuEventAction.toggleLike),
+                  : () =>
+                        Navigator.of(context)
+                            .pop(DanmakuEventAction.toggleLike),
             ),
-          if (event.hasServerId && interaction.canRetract)
+            const SizedBox(height: 8),
+          ],
+          if (event.hasServerId && interaction.canRetract) ...[
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-retract'),
               icon: AppIcons.arrowGoBackLine,
@@ -86,23 +89,25 @@ class DanmakuEventSheet extends StatelessWidget {
                   ? null
                   : () => Navigator.of(context).pop(DanmakuEventAction.retract),
             ),
+            const SizedBox(height: 8),
+          ],
           DanmakuSheetAction(
             key: const ValueKey<String>('danmaku-action-copy'),
             icon: AppIcons.fileCopyLine,
             label: '复制内容',
             onTap: () => Navigator.of(context).pop(DanmakuEventAction.copyText),
           ),
-          if (event.senderHash.isNotEmpty)
+          if (event.senderHash.isNotEmpty) ...[
+            const SizedBox(height: 8),
             DanmakuSheetAction(
               key: const ValueKey<String>('danmaku-action-block-sender'),
-              icon: senderBlocked
-                  ? AppIcons.eyeLine
-                  : AppIcons.eyeOffLine,
+              icon: senderBlocked ? AppIcons.eyeLine : AppIcons.eyeOffLine,
               label: senderBlocked ? '取消屏蔽该发送者' : '屏蔽该发送者',
-              onTap: () => Navigator.of(
-                context,
-              ).pop(DanmakuEventAction.toggleSenderBlock),
+              onTap: () =>
+                  Navigator.of(context)
+                      .pop(DanmakuEventAction.toggleSenderBlock),
             ),
+          ],
           if (!event.hasServerId) ...[
             const SizedBox(height: 10),
             Text(
@@ -197,7 +202,7 @@ class _BiliDanmakuComposerState extends State<BiliDanmakuComposer> {
       enableDrag: false,
       showDragHandle: false,
       backgroundColor: AppVisualTheme.of(context).surface,
-      barrierColor: Colors.black.withValues(alpha: 0.18),
+      barrierColor: AppVisualTheme.of(context).scrim.withValues(alpha: 0.45),
       shape: const RoundedRectangleBorder(),
       sheetAnimationStyle: AnimationStyle(
         duration: AppVisualTokens.motionDuration(
@@ -269,12 +274,14 @@ class _DanmakuInputSheetState extends State<_DanmakuInputSheet> {
   late final _controller = TextEditingController(text: widget.draft);
   final _sending = signal(false);
   final _message = signal<String?>(null);
+  final _isError = signal(false);
 
   @override
   void dispose() {
     _controller.dispose();
     _sending.dispose();
     _message.dispose();
+    _isError.dispose();
     super.dispose();
   }
 
@@ -285,16 +292,25 @@ class _DanmakuInputSheetState extends State<_DanmakuInputSheet> {
     }
     _sending.value = true;
     _message.value = null;
-    final result = await widget.sendController.send(
-      MediaDanmakuSendRequest(
-        text: text,
-        positionMs: widget.currentPositionMs(),
-      ),
-    );
-    if (!mounted) {
+    _isError.value = false;
+    late final MediaDanmakuSendResult result;
+    try {
+      result = await widget.sendController.send(
+        MediaDanmakuSendRequest(
+          text: text,
+          positionMs: widget.currentPositionMs(),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        _isError.value = true;
+        _message.value = '发送结果未确认，请在弹幕列表中查看。';
+      }
       return;
+    } finally {
+      if (mounted) _sending.value = false;
     }
-    _sending.value = false;
+    if (!mounted) return;
     if (result.isSuccess) {
       _controller.clear();
       widget.onDraftChanged('');
@@ -302,6 +318,7 @@ class _DanmakuInputSheetState extends State<_DanmakuInputSheet> {
       Navigator.of(context).pop(true);
       return;
     }
+    _isError.value = !result.isPending;
     _message.value = result.isPending
         ? '弹幕可能已发送，请稍后在弹幕列表中确认。'
         : (result.errorMessage ?? '弹幕发送失败。');
@@ -310,88 +327,134 @@ class _DanmakuInputSheetState extends State<_DanmakuInputSheet> {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final highContrast = MediaQuery.highContrastOf(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sendIconColor = isDark
+        ? AppVisualTokens.primaryBlue
+        : const Color(0xFF0B5CAD);
     return SignalBuilder(
       builder: (context) => PopScope(
         canPop: !_sending.value,
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: visualTheme.surface,
+            border: Border(
+              top: BorderSide(
+                color: highContrast
+                    ? visualTheme.textPrimary
+                    : visualTheme.divider,
+                width: highContrast ? 1.5 : 1.0,
+              ),
+            ),
           ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              key: const ValueKey<String>('bili-danmaku-input-bar'),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_message.value case final String message)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          message,
-                          style: TextStyle(color: visualTheme.textSecondary),
-                        ),
-                      ),
-                    ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          key: const ValueKey<String>('bili-danmaku-input'),
-                          controller: _controller,
-                          autofocus: true,
-                          readOnly: _sending.value,
-                          textInputAction: TextInputAction.send,
-                          maxLength: 100,
-                          onChanged: widget.onDraftChanged,
-                          onSubmitted: (_) => unawaited(_submit()),
-                          decoration: InputDecoration(
-                            hintText: '发个友善的弹幕见证当下',
-                            hintStyle: TextStyle(
-                              color: visualTheme.textTertiary,
-                              fontSize: 14,
-                            ),
-                            counterText: '',
-                            isDense: true,
-                            filled: true,
-                            fillColor: visualTheme.surfaceRaised,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              borderSide: BorderSide.none,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                key: const ValueKey<String>('bili-danmaku-input-bar'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_message.value case final String message)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            message,
+                            style: TextStyle(
+                              color: _isError.value
+                                  ? visualTheme.destructive
+                                  : visualTheme.textSecondary,
+                              fontWeight: _isError.value
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      AppPressScale(
-                        child: IconButton(
-                          key: const ValueKey<String>('bili-danmaku-send'),
-                          tooltip: '发送弹幕',
-                          color: AppVisualTokens.primaryBlue,
-                          onPressed: _sending.value
-                              ? null
-                              : () => unawaited(_submit()),
-                          icon: _sending.value
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(AppIcons.sendPlaneLine),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            key: const ValueKey<String>('bili-danmaku-input'),
+                            controller: _controller,
+                            autofocus: true,
+                            readOnly: _sending.value,
+                            textInputAction: TextInputAction.send,
+                            maxLength: 100,
+                            onChanged: widget.onDraftChanged,
+                            onSubmitted: (_) => unawaited(_submit()),
+                            decoration: InputDecoration(
+                              hintText: '发个友善的弹幕见证当下',
+                              hintStyle: TextStyle(
+                                color: visualTheme.textTertiary,
+                                fontSize: 14,
+                              ),
+                              counterText: '',
+                              isDense: true,
+                              filled: true,
+                              fillColor: visualTheme.surfaceRaised,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: highContrast
+                                    ? BorderSide(color: visualTheme.textPrimary)
+                                    : BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: highContrast
+                                    ? BorderSide(color: visualTheme.textPrimary)
+                                    : BorderSide.none,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 8),
+                        AppPressScale(
+                          child: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _controller,
+                            builder: (context, value, _) {
+                              final hasText = value.text.trim().isNotEmpty;
+                              return IconButton(
+                                key: const ValueKey<String>(
+                                  'bili-danmaku-send',
+                                ),
+                                tooltip: '发送弹幕',
+                                color: hasText && !_sending.value
+                                    ? sendIconColor
+                                    : visualTheme.textTertiary,
+                                onPressed: _sending.value
+                                    ? null
+                                    : () => unawaited(_submit()),
+                                icon: _sending.value
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(AppIcons.sendPlaneLine),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

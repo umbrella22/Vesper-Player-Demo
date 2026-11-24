@@ -145,26 +145,32 @@ class _AvatarButton extends StatelessWidget {
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: Center(
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: AppVisualTokens.biliSourcePink.withValues(
-                alpha: Theme.of(context).brightness == Brightness.dark
-                    ? 0.18
-                    : 0.12,
-              ),
-              backgroundImage: avatarUrl.isEmpty
-                  ? null
-                  : appNetworkImageProvider(context, avatarUrl),
-              child: avatarUrl.isEmpty
-                  ? Text(
-                      (name.isEmpty ? 'B' : name.characters.first)
-                          .toUpperCase(),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppVisualTokens.biliSourcePink,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    )
-                  : null,
+            child: Builder(
+              builder: (context) {
+                final visualTheme = AppVisualTheme.of(context);
+                return CircleAvatar(
+                  radius: 16,
+                  backgroundColor: visualTheme.sourceAccent.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.dark
+                        ? 0.18
+                        : 0.12,
+                  ),
+                  backgroundImage: avatarUrl.isEmpty
+                      ? null
+                      : appNetworkImageProvider(context, avatarUrl),
+                  child: avatarUrl.isEmpty
+                      ? Text(
+                          (name.isEmpty ? 'B' : name.characters.first)
+                              .toUpperCase(),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: visualTheme.sourceAccent,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        )
+                      : null,
+                );
+              },
             ),
           ),
         ),

@@ -33,6 +33,7 @@ build surfaces.
 ## Validation
 
 - Default Flutter validation from the repository root: `flutter analyze` and `flutter test`.
+- For phone UI changes, use the [mobile UI audit skill](.agents/skills/flutter-mobile-ui-audit/SKILL.md) to check related screens, card alignment, navigation motion and accessibility.
 - For app Android changes, validate from `android/` with that project's wrapper.
 - For iOS native or packaging changes, prefer `bash scripts/build_ios_no_codesign.sh` over raw `xcodebuild` unless the user asks for a lower-level flow.
 - If raw `xcodebuild` or direct iOS package resolution was run, rerun `bash scripts/prepare_flutter_workspace.sh` before going back to `flutter analyze`, `flutter test`, or `flutter run`.

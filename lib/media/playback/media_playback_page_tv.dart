@@ -18,16 +18,18 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
       },
       child: Shortcuts(
         shortcuts: const <ShortcutActivator, Intent>{
-          SingleActivator(LogicalKeyboardKey.select):
+          SingleActivator(LogicalKeyboardKey.select, includeRepeats: false):
               _TvPlaybackToggleBarIntent(),
-          SingleActivator(LogicalKeyboardKey.enter):
+          SingleActivator(LogicalKeyboardKey.enter, includeRepeats: false):
               _TvPlaybackToggleBarIntent(),
-          SingleActivator(LogicalKeyboardKey.contextMenu):
-              _TvPlaybackMenuIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPlayPause):
-              _TvPlayPauseIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPlay): _TvPlayPauseIntent(),
-          SingleActivator(LogicalKeyboardKey.mediaPause): _TvPlayPauseIntent(),
+          SingleActivator(
+            LogicalKeyboardKey.contextMenu,
+            includeRepeats: false,
+          ): _TvPlaybackMenuIntent(),
+          SingleActivator(
+            LogicalKeyboardKey.mediaPlayPause,
+            includeRepeats: false,
+          ): _TvPlayPauseIntent(),
           SingleActivator(LogicalKeyboardKey.arrowLeft):
               _TvPlaybackLeftIntent(),
           SingleActivator(LogicalKeyboardKey.arrowRight):
@@ -340,21 +342,14 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
     return moved;
   }
 
-  void _seekTvBy(
-    VesperPlayerController controller,
-    VesperPlayerSnapshot snapshot,
-    int deltaMs,
-  ) {
+  void _seekTvBy(VesperPlayerSnapshot snapshot, int deltaMs) {
     final durationMs = snapshot.timeline.durationMs ?? 0;
-    if (durationMs <= 0) {
+    if (!snapshot.timeline.isSeekable || durationMs <= 0) {
       return;
     }
-    final nextMs = (snapshot.timeline.positionMs + deltaMs).clamp(
-      0,
-      durationMs,
-    );
-    // 经 VM 入口：用户 seek 使在途历史续播失效。
-    unawaited(_viewModel.seekToRatio(nextMs / durationMs));
+    // The platform applies each relative step against its current position, even
+    // when key repeats arrive before the next Dart timeline snapshot.
+    unawaited(_viewModel.seekBy(deltaMs));
   }
 
   void _openTvPanel(TvPlaybackPanelType panel) {
@@ -732,11 +727,13 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                           thumbColor: Color(0xFFFFFFFF),
                           overlayColor: Color(0x22FFFFFF),
                         ),
-                        child: Slider(
+                        child: _TvSeekSlider(
                           value: ratio.clamp(0.0, 1.0),
-                          onChanged: (value) {
-                            unawaited(_viewModel.seekToRatio(value));
-                          },
+                          onChanged:
+                              snapshot.timeline.isSeekable && durationMs > 0
+                              ? (value) =>
+                                    unawaited(_viewModel.seekToRatio(value))
+                              : null,
                         ),
                       ),
                     ),
@@ -756,131 +753,119 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  const SizedBox(width: 20),
-                  TvBarButton(
-                    label: isPlaying ? '暂停' : '播放',
-                    icon: isPlaying
-                        ? AppIcons.pauseFill
-                        : AppIcons.playFill,
-                    autofocus: !_tvPanelOpen,
-                    onTap: () {
-                      if (isPlaying) {
-                        controller.pause();
-                      } else {
-                        controller.play();
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '听视频',
-                    icon: AppIcons.headphoneLine,
-                    onTap: _enterListenMode,
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '快退 10s',
-                    icon: AppIcons.replay10Line,
-                    onTap: () {
-                      final newPosMs = (positionMs - 10000).clamp(
-                        0,
-                        durationMs,
-                      );
-                      unawaited(
-                        _viewModel.seekToRatio(
-                          durationMs > 0 ? newPosMs / durationMs : 0,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '快进 10s',
-                    icon: AppIcons.forward10Line,
-                    onTap: () {
-                      final newPosMs = (positionMs + 10000).clamp(
-                        0,
-                        durationMs,
-                      );
-                      unawaited(
-                        _viewModel.seekToRatio(
-                          durationMs > 0 ? newPosMs / durationMs : 0,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '清晰度',
-                    icon: AppIcons.hdLine,
-                    focusNode: _tvPanelButtonNode(TvPlaybackPanelType.quality),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.quality),
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '倍速',
-                    icon: AppIcons.speedLine,
-                    focusNode: _tvPanelButtonNode(TvPlaybackPanelType.speed),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.speed),
-                  ),
-                  const SizedBox(width: 14),
-                  TvBarButton(
-                    label: '字幕',
-                    icon: AppIcons.closedCaptioningLine,
-                    focusNode: _tvPanelButtonNode(
-                      TvPlaybackPanelType.subtitles,
-                    ),
-                    onTap: () => _openTvPanel(TvPlaybackPanelType.subtitles),
-                  ),
-                  if (_viewModel.detail.pages.length > 1) ...[
-                    const SizedBox(width: 14),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 12,
+                ),
+                child: Row(
+                  children: [
                     TvBarButton(
-                      label: '分P',
-                      icon: AppIcons.playListLine,
-                      focusNode: _tvPanelButtonNode(TvPlaybackPanelType.pages),
-                      onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
-                    ),
-                  ],
-                  if (_viewModel.adapter.danmaku != null) ...[
-                    const SizedBox(width: 14),
-                    TvBarButton(
-                      key: const ValueKey<String>('toggle-danmaku'),
-                      label: _danmakuEnabled ? '弹幕已开' : '弹幕已关',
-                      icon: _danmakuEnabled
-                          ? AppIcons.chat3Fill
-                          : AppIcons.chat3Line,
-                      onTap: _toggleDanmaku,
+                      label: isPlaying ? '暂停' : '播放',
+                      icon: isPlaying ? AppIcons.pauseFill : AppIcons.playFill,
+                      autofocus: !_tvPanelOpen,
+                      onTap: () {
+                        if (isPlaying) {
+                          controller.pause();
+                        } else {
+                          controller.play();
+                        }
+                      },
                     ),
                     const SizedBox(width: 14),
                     TvBarButton(
-                      key: const ValueKey<String>('open-danmaku-settings'),
-                      label: '弹幕设置',
-                      icon: AppIcons.equalizer2Line,
+                      label: '听视频',
+                      icon: AppIcons.headphoneLine,
+                      onTap: _enterListenMode,
+                    ),
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      label: '快退 10s',
+                      icon: AppIcons.replay10Line,
+                      onTap: () => _seekTvBy(snapshot, -10000),
+                    ),
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      label: '快进 10s',
+                      icon: AppIcons.forward10Line,
+                      onTap: () => _seekTvBy(snapshot, 10000),
+                    ),
+                    const SizedBox(width: 14),
+                    TvBarButton(
+                      label: '清晰度',
+                      icon: AppIcons.hdLine,
                       focusNode: _tvPanelButtonNode(
-                        TvPlaybackPanelType.danmaku,
+                        TvPlaybackPanelType.quality,
                       ),
-                      onTap: () => _openTvPanel(TvPlaybackPanelType.danmaku),
+                      onTap: () => _openTvPanel(TvPlaybackPanelType.quality),
                     ),
-                  ],
-                  if (mediaPerformanceDiagnosticsAvailable) ...[
                     const SizedBox(width: 14),
                     TvBarButton(
-                      key: const ValueKey<String>(
-                        'open-performance-diagnostics',
-                      ),
-                      label: '性能诊断',
-                      icon: AppIcons.heartPulseLine,
-                      onTap: () =>
-                          unawaited(_openPerformanceDiagnosticsSurface()),
+                      label: '倍速',
+                      icon: AppIcons.speedLine,
+                      focusNode: _tvPanelButtonNode(TvPlaybackPanelType.speed),
+                      onTap: () => _openTvPanel(TvPlaybackPanelType.speed),
                     ),
-                  ],
-                  for (final extra in widget.tvControlBarExtras) ...[
                     const SizedBox(width: 14),
-                    extra,
+                    TvBarButton(
+                      label: '字幕',
+                      icon: AppIcons.closedCaptioningLine,
+                      focusNode: _tvPanelButtonNode(
+                        TvPlaybackPanelType.subtitles,
+                      ),
+                      onTap: () => _openTvPanel(TvPlaybackPanelType.subtitles),
+                    ),
+                    if (_viewModel.detail.pages.length > 1) ...[
+                      const SizedBox(width: 14),
+                      TvBarButton(
+                        label: '分P',
+                        icon: AppIcons.playListLine,
+                        focusNode: _tvPanelButtonNode(
+                          TvPlaybackPanelType.pages,
+                        ),
+                        onTap: () => _openTvPanel(TvPlaybackPanelType.pages),
+                      ),
+                    ],
+                    if (_viewModel.adapter.danmaku != null) ...[
+                      const SizedBox(width: 14),
+                      TvBarButton(
+                        key: const ValueKey<String>('toggle-danmaku'),
+                        label: _danmakuEnabled ? '弹幕已开' : '弹幕已关',
+                        icon: _danmakuEnabled
+                            ? AppIcons.chat3Fill
+                            : AppIcons.chat3Line,
+                        onTap: _toggleDanmaku,
+                      ),
+                      const SizedBox(width: 14),
+                      TvBarButton(
+                        key: const ValueKey<String>('open-danmaku-settings'),
+                        label: '弹幕设置',
+                        icon: AppIcons.equalizer2Line,
+                        focusNode: _tvPanelButtonNode(
+                          TvPlaybackPanelType.danmaku,
+                        ),
+                        onTap: () => _openTvPanel(TvPlaybackPanelType.danmaku),
+                      ),
+                    ],
+                    if (mediaPerformanceDiagnosticsAvailable) ...[
+                      const SizedBox(width: 14),
+                      TvBarButton(
+                        key: const ValueKey<String>(
+                          'open-performance-diagnostics',
+                        ),
+                        label: '性能诊断',
+                        icon: AppIcons.heartPulseLine,
+                        onTap: () =>
+                            unawaited(_openPerformanceDiagnosticsSurface()),
+                      ),
+                    ],
+                    for (final extra in widget.tvControlBarExtras) ...[
+                      const SizedBox(width: 14),
+                      extra,
+                    ],
                   ],
-                ],
+                ),
               ),
               SizedBox(
                 height: MediaQuery.paddingOf(context).bottom > 0 ? 8 : 0,
@@ -905,4 +890,41 @@ extension _MediaPlaybackPageTvLayout on _MediaPlaybackPageState {
     final seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
+}
+
+class _TvSeekSlider extends StatefulWidget {
+  const _TvSeekSlider({required this.value, required this.onChanged});
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  State<_TvSeekSlider> createState() => _TvSeekSliderState();
+}
+
+class _TvSeekSliderState extends State<_TvSeekSlider> {
+  final _focusNode = FocusNode(debugLabel: 'tv_seek');
+
+  @override
+  void initState() {
+    super.initState();
+    setTvFocusArea(_focusNode, TvFocusArea.playbackSeek);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MediaQuery(
+    data: MediaQuery.of(context)
+        .copyWith(navigationMode: NavigationMode.directional),
+    child: Slider(
+      focusNode: _focusNode,
+      value: widget.value,
+      onChanged: widget.onChanged,
+    ),
+  );
 }

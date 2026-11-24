@@ -4,9 +4,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_user_space_page.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
+import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 
 void main() {
+  testWidgets(
+    'phone user space shows expired login even after the profile was loaded',
+    (tester) async {
+      final client = _SpaceClient();
+      var loginCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BiliUserSpacePage(
+            client: client,
+            user: const BiliFollowingUser(mid: 1, name: 'UP', avatarUrl: ''),
+            onLoginTap: () async {
+              loginCalls++;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('old-first'), findsOneWidget);
+      await tester.ensureVisible(find.text('加载更多'));
+      await tester.tap(find.text('加载更多'));
+      await tester.pump();
+      client.pendingPage!.completeError(
+        const BiliApiException('session expired', code: -101),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('登录状态已失效，请重新登录后再试。'), findsOneWidget);
+      expect(find.text('这个 UP 主还没有投稿。'), findsNothing);
+      await tester.tap(find.text('登录'));
+      await tester.pumpAndSettle();
+      expect(loginCalls, 1);
+      expect(find.text('old-first'), findsOneWidget);
+    },
+  );
+
   for (final exactBvid in [false, true]) {
     testWidgets(
       'search during pagination invalidates old page (exact=$exactBvid)',

@@ -10,6 +10,7 @@ import 'package:vesper_media/download/download.dart';
 import 'package:vesper_media/bili/common/models/bili_region_models.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
 import 'package:vesper_media/bili/common/services/bili_history_store.dart';
+
 import 'bili_region_visuals.dart';
 import 'bili_region_video_page.dart';
 
@@ -48,6 +49,9 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
       extendBody: false,
       appBar: GlassAppBar(
         centerTitle: false,
+        leading: ModalRoute.of(context)?.canPop == true
+            ? const BackButton()
+            : null,
         title: Text(
           '分区',
           style: theme.textTheme.titleLarge?.copyWith(
@@ -61,6 +65,13 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
   }
 
   Widget _buildRegionGrid() {
+    final labelStyle = Theme.of(context).textTheme.titleSmall!;
+    final fontSize = labelStyle.fontSize!;
+    final labelGrowth =
+        MediaQuery.textScalerOf(context).scale(fontSize) - fontSize;
+    final tileHeight =
+        108 +
+        (labelGrowth > 0 ? labelGrowth * (labelStyle.height ?? 1.5) : 0.0);
     return LayoutBuilder(
       builder: (context, constraints) {
         return Center(
@@ -69,15 +80,15 @@ class _BiliRegionHubPageState extends State<BiliRegionHubPage> {
             child: GridView.builder(
               padding: EdgeInsets.fromLTRB(
                 16,
-                0,
+                8,
                 16,
                 12 + MediaQuery.paddingOf(context).bottom,
               ),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 180,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 1.15,
+                mainAxisExtent: tileHeight,
               ),
               itemCount: biliRegionSections.length,
               itemBuilder: (context, index) {

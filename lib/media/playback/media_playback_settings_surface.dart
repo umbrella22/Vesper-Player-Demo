@@ -25,21 +25,31 @@ Future<T?> showMediaPlaybackSideDrawer<T>(
     pageBuilder: (dialogContext, animation, _) {
       final size = MediaQuery.sizeOf(dialogContext);
       final drawerWidth = (size.width * 0.35).clamp(300.0, 460.0);
-      final darkTheme = AppVisualTokens.mobileDarkTheme();
+      final highContrast = MediaQuery.highContrastOf(dialogContext);
+      final darkTheme = highContrast
+          ? AppVisualTokens.mobileDarkHighContrastTheme()
+          : AppVisualTokens.mobileDarkTheme();
       const accent = AppVisualTokens.primaryBlue;
+      final drawerVisualTheme =
+          (highContrast ? AppVisualTheme.darkHighContrast : AppVisualTheme.dark)
+              .copyWith(
+                background: highContrast
+                    ? const Color(0xFF101115)
+                    : const Color(0xEB101115),
+                surfaceRaised: highContrast
+                    ? const Color(0xFF25262C)
+                    : const Color(0xD925262C),
+                textPrimary: const Color(0xFFF6F6F8),
+                textSecondary: highContrast
+                    ? const Color(0xFFE0E3E8)
+                    : const Color(0xFFA9AAB3),
+              );
       final drawerTheme = darkTheme.copyWith(
         colorScheme: darkTheme.colorScheme.copyWith(
           primary: accent,
           secondary: accent,
         ),
-        extensions: [
-          AppVisualTheme.dark.copyWith(
-            background: const Color(0xEB101115),
-            surfaceRaised: const Color(0xD925262C),
-            textPrimary: const Color(0xFFF6F6F8),
-            textSecondary: const Color(0xFFA9AAB3),
-          ),
-        ],
+        extensions: [drawerVisualTheme],
         iconTheme: const IconThemeData(color: Color(0xFFF6F6F8)),
         textSelectionTheme: TextSelectionThemeData(
           cursorColor: accent,
@@ -114,8 +124,16 @@ Future<T?> showMediaPlaybackSideDrawer<T>(
                       color: drawerTheme
                           .extension<AppVisualTheme>()!
                           .background,
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(18),
+                        ),
+                        side: BorderSide(
+                          color: highContrast
+                              ? Colors.white
+                              : const Color(0x2EFFFFFF),
+                          width: highContrast ? 1.5 : 1.0,
+                        ),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: SizedBox(
@@ -190,48 +208,34 @@ Future<void> _showSettingsSheet(
   Widget Function(BuildContext, VesperPlayerSnapshot) contentBuilder,
 ) {
   final visualTheme = AppVisualTheme.of(context);
+  final highContrast = MediaQuery.highContrastOf(context);
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    backgroundColor: visualTheme.background,
+    backgroundColor: visualTheme.opaqueGlassFallback,
+    barrierColor: visualTheme.scrim,
     constraints: BoxConstraints(
       maxHeight: MediaQuery.sizeOf(context).height * 0.82,
     ),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    shape: RoundedRectangleBorder(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      side: BorderSide(
+        color: highContrast ? visualTheme.textPrimary : visualTheme.divider,
+        width: highContrast ? 1.5 : 0.8,
+      ),
     ),
     builder: (sheetContext) {
       return SafeArea(
         child: Padding(
           padding: EdgeInsets.only(
-            left: 22,
-            right: 22,
-            bottom: 22 + MediaQuery.of(sheetContext).viewInsets.bottom,
+            left: 18,
+            right: 18,
+            bottom: 12 + MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: _PlaybackSettingsContent(
             controller: controller,
-            builder: (context, sheetSnapshot) {
-              return SingleChildScrollView(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppVisualTheme.of(context).surface,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppVisualTheme.of(context).shadow,
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: contentBuilder(context, sheetSnapshot),
-                  ),
-                ),
-              );
-            },
+            builder: contentBuilder,
           ),
         ),
       );

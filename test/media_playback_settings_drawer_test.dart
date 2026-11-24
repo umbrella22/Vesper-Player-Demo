@@ -141,14 +141,16 @@ void main() {
   });
 
   testWidgets(
-    'danmaku edits persist and a rightward slider drag does not dismiss',
+    'danmaku drag previews before commit and leaves the drawer open',
     (tester) async {
       final settings = ValueNotifier(const BiliDanmakuSettings());
       addTearDown(settings.dispose);
+      final previews = <double?>[];
       await _openDrawer(
         tester,
         BiliDanmakuSettingsPanel(
           settings: settings,
+          onPreviewOverlay: (value) => previews.add(value?.opacity),
           onChanged: (value) => settings.value = value,
         ),
       );
@@ -169,9 +171,11 @@ void main() {
       await tester.pump();
       expect(settings.value.overlay.opacity, before);
       final draft = tester.widget<Slider>(opacity).value;
+      expect(previews.last, draft);
       await gesture.up();
       await tester.pumpAndSettle();
       expect(settings.value.overlay.opacity, draft);
+      expect(previews.last, isNull);
       expect(find.byKey(_drawerKey), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -240,31 +244,28 @@ void main() {
   // 最小高度比内容高时，多余空间必须上下平分：曾经全部堆在底部，看起来
   // 像选项按钮多了一段 padding（分辨率 / 播放策略 / 倍速同款按钮都受影响）。
   for (final immersive in [false, true]) {
-    testWidgets(
-      '选项按钮文字在最小高度内垂直居中：immersive=$immersive',
-      (tester) async {
-        final button = TuningOptionButton(
-          label: '1080P',
-          selected: false,
-          onTap: () {},
-        );
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Material(
-              child: Center(
-                child: immersive
-                    ? MediaPlaybackDrawerScope(child: button)
-                    : button,
-              ),
+    testWidgets('选项按钮文字在最小高度内垂直居中：immersive=$immersive', (tester) async {
+      final button = TuningOptionButton(
+        label: '1080P',
+        selected: false,
+        onTap: () {},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Material(
+            child: Center(
+              child: immersive
+                  ? MediaPlaybackDrawerScope(child: button)
+                  : button,
             ),
           ),
-        );
-        final buttonRect = tester.getRect(find.byType(TuningOptionButton));
-        final textRect = tester.getRect(find.text('1080P'));
-        expect(buttonRect.height, immersive ? 44 : 40);
-        expect(textRect.center.dy, closeTo(buttonRect.center.dy, 0.5));
-      },
-    );
+        ),
+      );
+      final buttonRect = tester.getRect(find.byType(TuningOptionButton));
+      final textRect = tester.getRect(find.text('1080P'));
+      expect(buttonRect.height, immersive ? 44 : 40);
+      expect(textRect.center.dy, closeTo(buttonRect.center.dy, 0.5));
+    });
   }
 }
 
@@ -398,9 +399,8 @@ Future<void> _capture(WidgetTester tester, String name) async {
     final image = await boundary.toImage(pixelRatio: 2);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     await Directory(output).create(recursive: true);
-    await File(
-      '$output/$name-flutter.png',
-    ).writeAsBytes(bytes!.buffer.asUint8List());
+    await File('$output/$name-flutter.png')
+        .writeAsBytes(bytes!.buffer.asUint8List());
     image.dispose();
   });
 }

@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+
 import '../services/bili_playback_target.dart';
+
 import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/download/download.dart';
+
 import '../models/bili_models.dart';
 import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
@@ -41,6 +44,7 @@ final class BiliHubViewModel {
     results = _results.readonly();
     history = _history.readonly();
     profile = _profile.readonly();
+    profilePendingVerification = _profilePendingVerification.readonly();
     selectedTab = _selectedTab.readonly();
     isBootstrapping = _isBootstrapping.readonly();
     isRefreshingFeed = _isRefreshingFeed.readonly();
@@ -69,9 +73,15 @@ final class BiliHubViewModel {
   final _history = signal<List<BiliPlaybackHistoryEntry>>(
     const <BiliPlaybackHistoryEntry>[],
   );
-  final _profile = signal<BiliUserProfile>(
-    const BiliUserProfile(isLoggedIn: false, name: '未登录', avatarUrl: ''),
+  static const _signedOutProfile = BiliUserProfile(
+    isLoggedIn: false,
+    name: '未登录',
+    avatarUrl: '',
   );
+  final _profile = signal(_signedOutProfile);
+  final _profilePendingVerification = signal(false);
+  int? _verifiedProfileRevision;
+  int _profileRequestGeneration = 0;
   final _selectedTab = signal(BiliHubTab.home);
   final _isBootstrapping = signal(true);
   final _isRefreshingFeed = signal(false);
@@ -95,6 +105,7 @@ final class BiliHubViewModel {
   late final ReadonlySignal<List<BiliSearchResult>> results;
   late final ReadonlySignal<List<BiliPlaybackHistoryEntry>> history;
   late final ReadonlySignal<BiliUserProfile> profile;
+  late final ReadonlySignal<bool> profilePendingVerification;
   late final ReadonlySignal<BiliHubTab> selectedTab;
   late final ReadonlySignal<bool> isBootstrapping;
   late final ReadonlySignal<bool> isRefreshingFeed;
@@ -117,21 +128,22 @@ final class BiliHubViewModel {
     // PlatformException or a corrupt session file degrades to "not logged in"
     // instead of failing bootstrap. The store already guards its own read
     // paths; this is the last line of defense for unexpected failures.
-    Map<String, String> persistedCookies = const <String, String>{};
-    try {
-      persistedCookies = await sessionStore.loadCookies();
-    } catch (error) {
-      debugPrint('[BiliHub] session restore failed: $error');
-    }
-    if (persistedCookies.isNotEmpty) {
-      client.restoreCookies(persistedCookies);
+    if (client.sessionRevision == 0 && !client.hasAuthenticatedSession) {
+      try {
+        final cookies = await sessionStore.loadCookies();
+        if (cookies.isNotEmpty && client.sessionRevision == 0) {
+          client.restoreCookies(cookies);
+        }
+      } catch (error) {
+        debugPrint('[BiliHub] session restore failed: ${error.runtimeType}');
+      }
     }
 
     await Future.wait(<Future<void>>[
       loadHistory(),
       loadFeed(),
       refreshProfile(
-        clearInvalidSession: persistedCookies.isNotEmpty,
+        clearInvalidSession: client.hasAuthenticatedSession,
         persistIfLoggedIn: true,
       ),
     ]);
@@ -212,37 +224,58 @@ final class BiliHubViewModel {
     required bool clearInvalidSession,
     required bool persistIfLoggedIn,
   }) async {
+    final revision = client.sessionRevision;
+    final request = ++_profileRequestGeneration;
+    bool isCurrent() =>
+        request == _profileRequestGeneration &&
+        client.sessionRevision == revision;
+    if (_verifiedProfileRevision != revision ||
+        !client.hasAuthenticatedSession) {
+      _setProfile(_signedOutProfile);
+    }
+    _profilePendingVerification.value =
+        client.hasAuthenticatedSession && !_profile.value.isLoggedIn;
     _isRefreshingProfile.value = true;
     _profileErrorMessage.value = null;
 
     try {
-      final nextProfile = await client.fetchCurrentUserProfile();
-      if (nextProfile.isLoggedIn && persistIfLoggedIn) {
+      BiliUserProfile next;
+      try {
+        next = await client.fetchCurrentUserProfile();
+      } catch (error) {
+        if (!isCurrent()) return;
+        _profileErrorMessage.value = biliErrorMessage(error);
+        // Keep this session's last verified profile, or leave its restored
+        // cookies pending confirmation until the next successful request.
+        if (!isBiliSessionInvalidError(error)) return;
+        next = _signedOutProfile;
+      }
+      if (!isCurrent()) return;
+      _setProfile(next);
+      if (next.isLoggedIn && persistIfLoggedIn) {
         await sessionStore.saveCookies(client.snapshotCookies());
-      }
-      if (!nextProfile.isLoggedIn && clearInvalidSession) {
+      } else if (!next.isLoggedIn && clearInvalidSession) {
         client.clearSession();
         await sessionStore.clear();
       }
-      _profile.value = nextProfile;
     } catch (error) {
-      // Only a definitive "session invalid" API error (code -101) may wipe
-      // persisted credentials. Transient network failures must keep the saved
-      // session: clearing cookies on a socket/timeout error would silently
-      // log the user out on the next launch.
-      if (clearInvalidSession && isBiliSessionInvalidError(error)) {
-        client.clearSession();
-        await sessionStore.clear();
+      if (request == _profileRequestGeneration) {
+        _profileErrorMessage.value = '本机登录信息同步失败，请重试。';
+        debugPrint(
+          '[BiliHub] session persistence failed: ${error.runtimeType}',
+        );
       }
-      _profile.value = const BiliUserProfile(
-        isLoggedIn: false,
-        name: '未登录',
-        avatarUrl: '',
-      );
-      _profileErrorMessage.value = biliErrorMessage(error);
     } finally {
-      _isRefreshingProfile.value = false;
+      if (request == _profileRequestGeneration) {
+        _isRefreshingProfile.value = false;
+      }
     }
+  }
+
+  void _setProfile(BiliUserProfile value) {
+    _verifiedProfileRevision = value.isLoggedIn ? client.sessionRevision : null;
+    _profile.value = value;
+    _profilePendingVerification.value = false;
   }
 
   void updateQuery(String value) {
@@ -357,7 +390,9 @@ final class BiliHubViewModel {
   }
 
   Future<void> applyLoggedInProfile(BiliUserProfile nextProfile) async {
-    _profile.value = nextProfile;
+    _profileRequestGeneration++;
+    _isRefreshingProfile.value = false;
+    _setProfile(nextProfile);
     _profileErrorMessage.value = null;
     _selectedTab.value = BiliHubTab.mine;
     await Future.wait(<Future<void>>[loadFeed(), loadHistory()]);
@@ -369,11 +404,9 @@ final class BiliHubViewModel {
       sessionStore: sessionStore,
       offlineController: offlineController,
     );
-    _profile.value = const BiliUserProfile(
-      isLoggedIn: false,
-      name: '未登录',
-      avatarUrl: '',
-    );
+    _profileRequestGeneration++;
+    _isRefreshingProfile.value = false;
+    _setProfile(_signedOutProfile);
     _profileErrorMessage.value = null;
     await loadFeed();
   }
@@ -394,6 +427,7 @@ final class BiliHubViewModel {
   }
 
   void dispose() {
+    _profileRequestGeneration++;
     _feedRequestGeneration += 1;
     directBvid.dispose();
     showsSearchResults.dispose();
@@ -401,6 +435,7 @@ final class BiliHubViewModel {
     _results.dispose();
     _history.dispose();
     _profile.dispose();
+    _profilePendingVerification.dispose();
     _selectedTab.dispose();
     _isBootstrapping.dispose();
     _isRefreshingFeed.dispose();

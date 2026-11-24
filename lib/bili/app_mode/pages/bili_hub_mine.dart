@@ -5,10 +5,10 @@ class _MineTab extends StatelessWidget {
     required this.scrollController,
     required this.profile,
     required this.profileErrorMessage,
+    required this.hasUnverifiedProfile,
     required this.isRefreshingProfile,
     required this.historyCount,
     required this.onLoginTap,
-    required this.onLogoutTap,
     required this.onSpaceTap,
     required this.onFavoritesTap,
     required this.onCacheTap,
@@ -22,10 +22,10 @@ class _MineTab extends StatelessWidget {
   final ScrollController scrollController;
   final BiliUserProfile profile;
   final String? profileErrorMessage;
+  final bool hasUnverifiedProfile;
   final bool isRefreshingProfile;
   final int historyCount;
   final Future<void> Function() onLoginTap;
-  final Future<void> Function() onLogoutTap;
   final VoidCallback onSpaceTap;
   final VoidCallback onFavoritesTap;
   final VoidCallback onCacheTap;
@@ -52,18 +52,22 @@ class _MineTab extends StatelessWidget {
             _MineProfileHeader(
               profile: profile,
               isRefreshing: isRefreshingProfile,
-              onLoginTap: onLoginTap,
-              onLogoutTap: onLogoutTap,
+              hasUnverifiedProfile: hasUnverifiedProfile,
+              onAccountTap: hasUnverifiedProfile ? onRefresh : onLoginTap,
               onSpaceTap: onSpaceTap,
             ),
-            if (!profile.isLoggedIn && profileErrorMessage != null) ...[
+            if (profileErrorMessage != null) ...[
               const SizedBox(height: 14),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _InlineErrorBanner(
                   message: profileErrorMessage!,
-                  actionLabel: '重新登录',
-                  onPressed: onLoginTap,
+                  actionLabel: profile.isLoggedIn || hasUnverifiedProfile
+                      ? '重试'
+                      : '重新登录',
+                  onPressed: profile.isLoggedIn || hasUnverifiedProfile
+                      ? onRefresh
+                      : onLoginTap,
                 ),
               ),
             ],
@@ -161,20 +165,22 @@ class _MineProfileHeader extends StatelessWidget {
   const _MineProfileHeader({
     required this.profile,
     required this.isRefreshing,
-    required this.onLoginTap,
-    required this.onLogoutTap,
+    required this.hasUnverifiedProfile,
+    required this.onAccountTap,
     required this.onSpaceTap,
   });
 
   final BiliUserProfile profile;
   final bool isRefreshing;
-  final Future<void> Function() onLoginTap;
-  final Future<void> Function() onLogoutTap;
+  final bool hasUnverifiedProfile;
+  final Future<void> Function() onAccountTap;
   final VoidCallback onSpaceTap;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final readingSession =
+        !profile.isLoggedIn && isRefreshing && !hasUnverifiedProfile;
     return Padding(
       key: const ValueKey<String>('bili-mine-profile-header'),
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
@@ -195,7 +201,11 @@ class _MineProfileHeader extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              profile.name,
+                              hasUnverifiedProfile
+                                  ? '账号待确认'
+                                  : readingSession
+                                  ? '正在读取账号'
+                                  : profile.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.titleMedium
@@ -224,7 +234,13 @@ class _MineProfileHeader extends StatelessWidget {
                         _MineVipPill(label: profile.vipLabel!)
                       else
                         Text(
-                          profile.isLoggedIn ? '账号已登录' : '扫码登录后同步推荐与播放解析',
+                          profile.isLoggedIn
+                              ? '账号已登录'
+                              : hasUnverifiedProfile
+                              ? '已保留登录信息'
+                              : readingSession
+                              ? '正在检查登录状态'
+                              : '扫码登录后同步推荐与播放解析',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.labelMedium
@@ -242,9 +258,13 @@ class _MineProfileHeader extends StatelessWidget {
               const SizedBox(width: 8),
               _MineSpaceAction(
                 loggedIn: profile.isLoggedIn,
-                onLoginTap: onLoginTap,
+                accountLabel: hasUnverifiedProfile
+                    ? '刷新资料'
+                    : readingSession
+                    ? '检查中'
+                    : '登录',
+                onAccountTap: isRefreshing ? null : onAccountTap,
                 onSpaceTap: onSpaceTap,
-                onLogoutTap: onLogoutTap,
               ),
             ],
           ),
@@ -299,14 +319,14 @@ class _MineAvatar extends StatelessWidget {
                 height: 21,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppVisualTokens.primaryBlue,
+                  color: Theme.of(context).colorScheme.primary,
                   shape: BoxShape.circle,
                   border: Border.all(color: visualTheme.background, width: 2),
                 ),
                 child: Text(
                   profile.vipLabel == null ? '已' : '大',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimary,
                     fontWeight: FontWeight.w900,
                     fontSize: 9,
                   ),
@@ -329,7 +349,7 @@ class _MineLevelBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
       decoration: BoxDecoration(
-        color: AppVisualTokens.biliSourcePink,
+        color: const Color(0xFFC93763),
         borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
@@ -352,10 +372,11 @@ class _MineVipPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppVisualTokens.biliSourcePink.withValues(
+        color: visualTheme.sourceAccent.withValues(
           alpha: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.10,
         ),
         borderRadius: BorderRadius.circular(4),
@@ -365,7 +386,7 @@ class _MineVipPill extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppVisualTokens.biliSourcePink,
+          color: visualTheme.sourceAccent,
           fontWeight: FontWeight.w900,
           fontSize: 10,
           height: 1,
@@ -399,27 +420,27 @@ class _MineAssetLine extends StatelessWidget {
 class _MineSpaceAction extends StatelessWidget {
   const _MineSpaceAction({
     required this.loggedIn,
-    required this.onLoginTap,
+    required this.accountLabel,
+    required this.onAccountTap,
     required this.onSpaceTap,
-    required this.onLogoutTap,
   });
 
   final bool loggedIn;
-  final Future<void> Function() onLoginTap;
+  final String accountLabel;
+  final VoidCallback? onAccountTap;
   final VoidCallback onSpaceTap;
-  final Future<void> Function() onLogoutTap;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     if (!loggedIn) {
       return TextButton(
-        onPressed: onLoginTap,
+        onPressed: onAccountTap,
         style: TextButton.styleFrom(
           minimumSize: const Size(54, AppVisualTokens.minimumTapTarget),
           padding: const EdgeInsets.symmetric(horizontal: 10),
         ),
-        child: const Text('登录'),
+        child: Text(accountLabel),
       );
     }
 
@@ -430,9 +451,6 @@ class _MineSpaceAction extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onSpaceTap,
-          onLongPress: () {
-            onLogoutTap();
-          },
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               minWidth: AppVisualTokens.minimumTapTarget,
@@ -473,21 +491,21 @@ class _MineStatsRow extends StatelessWidget {
       children: [
         Expanded(
           child: _MineStatItem(
-            value: _formatStat(profile.dynamicCount),
+            value: biliFormatCount(profile.dynamicCount),
             label: '动态',
           ),
         ),
         const _MineStatDivider(),
         Expanded(
           child: _MineStatItem(
-            value: _formatStat(profile.followingCount),
+            value: biliFormatCount(profile.followingCount),
             label: '关注',
           ),
         ),
         const _MineStatDivider(),
         Expanded(
           child: _MineStatItem(
-            value: _formatStat(profile.followerCount),
+            value: biliFormatCount(profile.followerCount),
             label: '粉丝',
           ),
         ),
@@ -553,13 +571,6 @@ String _formatBalance(double? value) {
     return value.round().toString();
   }
   return value.toStringAsFixed(1);
-}
-
-String _formatStat(int? value) {
-  if (value == null) {
-    return '--';
-  }
-  return value.toString();
 }
 
 class _MineShortcut extends StatelessWidget {

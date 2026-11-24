@@ -72,7 +72,7 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
         !_viewModel.isRefreshingFeed.value) {
       unawaited(_viewModel.loadFeed());
     }
-    if (item == _TvNavItem.regions && _regionItems.isEmpty) {
+    if (item == _TvNavItem.regions && _regionRequestId == 0) {
       unawaited(_loadRegion());
     }
   }
@@ -228,7 +228,12 @@ extension _BiliTvHomeContent on _BiliTvHomePageState {
     final metadata = <String>[
       if (item.author.isNotEmpty) item.author,
       if (item.durationLabel.isNotEmpty) item.durationLabel,
-      if (item.playCountLabel.isNotEmpty) '${item.playCountLabel} 播放',
+      if (item.playCountLabel.isNotEmpty)
+        item.playCountLabel.contains('追番') ||
+                item.playCountLabel.contains('追剧') ||
+                item.playCountLabel.contains('播放')
+            ? item.playCountLabel
+            : '${item.playCountLabel} 播放',
     ].join(' · ');
     final progress = item.progress;
     final progressLabel = item.durationMs == null

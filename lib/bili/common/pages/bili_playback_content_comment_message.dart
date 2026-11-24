@@ -18,7 +18,7 @@ class _CommentMessageText extends StatefulWidget {
 }
 
 class _CommentMessageTextState extends State<_CommentMessageText> {
-  final List<TapGestureRecognizer> _recognizers = <TapGestureRecognizer>[];
+  final Map<BiliCommentTimeLink, TapGestureRecognizer> _recognizers = {};
 
   @override
   void initState() {
@@ -29,7 +29,8 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
   @override
   void didUpdateWidget(_CommentMessageText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.timeLinks != widget.timeLinks ||
+    if (oldWidget.message != widget.message ||
+        oldWidget.timeLinks != widget.timeLinks ||
         oldWidget.onSeekToTime != widget.onSeekToTime) {
       _syncRecognizers();
     }
@@ -42,7 +43,7 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
   }
 
   void _disposeRecognizers() {
-    for (final recognizer in _recognizers) {
+    for (final recognizer in _recognizers.values) {
       recognizer.dispose();
     }
     _recognizers.clear();
@@ -50,10 +51,12 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
 
   void _syncRecognizers() {
     _disposeRecognizers();
+    var cursor = 0;
     for (final link in widget.timeLinks.where(_hasInlineRange)) {
-      _recognizers.add(
-        TapGestureRecognizer()..onTap = () => widget.onSeekToTime(link.seconds),
-      );
+      if (link.start! < cursor || link.end! > widget.message.length) continue;
+      _recognizers[link] = TapGestureRecognizer()
+        ..onTap = () => widget.onSeekToTime(link.seconds);
+      cursor = link.end!;
     }
   }
 
@@ -62,24 +65,19 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
     final visualTheme = AppVisualTheme.of(context);
     final style =
         widget.style ??
-        Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: visualTheme.textPrimary,
-          height: 1.5,
-        );
+        Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: visualTheme.textPrimary, height: 1.5);
     final linkStyle = style?.copyWith(
-      color: AppVisualTokens.primaryBlue,
+      color: visualTheme.accent,
       fontWeight: FontWeight.w900,
       decoration: TextDecoration.none,
     );
     final spans = <InlineSpan>[];
     var cursor = 0;
-    var recognizerIndex = 0;
-    for (final link in widget.timeLinks.where(_hasInlineRange)) {
+    for (final entry in _recognizers.entries) {
+      final link = entry.key;
       final start = link.start!;
       final end = link.end!;
-      if (start < cursor || start > widget.message.length) {
-        continue;
-      }
       if (cursor < start) {
         spans.add(TextSpan(text: widget.message.substring(cursor, start)));
       }
@@ -87,10 +85,9 @@ class _CommentMessageTextState extends State<_CommentMessageText> {
         TextSpan(
           text: widget.message.substring(start, end),
           style: linkStyle,
-          recognizer: _recognizers[recognizerIndex],
+          recognizer: entry.value,
         ),
       );
-      recognizerIndex += 1;
       cursor = end;
     }
     if (cursor < widget.message.length) {
@@ -152,7 +149,7 @@ class _CommentTimeChip extends StatelessWidget {
     final visualTheme = AppVisualTheme.of(context);
     return Material(
       color: Color.alphaBlend(
-        AppVisualTokens.primaryBlue.withValues(alpha: 0.12),
+        visualTheme.accent.withValues(alpha: 0.12),
         visualTheme.surfaceRaised,
       ),
       borderRadius: BorderRadius.circular(999),
@@ -164,20 +161,20 @@ class _CommentTimeChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 AppIcons.playFill,
                 size: 16,
-                color: AppVisualTokens.primaryBlue,
+                color: visualTheme.accent,
               ),
               const SizedBox(width: 3),
               Text(
                 link.label,
-                style: const TextStyle(
-                  color: AppVisualTokens.primaryBlue,
+                style: TextStyle(
+                  color: visualTheme.accent,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                   height: 1.1,
-                  fontFeatures: [ui.FontFeature.tabularFigures()],
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -264,10 +261,8 @@ class _CommentPicture extends StatelessWidget {
               picture.url,
               fit: BoxFit.cover,
               cacheWidth: cacheWidth,
-              errorBuilder: (_, _, _) => Icon(
-                AppIcons.imageLine,
-                color: visualTheme.textTertiary,
-              ),
+              errorBuilder: (_, _, _) =>
+                  Icon(AppIcons.imageLine, color: visualTheme.textTertiary),
             ),
           ),
           DecoratedBox(
@@ -296,7 +291,6 @@ class _CommentActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visualTheme = AppVisualTheme.of(context);
     final like = likeState;
     final liked = like?.liked ?? comment.liked;
     final likeLabel = like?.likeCountLabel ?? comment.likeCountLabel;
@@ -310,31 +304,12 @@ class _CommentActionRow extends StatelessWidget {
           // 写请求进行中时禁用，避免快速连点重复提交。
           onTap: like?.pending == true ? null : onToggleLike,
         ),
-        const SizedBox(width: 14),
-        const _CommentPassiveAction(
-          icon: AppIcons.thumbDownLine,
-          label: '',
-        ),
-        const SizedBox(width: 14),
-        const _CommentPassiveAction(icon: AppIcons.shareLine, label: ''),
-        const SizedBox(width: 14),
-        const _CommentPassiveAction(
-          icon: AppIcons.chat1Line,
-          label: '',
-        ),
-        const Spacer(),
-        Icon(
-          AppIcons.more2Fill,
-          size: 20,
-          color: visualTheme.textTertiary,
-        ),
       ],
     );
   }
 }
 
-/// 评论动作项。默认是只读展示；提供 [onTap] 时变成可点击，
-/// [onTap] 为 null 且 [tappable] 为 true 表示暂时禁用（写请求进行中）。
+/// 已有回调时允许点击，否则只呈现计数。
 class _CommentPassiveAction extends StatelessWidget {
   const _CommentPassiveAction({
     super.key,
@@ -353,7 +328,7 @@ class _CommentPassiveAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final color = selected
-        ? AppVisualTokens.primaryBlue
+        ? visualTheme.accent
         : visualTheme.textSecondary;
     final content = Row(
       mainAxisSize: MainAxisSize.min,

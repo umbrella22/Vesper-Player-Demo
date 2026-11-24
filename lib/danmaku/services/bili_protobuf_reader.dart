@@ -28,7 +28,7 @@ final class BiliProtobufReader {
 
   List<int> readLengthDelimited() {
     final length = readVarint();
-    if (length > bytes.length - _offset) {
+    if (length < 0 || length > bytes.length - _offset) {
       throw const FormatException('protobuf length-delimited field truncated');
     }
     final value = bytes.sublist(_offset, _offset + length);

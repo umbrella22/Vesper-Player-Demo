@@ -11,10 +11,12 @@ class BiliDanmakuSettingsPanel extends StatefulWidget {
     super.key,
     required this.settings,
     required this.onChanged,
+    this.onPreviewOverlay,
   });
 
   final ValueListenable<BiliDanmakuSettings> settings;
   final ValueChanged<BiliDanmakuSettings> onChanged;
+  final ValueChanged<MediaDanmakuOverlaySettings?>? onPreviewOverlay;
 
   @override
   State<BiliDanmakuSettingsPanel> createState() =>
@@ -31,6 +33,7 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
     debugLabel: 'danmaku_sender_filter',
   );
   Timer? _editorCommitTimer;
+  bool _previewing = false;
 
   @override
   void initState() {
@@ -54,7 +57,13 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
   @override
   void dispose() {
     _editorCommitTimer?.cancel();
-    _commitEditors();
+    final preview = widget.onPreviewOverlay;
+    if (_previewing && preview != null) scheduleMicrotask(() => preview(null));
+    final draft = _draftSettings();
+    if (draft != widget.settings.value) {
+      final commit = widget.onChanged;
+      scheduleMicrotask(() => commit(draft));
+    }
     widget.settings.removeListener(_syncEditors);
     _keywordController.dispose();
     _senderController.dispose();
@@ -90,18 +99,20 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
   void _commitEditors() {
     _editorCommitTimer?.cancel();
     _editorCommitTimer = null;
+    final draft = _draftSettings();
+    if (draft != widget.settings.value) widget.onChanged(draft);
+  }
+
+  BiliDanmakuSettings _draftSettings() {
     final current = widget.settings.value;
     final keywords = _lines(_keywordController.text);
     final senderHashes = _lines(_senderController.text);
-    final next = current.copyWith(
+    return current.copyWith(
       overlay: current.overlay.copyWith(blockedKeywords: keywords),
       sourceFilter: current.sourceFilter.copyWith(
         blockedSenderHashes: senderHashes,
       ),
     );
-    if (next != current) {
-      widget.onChanged(next);
-    }
   }
 
   List<String> _lines(String text) {
@@ -215,7 +226,7 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
                   summary: types.isEmpty ? '已全部关闭' : types.join(' · '),
                   children: [_buildTypeSelector(settings)],
                 ),
-                Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+                Divider(height: 1, color: AppVisualTheme.of(context).divider),
                 _buildDisclosure(
                   key: const ValueKey('danmaku-filters-disclosure'),
                   title: '屏蔽规则',
@@ -373,8 +384,15 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
         maximum: 1,
         divisions: 9,
         valueFormatter: (value) => '${(value * 100).round()}%',
-        onChangeEnd: (value) =>
-            _setOverlay(settings, overlay.copyWith(opacity: value)),
+        onPreview: (value) {
+          _previewing = true;
+          widget.onPreviewOverlay?.call(overlay.copyWith(opacity: value));
+        },
+        onChangeEnd: (value) {
+          _previewing = false;
+          _setOverlay(settings, overlay.copyWith(opacity: value));
+          widget.onPreviewOverlay?.call(null);
+        },
       ),
       _DanmakuSlider(
         stacked: stacked,
@@ -384,8 +402,15 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
         maximum: 1,
         divisions: 8,
         valueFormatter: (value) => '${(value * 100).round()}%',
-        onChangeEnd: (value) =>
-            _setOverlay(settings, overlay.copyWith(density: value)),
+        onPreview: (value) {
+          _previewing = true;
+          widget.onPreviewOverlay?.call(overlay.copyWith(density: value));
+        },
+        onChangeEnd: (value) {
+          _previewing = false;
+          _setOverlay(settings, overlay.copyWith(density: value));
+          widget.onPreviewOverlay?.call(null);
+        },
       ),
       _DanmakuSlider(
         stacked: stacked,
@@ -395,8 +420,15 @@ class _BiliDanmakuSettingsPanelState extends State<BiliDanmakuSettingsPanel> {
         maximum: 1.6,
         divisions: 10,
         valueFormatter: (value) => '${(value * 100).round()}%',
-        onChangeEnd: (value) =>
-            _setOverlay(settings, overlay.copyWith(fontScale: value)),
+        onPreview: (value) {
+          _previewing = true;
+          widget.onPreviewOverlay?.call(overlay.copyWith(fontScale: value));
+        },
+        onChangeEnd: (value) {
+          _previewing = false;
+          _setOverlay(settings, overlay.copyWith(fontScale: value));
+          widget.onPreviewOverlay?.call(null);
+        },
       ),
     ];
   }
@@ -495,6 +527,7 @@ class _DanmakuSlider extends StatefulWidget {
     required this.divisions,
     required this.valueFormatter,
     required this.onChangeEnd,
+    this.onPreview,
     this.stacked = false,
   });
 
@@ -506,6 +539,7 @@ class _DanmakuSlider extends StatefulWidget {
   final int divisions;
   final String Function(double value) valueFormatter;
   final ValueChanged<double> onChangeEnd;
+  final ValueChanged<double>? onPreview;
 
   @override
   State<_DanmakuSlider> createState() => _DanmakuSliderState();
@@ -558,6 +592,7 @@ class _DanmakuSliderState extends State<_DanmakuSlider> {
         setState(() {
           _draftValue = value;
         });
+        widget.onPreview?.call(value);
       },
       onChangeEnd: (value) {
         setState(() {
@@ -570,7 +605,7 @@ class _DanmakuSliderState extends State<_DanmakuSlider> {
     if (widget.stacked) {
       final labelHeight = MediaQuery.textScalerOf(context).scale(14) * 1.2;
       return SizedBox(
-        height: labelHeight + 28,
+        height: labelHeight + 44,
         child: Stack(
           children: [
             Row(
@@ -592,7 +627,7 @@ class _DanmakuSliderState extends State<_DanmakuSlider> {
                 ),
               ],
             ),
-            Positioned(left: 0, right: 0, bottom: 0, height: 40, child: slider),
+            Positioned(left: 0, right: 0, bottom: 0, height: 44, child: slider),
           ],
         ),
       );

@@ -138,7 +138,10 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       return;
     }
     final hasAuthenticatedSession = widget.client.hasAuthenticatedSession;
-    if (!force && state.loaded && hasAuthenticatedSession) {
+    if (!force &&
+        state.loaded &&
+        !state.authenticationRequired &&
+        hasAuthenticatedSession) {
       return;
     }
     List<BiliRemoteHistoryEntry>? refreshedLocalHistory;
@@ -776,8 +779,10 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       final canLogin =
           widget.onLoginTap != null && state.authenticationRequired;
       return _TvLibraryStatusView(
-        icon: AppIcons.lockLine,
-        title: '暂时无法显示',
+        icon: state.authenticationRequired
+            ? AppIcons.lockLine
+            : AppIcons.errorWarningLine,
+        title: state.authenticationRequired ? '需要登录' : '暂时无法显示',
         message: state.error!,
         primaryLabel: canLogin ? '登录' : '重试',
         primaryIcon: canLogin ? AppIcons.loginCircleLine : AppIcons.refreshLine,
@@ -989,9 +994,12 @@ class _BiliLibraryPageState extends State<BiliLibraryPage>
       return const Center(child: CircularProgressIndicator());
     }
     if (state.error != null && !_hasData(section, state)) {
+      final canLogin =
+          widget.onLoginTap != null && state.authenticationRequired;
       return _LibraryErrorView(
         message: state.error!,
-        onLogin: widget.onLoginTap == null ? null : _handleLogin,
+        authenticationRequired: state.authenticationRequired,
+        onLogin: canLogin ? _handleLogin : null,
         onRetry: () => _load(section, force: true),
       );
     }

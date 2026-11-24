@@ -39,7 +39,7 @@ class _TvHeroAction extends StatelessWidget {
           height: 52,
           decoration: BoxDecoration(
             color: primary
-                ? AppVisualTokens.primaryBlue
+                ? AppVisualTokens.primaryActionBlueDark
                 : focused || pressed
                 ? const Color(0x3DFFFFFF)
                 : const Color(0x24FFFFFF),
@@ -47,7 +47,7 @@ class _TvHeroAction extends StatelessWidget {
             boxShadow: primary
                 ? const [
                     BoxShadow(
-                      color: Color(0x33409EFF),
+                      color: Color(0x331470DB),
                       blurRadius: 18,
                       offset: Offset(0, 8),
                     ),

@@ -8,6 +8,7 @@ import 'package:vesper_media/bili/common/models/bili_favorites_models.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
 import 'package:vesper_media/bili/common/services/bili_api_core.dart';
 import 'package:vesper_media/bili/common/services/bili_client.dart';
+import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 
 void main() {
@@ -273,6 +274,67 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  for (final (width, scale, wraps) in [
+    (480.0, 0.85, false),
+    (320.0, 2.0, true),
+  ]) {
+    testWidgets(
+      'favorite metadata and first-line action fit at width $width and scale $scale',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width, 900);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        const title = '这是一段需要占用两行的很长很长的中文视频标题';
+        const date = '2026-11-24';
+        final client = _FavoritesClient()
+          ..loadItems = (_) async => _page(
+            items: [
+              _item(1, title: title, date: date),
+              _item(2, title: '短片', date: ''),
+            ],
+            hasMore: false,
+          );
+        await _pumpPage(
+          tester,
+          client,
+          mediaQuery: MediaQueryData(
+            size: Size(width, 900),
+            textScaler: TextScaler.linear(scale),
+          ),
+        );
+        final titleRect = tester.getRect(find.text(title));
+        final oneLineHeight = tester.getSize(find.text('短片')).height;
+        expect(titleRect.height, greaterThan(oneLineHeight));
+        final menu = find.byKey(const ValueKey('favorite-remove-2-1'));
+        final action = tester.getRect(menu);
+        expect(action.size, const Size(48, 48));
+        expect(action.overlaps(titleRect), isFalse);
+        final dots = find.descendant(
+          of: menu,
+          matching: find.byIcon(AppIcons.moreFill),
+        );
+        expect(
+          tester.getCenter(dots).dy,
+          closeTo(titleRect.top + oneLineHeight / 2, 1),
+        );
+        final stats = tester.getRect(find.text('1.2万播放 · 12:34').first);
+        final dateFinder = find.text(date);
+        final dateRect = tester.getRect(dateFinder);
+        expect(tester.widget<Text>(dateFinder).semanticsLabel, '收藏于 $date');
+        if (wraps) {
+          expect(dateRect.top, greaterThanOrEqualTo(stats.bottom));
+        } else {
+          expect(dateRect.top, closeTo(stats.top, 0.01));
+          expect(dateRect.left, greaterThan(stats.right));
+          expect(dateRect.right, closeTo(action.right, 0.01));
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
   testWidgets('removing one row confirms, drops the row and decrements count', (
     tester,
   ) async {
@@ -519,6 +581,65 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets(
+    'folder creation failure surfaces formatted error in sheet without replacing background overview',
+    (tester) async {
+      final client = _FavoritesClient()
+        ..createError = const BiliApiException('收藏夹名称违规', code: 22001);
+      await _pumpPage(tester, client, openFirstFolder: false);
+
+      await tester.tap(
+        find.byKey(const ValueKey('bili-favorites-create-folder')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('bili-favorites-folder-title')),
+        '新收藏',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '创建'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('收藏夹名称违规'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('默认收藏夹'), findsOneWidget);
+      expect(find.textContaining('刷新失败'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'folder creation shows validation error on empty submit instead of closing silently',
+    (tester) async {
+      final client = _FavoritesClient();
+      await _pumpPage(tester, client, openFirstFolder: false);
+
+      await tester.tap(
+        find.byKey(const ValueKey('bili-favorites-create-folder')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, '创建'));
+      await tester.pump();
+      expect(find.text('请输入收藏夹名称。'), findsOneWidget);
+      expect(client.createdTitles, isEmpty);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('bili-favorites-folder-title')),
+        '有效收藏夹',
+      );
+      await tester.pump();
+      expect(find.text('请输入收藏夹名称。'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, '创建'));
+      await tester.pumpAndSettle();
+
+      expect(client.createdTitles, ['有效收藏夹']);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
 
 Future<void> _pumpPage(
@@ -572,6 +693,7 @@ class _FavoritesClient extends BiliClient {
   Future<BiliVideoDetail>? detailResult;
   Object? removeError;
   final removed = <int, Set<String>>{};
+  Object? createError;
   Future<BiliFavoritePage> Function(_FavoriteRequest)? loadItems;
   Future<BiliFavoritePage> Function(_FavoriteRequest)? loadPreview;
 
@@ -646,6 +768,8 @@ class _FavoritesClient extends BiliClient {
     required String title,
     required bool isPrivate,
   }) async {
+    final error = createError;
+    if (error != null) throw error;
     createdTitles.add(title);
     return 100 + createdTitles.length;
   }
@@ -669,6 +793,7 @@ BiliFavoriteItem _item(
   required String title,
   bool available = true,
   String coverUrl = '',
+  String date = '09-16',
 }) => BiliFavoriteItem(
   id: id,
   bvid: 'BV$id',
@@ -677,7 +802,7 @@ BiliFavoriteItem _item(
   ownerName: 'UP 主',
   durationLabel: '12:34',
   playCountLabel: '1.2万',
-  favoritedAtLabel: '09-16',
+  favoritedAtLabel: date,
   isAvailable: available,
 );
 

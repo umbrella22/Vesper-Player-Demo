@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:signals/signals_flutter.dart';
+import 'package:vesper_player/vesper_player.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/download/download.dart';
 import '../models/bili_models.dart';
 import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
+import '../services/bili_download_asset_id.dart';
 import '../services/bili_history_store.dart';
 import '../services/bili_text.dart';
 
@@ -44,32 +46,74 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
   final _selectedQualityId = signal<int?>(null);
   final _loading = signal(true);
   final _pendingCids = signal<Set<int>>(const <int>{});
+  final _entries = signal<List<BiliOfflineDownloadEntry>>(
+    const <BiliOfflineDownloadEntry>[],
+  );
+  final _feedbackMessage = signal<String?>(null);
+  final _feedbackIsError = signal(false);
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_handleControllerChanged);
+    _entries.value = widget.controller.entries;
+    if (!widget.controller.isInitialized) {
+      unawaited(widget.controller.initialize().catchError((Object _) {}));
+    }
     unawaited(_loadOptions());
   }
 
   @override
+  void didUpdateWidget(BiliCacheDownloadPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+      _entries.value = widget.controller.entries;
+      if (!widget.controller.isInitialized) {
+        unawaited(widget.controller.initialize().catchError((Object _) {}));
+      }
+    }
+    if (oldWidget.detail.bvid != widget.detail.bvid ||
+        oldWidget.currentPage.cid != widget.currentPage.cid) {
+      unawaited(_loadOptions());
+    }
+  }
+
+  void _handleControllerChanged() {
+    if (!mounted) {
+      return;
+    }
+    _entries.value = widget.controller.entries;
+  }
+
+  @override
   void dispose() {
+    _loadGeneration += 1;
+    widget.controller.removeListener(_handleControllerChanged);
     _options.dispose();
     _errorMessage.dispose();
     _selectedQualityId.dispose();
     _loading.dispose();
     _pendingCids.dispose();
+    _entries.dispose();
+    _feedbackMessage.dispose();
+    _feedbackIsError.dispose();
     super.dispose();
   }
 
   Future<void> _loadOptions() async {
+    final generation = ++_loadGeneration;
     _loading.value = true;
     _errorMessage.value = null;
+    _feedbackMessage.value = null;
     try {
       final options = await widget.controller.resolveOptions(
         detail: widget.detail,
         page: widget.currentPage,
       );
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
       final preferredQualityId = widget.selectedQualityId;
@@ -82,7 +126,7 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
       _selectedQualityId.value = selected;
       _loading.value = false;
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
       _errorMessage.value = biliErrorMessage(error);
@@ -92,9 +136,17 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
 
   Future<void> _enqueue(BiliVideoPageEntry page) async {
     final qualityId = _selectedQualityId.value;
-    if (qualityId == null || _pendingCids.value.contains(page.cid)) {
+    if (qualityId == null) {
+      const msg = '当前视频没有可选缓存清晰度。';
+      _feedbackIsError.value = true;
+      _feedbackMessage.value = msg;
+      widget.onMessage(msg);
       return;
     }
+    if (_pendingCids.value.contains(page.cid)) {
+      return;
+    }
+    _feedbackMessage.value = null;
     _pendingCids.value = <int>{..._pendingCids.value, page.cid};
     try {
       final options = _options.value;
@@ -105,9 +157,20 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
         codecPreference: widget.codecPreference,
         options: page.cid == options?.cid ? options : null,
       );
-      widget.onMessage('已加入缓存：P${page.pageNumber}');
+      final msg = '已加入缓存：P${page.pageNumber}';
+      if (mounted) {
+        _entries.value = widget.controller.entries;
+        _feedbackIsError.value = false;
+        _feedbackMessage.value = msg;
+      }
+      widget.onMessage(msg);
     } catch (error) {
-      widget.onMessage('缓存失败：${biliErrorMessage(error)}');
+      final msg = '缓存失败：${biliErrorMessage(error)}';
+      if (mounted) {
+        _feedbackIsError.value = true;
+        _feedbackMessage.value = msg;
+      }
+      widget.onMessage(msg);
     } finally {
       if (mounted) {
         _pendingCids.value = _pendingCids.value
@@ -131,29 +194,106 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _CachePanelHeading(
-          title: '下载缓存',
-          subtitle: '选择清晰度后，点击合集中的分P开始缓存。',
-        ),
-        const SizedBox(height: 12),
-        SignalBuilder(builder: _buildBody),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () => unawaited(_openOfflineCachePage()),
-            icon: const Icon(AppIcons.folderOpenLine, size: 19),
-            label: const Text('查看缓存'),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boundedHeight = constraints.hasBoundedHeight;
+        final tightHeight =
+            boundedHeight && constraints.minHeight == constraints.maxHeight;
+        final body = SignalBuilder(
+          builder: (context) => _buildBody(
+            context,
+            scrollableEpisodes: boundedHeight,
+            expandEpisodes: tightHeight,
           ),
-        ),
-      ],
+        );
+        return Column(
+          mainAxisSize: tightHeight ? MainAxisSize.max : MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CachePanelHeading(
+              title: '下载缓存',
+              subtitle: '选择清晰度后，点击合集中的分P开始缓存。',
+            ),
+            const SizedBox(height: 12),
+            if (boundedHeight)
+              Flexible(
+                fit: tightHeight ? FlexFit.tight : FlexFit.loose,
+                child: body,
+              )
+            else
+              body,
+            SignalBuilder(builder: _buildFeedbackBanner),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => unawaited(_openOfflineCachePage()),
+                icon: const Icon(AppIcons.folderOpenLine, size: 19),
+                label: const Text('查看缓存'),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildFeedbackBanner(BuildContext context) {
+    final message = _feedbackMessage.value;
+    if (message == null || message.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final visualTheme = AppVisualTheme.of(context);
+    final isError = _feedbackIsError.value;
+    final accent = isError
+        ? visualTheme.destructive
+        : visualTheme.accent;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            accent.withValues(alpha: 0.12),
+            visualTheme.surfaceRaised,
+          ),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
+            children: [
+              Icon(
+                isError
+                    ? AppIcons.errorWarningLine
+                    : AppIcons.checkboxCircleFill,
+                size: 18,
+                color: accent,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isError
+                        ? visualTheme.destructive
+                        : visualTheme.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context, {
+    required bool scrollableEpisodes,
+    required bool expandEpisodes,
+  }) {
     final visualTheme = AppVisualTheme.of(context);
     final errorMessage = _errorMessage.value;
     final options = _options.value;
@@ -164,12 +304,28 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
       );
     }
     if (errorMessage != null) {
-      return _CacheInlineError(message: errorMessage, onRetry: _loadOptions);
+      final errorWidget = _CacheInlineError(
+        message: errorMessage,
+        onRetry: _loadOptions,
+      );
+      return scrollableEpisodes
+          ? SingleChildScrollView(child: errorWidget)
+          : errorWidget;
     }
     if (options == null) {
       return const SizedBox.shrink();
     }
+    final episodeList = _CacheEpisodeList(
+      detailBvid: widget.detail.bvid,
+      pages: widget.detail.pages,
+      currentCid: widget.currentPage.cid,
+      pendingCids: _pendingCids,
+      entries: _entries,
+      selectedQualityId: _selectedQualityId,
+      onTap: (page) => unawaited(_enqueue(page)),
+    );
     return Column(
+      mainAxisSize: expandEpisodes ? MainAxisSize.max : MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -194,12 +350,16 @@ class _BiliCacheDownloadPanelState extends State<BiliCacheDownloadPanel> {
           ),
         ),
         const SizedBox(height: 6),
-        _CacheEpisodeList(
-          pages: widget.detail.pages,
-          currentCid: widget.currentPage.cid,
-          pendingCids: _pendingCids,
-          onTap: (page) => unawaited(_enqueue(page)),
-        ),
+        if (scrollableEpisodes)
+          Flexible(
+            fit: expandEpisodes ? FlexFit.tight : FlexFit.loose,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: episodeList,
+            ),
+          )
+        else
+          episodeList,
       ],
     );
   }
@@ -240,15 +400,21 @@ class _CacheQualitySelector extends StatelessWidget {
 
 class _CacheEpisodeList extends StatelessWidget {
   const _CacheEpisodeList({
+    required this.detailBvid,
     required this.pages,
     required this.currentCid,
     required this.pendingCids,
+    required this.entries,
+    required this.selectedQualityId,
     required this.onTap,
   });
 
+  final String detailBvid;
   final List<BiliVideoPageEntry> pages;
   final int currentCid;
   final ReadonlySignal<Set<int>> pendingCids;
+  final ReadonlySignal<List<BiliOfflineDownloadEntry>> entries;
+  final ReadonlySignal<int?> selectedQualityId;
   final ValueChanged<BiliVideoPageEntry> onTap;
 
   @override
@@ -263,9 +429,12 @@ class _CacheEpisodeList extends StatelessWidget {
         children: [
           for (final page in pages) ...[
             _CacheEpisodeSignalRow(
+              detailBvid: detailBvid,
               page: page,
               selected: page.cid == currentCid,
               pendingCids: pendingCids,
+              entries: entries,
+              selectedQualityId: selectedQualityId,
               onTap: () => onTap(page),
             ),
             if (page != pages.last)
@@ -284,30 +453,94 @@ class _CacheEpisodeList extends StatelessWidget {
 
 class _CacheEpisodeSignalRow extends StatelessWidget {
   const _CacheEpisodeSignalRow({
+    required this.detailBvid,
     required this.page,
     required this.selected,
     required this.pendingCids,
+    required this.entries,
+    required this.selectedQualityId,
     required this.onTap,
   });
 
+  final String detailBvid;
   final BiliVideoPageEntry page;
   final bool selected;
   final ReadonlySignal<Set<int>> pendingCids;
+  final ReadonlySignal<List<BiliOfflineDownloadEntry>> entries;
+  final ReadonlySignal<int?> selectedQualityId;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return SignalBuilder(
       builder: (context) {
+        final cacheStatus = _resolveEpisodeCacheEntry(
+          entries: entries.value,
+          detailBvid: detailBvid,
+          page: page,
+          selectedQualityId: selectedQualityId.value,
+        );
         return _CacheEpisodeRow(
           page: page,
           selected: selected,
           pending: pendingCids.value.contains(page.cid),
+          cacheEntry: cacheStatus?.entry,
+          matchesSelectedQuality: cacheStatus?.matchesSelectedQuality ?? false,
           onTap: onTap,
         );
       },
     );
   }
+}
+
+({BiliOfflineDownloadEntry entry, bool matchesSelectedQuality})?
+_resolveEpisodeCacheEntry({
+  required List<BiliOfflineDownloadEntry> entries,
+  required String detailBvid,
+  required BiliVideoPageEntry page,
+  required int? selectedQualityId,
+}) {
+  final targetBvid = page.bvid ?? detailBvid;
+  BiliOfflineDownloadEntry? best;
+  var bestMatchesQuality = false;
+  var bestRank = -1;
+  for (final entry in entries) {
+    if (entry.isUnplayable || entry.metadata.cid != page.cid) {
+      continue;
+    }
+    if (entry.metadata.bvid != targetBvid &&
+        entry.metadata.bvid != detailBvid) {
+      continue;
+    }
+    final parsedQualityId = tryParseBiliDownloadAssetSelection(
+      entry.metadata.assetId,
+    )?.qualityId;
+    final matchesSelectedQuality =
+        selectedQualityId == null ||
+        parsedQualityId == null ||
+        parsedQualityId == selectedQualityId;
+    final rank = entry.isCompleted
+        ? 3
+        : entry.isActive
+        ? (entry.state == VesperDownloadState.paused ? 1 : 2)
+        : 0;
+    final isBetter =
+        best == null ||
+        (matchesSelectedQuality && !bestMatchesQuality) ||
+        (matchesSelectedQuality == bestMatchesQuality &&
+            (rank > bestRank ||
+                (rank == bestRank &&
+                    entry.metadata.createdAtMs > best.metadata.createdAtMs)));
+    if (isBetter) {
+      best = entry;
+      bestMatchesQuality = matchesSelectedQuality;
+      bestRank = rank;
+    }
+  }
+  if (best == null) {
+    return null;
+  }
+  return (entry: best, matchesSelectedQuality: bestMatchesQuality);
 }
 
 class _CacheQualityButton extends StatelessWidget {
@@ -325,11 +558,11 @@ class _CacheQualityButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final color = selected
-        ? AppVisualTokens.primaryBlue
+        ? visualTheme.accent
         : visualTheme.textPrimary;
     final background = selected
         ? Color.alphaBlend(
-            AppVisualTokens.primaryBlue.withValues(alpha: 0.14),
+            visualTheme.accent.withValues(alpha: 0.14),
             visualTheme.surfaceRaised,
           )
         : visualTheme.surfaceRaised;
@@ -363,21 +596,58 @@ class _CacheEpisodeRow extends StatelessWidget {
     required this.page,
     required this.selected,
     required this.pending,
+    required this.cacheEntry,
+    required this.matchesSelectedQuality,
     required this.onTap,
   });
 
   final BiliVideoPageEntry page;
   final bool selected;
   final bool pending;
+  final BiliOfflineDownloadEntry? cacheEntry;
+  final bool matchesSelectedQuality;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final selectedBackground = Color.alphaBlend(
-      AppVisualTokens.primaryBlue.withValues(alpha: 0.14),
+      visualTheme.accent.withValues(alpha: 0.14),
       visualTheme.surfaceRaised,
     );
+    final entry = cacheEntry;
+    final String? statusLabel;
+    final Color statusColor;
+    final IconData trailingIcon;
+    final Color trailingColor;
+    if (entry == null) {
+      statusLabel = null;
+      statusColor = visualTheme.accent;
+      trailingIcon = AppIcons.downloadLine;
+      trailingColor = visualTheme.accent;
+    } else if (entry.isCompleted) {
+      final qualityLabel = entry.metadata.qualityLabel;
+      statusLabel = matchesSelectedQuality || qualityLabel.isEmpty
+          ? '已缓存'
+          : '已缓存 $qualityLabel';
+      statusColor = visualTheme.accent;
+      trailingIcon = matchesSelectedQuality
+          ? AppIcons.checkboxCircleFill
+          : AppIcons.downloadLine;
+      trailingColor = visualTheme.accent;
+    } else if (entry.isActive) {
+      statusLabel = entry.state == VesperDownloadState.paused ? '已暂停' : '缓存中';
+      statusColor = visualTheme.accent;
+      trailingIcon = entry.state == VesperDownloadState.paused
+          ? AppIcons.playFill
+          : AppIcons.download2Line;
+      trailingColor = visualTheme.accent;
+    } else {
+      statusLabel = '缓存失败';
+      statusColor = visualTheme.destructive;
+      trailingIcon = AppIcons.refreshLine;
+      trailingColor = visualTheme.destructive;
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -386,24 +656,34 @@ class _CacheEpisodeRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              Container(
-                width: 34,
-                height: 24,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? selectedBackground
-                      : visualTheme.surfaceRaised,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'P${page.pageNumber}',
-                  style: TextStyle(
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 34, minHeight: 24),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
                     color: selected
-                        ? AppVisualTokens.primaryBlue
-                        : visualTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+                        ? selectedBackground
+                        : visualTheme.surfaceRaised,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: Text(
+                        'P${page.pageNumber}',
+                        style: TextStyle(
+                          color: selected
+                              ? visualTheme.accent
+                              : visualTheme.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -422,12 +702,32 @@ class _CacheEpisodeRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      biliFormatDurationSeconds(page.durationSeconds),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: visualTheme.textTertiary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          biliFormatDurationSeconds(page.durationSeconds),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: visualTheme.textTertiary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        if (statusLabel != null) ...[
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              statusLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -440,11 +740,7 @@ class _CacheEpisodeRow extends StatelessWidget {
                         padding: EdgeInsets.all(2),
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(
-                        AppIcons.downloadLine,
-                        size: 21,
-                        color: AppVisualTokens.primaryBlue,
-                      ),
+                    : Icon(trailingIcon, size: 21, color: trailingColor),
               ),
             ],
           ),

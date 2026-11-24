@@ -43,18 +43,14 @@ class _FollowingTile extends StatelessWidget {
         onTap: onTap,
         leading: CircleAvatar(
           radius: 24,
-          backgroundColor: AppVisualTokens.biliSourcePink.withValues(
-            alpha: Theme.of(context).brightness == Brightness.dark
-                ? 0.18
-                : 0.12,
-          ),
+          backgroundColor: visualTheme.accent.withValues(alpha: 0.14),
           backgroundImage: user.avatarUrl.isEmpty
               ? null
               : appNetworkImageProvider(context, user.avatarUrl),
           child: user.avatarUrl.isEmpty
-              ? const Icon(
+              ? Icon(
                   AppIcons.user3Line,
-                  color: AppVisualTokens.primaryBlue,
+                  color: visualTheme.accent,
                 )
               : null,
         ),
@@ -145,7 +141,7 @@ class _LibraryVideoTile extends StatelessWidget {
                             backgroundColor: Colors.black.withValues(
                               alpha: 0.25,
                             ),
-                            color: AppVisualTokens.primaryBlue,
+                            color: visualTheme.accent,
                           ),
                         ),
                     ],
@@ -189,30 +185,40 @@ class _LibraryVideoTile extends StatelessWidget {
 }
 
 class _LibraryErrorView extends StatelessWidget {
-  const _LibraryErrorView({required this.message, this.onLogin, this.onRetry});
+  const _LibraryErrorView({
+    required this.message,
+    this.authenticationRequired = true,
+    this.onLogin,
+    this.onRetry,
+  });
 
   final String message;
+  final bool authenticationRequired;
   final VoidCallback? onLogin;
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(28),
       children: [
-        const Icon(
-          AppIcons.lockLine,
+        const SizedBox(height: 72),
+        Icon(
+          authenticationRequired ? AppIcons.lockLine : AppIcons.errorWarningLine,
           size: 44,
-          color: AppVisualTokens.primaryBlue,
+          color: authenticationRequired
+              ? visualTheme.accent
+              : visualTheme.destructive,
         ),
         const SizedBox(height: 14),
         Text(message, textAlign: TextAlign.center),
         const SizedBox(height: 18),
         if (onLogin != null)
-          FilledButton(onPressed: onLogin, child: const Text('登录')),
+          Center(child: FilledButton(onPressed: onLogin, child: const Text('登录'))),
         if (onRetry != null)
-          TextButton(onPressed: onRetry, child: const Text('重试')),
+          Center(child: TextButton(onPressed: onRetry, child: const Text('重试'))),
       ],
     );
   }

@@ -123,11 +123,9 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
 
-    return Column(
+    final settingsSections = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const PanelHeading(title: '播放设置'),
-        const SizedBox(height: 16),
         if (quickActions case final actions?) ...[
           actions,
           const SizedBox(height: 16),
@@ -143,6 +141,51 @@ class MediaPlaybackTuningPanel extends StatelessWidget {
         _buildQualitySelector(context),
         ..._buildAdvancedSettings(context),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const PanelHeading(title: '播放设置'),
+              const SizedBox(height: 16),
+              settingsSections,
+            ],
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: PanelHeading(title: '播放设置')),
+                IconButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                  tooltip: '关闭',
+                  icon: Icon(
+                    AppIcons.closeFill,
+                    color: visualTheme.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Divider(height: 1, color: visualTheme.divider),
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.only(top: 14, bottom: 8),
+                child: settingsSections,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -527,7 +570,7 @@ class _QualityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = AppVisualTheme.of(context);
-    final accent = Theme.of(context).colorScheme.primary;
+    final accent = visual.accent;
     return Semantics(
       button: true,
       enabled: enabled,

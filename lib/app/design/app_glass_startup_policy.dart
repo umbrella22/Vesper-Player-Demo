@@ -17,8 +17,8 @@ final class AppGlassStartupPolicy {
     required GlassQuality? savedQuality,
   }) {
     final isConstrained =
-        platform == TargetPlatform.android &&
-        (!isHcppPlatformSupported || !areShaderFiltersSupported);
+        !areShaderFiltersSupported ||
+        (platform == TargetPlatform.android && !isHcppPlatformSupported);
 
     if (isConstrained) {
       return const AppGlassStartupPolicy._(

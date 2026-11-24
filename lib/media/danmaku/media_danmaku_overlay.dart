@@ -1383,16 +1383,16 @@ final class _DanmakuTextCache {
     required double opacity,
     required int? maxLines,
   }) {
-    final cached = _entries[key];
+    final cached = _entries.remove(key);
     if (cached != null &&
         cached.text == text &&
         cached.fontSize == fontSize &&
         cached.colorValue == colorValue &&
         cached.opacity == opacity &&
         cached.maxLines == maxLines) {
+      _entries[key] = cached;
       return cached.painter;
     }
-    _entries.remove(key);
     cached?.painter.dispose();
     final color = Color(0xFF000000 | colorValue).withValues(alpha: opacity);
     final shadow = const Color(

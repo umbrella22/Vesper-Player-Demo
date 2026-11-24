@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -362,6 +363,9 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      unawaited(_viewModel.saveBackgroundProgress());
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -490,6 +494,7 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
               if (asyncSnapshot.hasError) {
                 return MediaPlaybackErrorState(
                   error: asyncSnapshot.error!,
+                  errorFormatter: _viewModel.adapter.formatError,
                   onRetry: _reloadCurrentPage,
                 );
               }
@@ -528,7 +533,9 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                               canPop: false,
                               onPopInvokedWithResult: (didPop, _) {
                                 if (!didPop) {
-                                  _returnToVideoMode();
+                                  unawaited(
+                                    _returnToVideoMode(popOnFailure: true),
+                                  );
                                 }
                               },
                               child: SignalBuilder(
@@ -549,6 +556,9 @@ class _MediaPlaybackPageState extends State<MediaPlaybackPage>
                                           _showSettingsSurface(
                                             controller,
                                             isPortrait: true,
+                                            initialSection:
+                                                MediaPlaybackTuningSection
+                                                    .subtitles,
                                           ),
                                         ),
                                 ),

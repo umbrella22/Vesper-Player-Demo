@@ -47,7 +47,6 @@ class _HomeVideoGrid extends StatelessWidget {
                 crossAxisSpacing * (crossAxisCount - 1)) /
             crossAxisCount;
         final tileWidth = rawTileWidth <= 0 ? 1.0 : rawTileWidth;
-        final tileHeight = tileWidth * 9 / 16 + _HomeVideoCard.infoHeight;
         final coverCacheWidth = biliHomeCoverCacheWidth(
           tileWidth: tileWidth,
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
@@ -57,6 +56,21 @@ class _HomeVideoGrid extends StatelessWidget {
           cardWidth: tileWidth,
         );
 
+        final textScaler = MediaQuery.textScalerOf(context);
+        final scaledTitleHeight =
+            (2 * textScaler.scale(titleStyle.fontSize!) * titleStyle.height!)
+                .ceilToDouble();
+        final authorFontSize =
+            Theme.of(context).textTheme.bodySmall?.fontSize ?? 12.0;
+        final scaledAuthorHeight = math.max(
+          18.0,
+          (textScaler.scale(authorFontSize) * 1.35).ceilToDouble(),
+        );
+        final infoHeight = math.max(
+          kMinInteractiveDimension,
+          7 + scaledTitleHeight + 5 + scaledAuthorHeight + 7,
+        );
+        final tileHeight = tileWidth * 9 / 16 + infoHeight;
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(
             horizontalPadding,
@@ -100,8 +114,6 @@ class _HomeVideoCard extends StatelessWidget {
     required this.onCacheTap,
   });
 
-  static const double infoHeight = 88;
-
   final _HomeVideoItem item;
   final int coverCacheWidth;
   final TextStyle titleStyle;
@@ -112,178 +124,146 @@ class _HomeVideoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
-    return Material(
-      color: visualTheme.surface,
-      elevation: Theme.of(context).brightness == Brightness.dark ? 0 : 1,
-      shadowColor: visualTheme.shadow,
-      borderRadius: BorderRadius.circular(8),
-      surfaceTintColor: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: visualTheme.surface,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(8),
+    return BiliVideoGridCard(
+      onTap: onTap,
+      cover: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(
+              color: visualTheme.surfaceRaised,
+              child: item.coverUrl.isEmpty
+                  ? Icon(AppIcons.filmLine, color: visualTheme.textTertiary)
+                  : AppNetworkImage(
+                      item.coverUrl,
+                      fit: BoxFit.cover,
+                      cacheWidth: coverCacheWidth,
+                      errorBuilder: (_, _, _) => Icon(
+                        AppIcons.imageLine,
+                        color: visualTheme.textTertiary,
+                      ),
+                    ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: visualTheme.imageOutline),
+                  ),
                 ),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: visualTheme.surfaceRaised,
-                        child: item.coverUrl.isEmpty
-                            ? Icon(
-                                AppIcons.filmLine,
-                                color: visualTheme.textTertiary,
-                              )
-                            : AppNetworkImage(
-                                item.coverUrl,
-                                fit: BoxFit.cover,
-                                cacheWidth: coverCacheWidth,
-                                errorBuilder: (_, _, _) => Icon(
-                                  AppIcons.imageLine,
-                                  color: visualTheme.textTertiary,
-                                ),
-                              ),
-                      ),
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: visualTheme.imageOutline,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: <Color>[
-                                Color(0x00000000),
-                                Color(0x12000000),
-                                Color(0x99000000),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 8,
-                        right: 8,
-                        bottom: 7,
-                        child: Row(
-                          children: [
-                            const Icon(
-                              AppIcons.playCircleLine,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 3),
-                            Flexible(
-                              child: Text(
-                                item.playCountLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              item.durationLabel,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+              ),
+            ),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      Color(0x00000000),
+                      Color(0x12000000),
+                      Color(0x99000000),
                     ],
                   ),
                 ),
               ),
-              SizedBox(
-                height: infoHeight,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 7,
+              child: Row(
+                children: [
+                  const Icon(
+                    AppIcons.playCircleLine,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text(
+                      item.playCountLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    item.durationLabel,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      details: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(8, 7, 0, 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle.copyWith(color: visualTheme.textPrimary),
+                  ),
+                  const Spacer(),
+                  Row(
                     children: [
+                      if (item.vertical) ...[
+                        const _VerticalBadge(),
+                        const SizedBox(width: 6),
+                      ],
                       Expanded(
                         child: Text(
-                          item.title,
-                          maxLines: 2,
+                          item.author,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: titleStyle.copyWith(
-                            color: visualTheme.textPrimary,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: visualTheme.textSecondary,
+                            fontWeight: FontWeight.w400,
+                            height: 1.25,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      SizedBox(
-                        height: 24,
-                        child: Row(
-                          children: [
-                            if (item.vertical) ...[
-                              const _VerticalBadge(),
-                              const SizedBox(width: 6),
-                            ],
-                            Expanded(
-                              child: Text(
-                                item.author,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: visualTheme.textSecondary,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: AppVisualTokens.minimumTapTarget,
-                              height: AppVisualTokens.minimumTapTarget,
-                              child: IconButton(
-                                onPressed: onCacheTap,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(
-                                  minWidth: AppVisualTokens.minimumTapTarget,
-                                  minHeight: AppVisualTokens.minimumTapTarget,
-                                ),
-                                icon: Icon(
-                                  AppIcons.more2Fill,
-                                  color: visualTheme.textTertiary,
-                                  size: 20,
-                                ),
-                                tooltip: '缓存',
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.bottomEnd,
+            child: SizedBox.square(
+              dimension: kMinInteractiveDimension,
+              child: IconButton(
+                onPressed: onCacheTap,
+                tooltip: '缓存',
+                padding: const EdgeInsetsDirectional.only(end: 6, bottom: 6),
+                alignment: AlignmentDirectional.bottomEnd,
+                icon: Icon(
+                  AppIcons.moreFill,
+                  color: visualTheme.textTertiary,
+                  size: 18,
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -299,11 +279,11 @@ class _RegionMenuButton extends StatelessWidget {
     final visualTheme = AppVisualTheme.of(context);
     return AppPressScale(
       child: SizedBox.square(
-        dimension: AppVisualTokens.minimumTapTarget,
+        dimension: kMinInteractiveDimension,
         child: IconButton(
           onPressed: onTap,
           padding: EdgeInsets.zero,
-          icon: const Icon(AppIcons.gridLine, size: 22),
+          icon: const Icon(AppIcons.listUnordered, size: 22),
           color: visualTheme.textPrimary,
           tooltip: '分区',
         ),
@@ -359,22 +339,28 @@ class _HomeCacheSurfaceState extends State<_HomeCacheSurface> {
         }
         final error = snapshot.error;
         if (error != null) {
-          return _InlineErrorBanner(
-            message: biliErrorMessage(error),
-            actionLabel: '重试',
-            onPressed: _reload,
+          return SingleChildScrollView(
+            child: _InlineErrorBanner(
+              message: biliErrorMessage(error),
+              actionLabel: '重试',
+              onPressed: _reload,
+            ),
           );
         }
         final detail = snapshot.data;
         if (detail == null) {
-          return _InlineErrorBanner(
-            message: '缓存面板加载失败。',
-            actionLabel: '重试',
-            onPressed: _reload,
+          return SingleChildScrollView(
+            child: _InlineErrorBanner(
+              message: '缓存面板加载失败。',
+              actionLabel: '重试',
+              onPressed: _reload,
+            ),
           );
         }
         if (detail.pages.isEmpty) {
-          return const _EmptyPanel(title: '没有可缓存的分P', body: '这个视频没有可用的合集缓存项。');
+          return const SingleChildScrollView(
+            child: _EmptyPanel(title: '没有可缓存的分P', body: '这个视频没有可用的合集缓存项。'),
+          );
         }
         return BiliCacheDownloadPanel(
           detail: detail,
@@ -398,7 +384,7 @@ class _VerticalBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFA15F),
+        color: const Color(0xFFBF5200),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Padding(

@@ -132,12 +132,16 @@ Future<void> _refreshBiliAppPreferredOrientations({
 
 Future<void> setBiliSystemUiMode(SystemUiMode systemUiMode) async {
   if (systemUiMode == SystemUiMode.edgeToEdge) {
-    await SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.manual,
-      overlays: biliVisibleSystemOverlays,
-    );
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    await SystemChrome.restoreSystemUIOverlays();
+    // The platform channel delivers calls in FIFO order. Dispatch this group
+    // together so a later fullscreen request always reaches the platform last.
+    await Future.wait<void>([
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: biliVisibleSystemOverlays,
+      ),
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge),
+      SystemChrome.restoreSystemUIOverlays(),
+    ]);
     return;
   }
 

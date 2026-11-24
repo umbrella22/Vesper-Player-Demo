@@ -21,7 +21,8 @@ Future<BiliUserProfile?> showBiliQrLoginSheet({
   return showMediaGlassSheet<BiliUserProfile>(
     context: context,
     maxContentHeightFactor: 0.86,
-    contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+    contentHandlesScrolling: true,
+    contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 14),
     appearance: MediaGlassSheetAppearance.readable,
     builder: (_) =>
         BiliQrLoginSheet(client: client, sessionStore: sessionStore),
@@ -89,75 +90,95 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
           _controller.cancel();
         }
       },
-      child: SignalBuilder(
-        builder: (context) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) => SignalBuilder(
+          builder: (context) {
+            final scrollContent = Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '扫码登录哔哩哔哩',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: visualTheme.textPrimary,
+                Text(
+                  '使用哔哩哔哩 App 扫码并确认，登录状态将保存在本机。',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: visualTheme.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Center(
+                  child: DecoratedBox(
+                    key: const ValueKey<String>('bili-qr-code-surface'),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.1),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.28 : 0.08,
+                          ),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: SizedBox(
+                        width: qrSize,
+                        height: qrSize,
+                        child: BiliQrCodeView(
+                          ticket: _controller.ticket.value,
+                          isLoading: _controller.isLoading.value,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                IconButton(
-                  onPressed: _dismiss,
-                  icon: const Icon(AppIcons.closeFill),
-                  tooltip: '关闭',
-                ),
+                const SizedBox(height: 16),
+                _buildStatusMessage(context),
               ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '使用哔哩哔哩 App 扫码并确认，登录状态将保存在本机。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: visualTheme.textSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Center(
-              child: DecoratedBox(
-                key: const ValueKey<String>('bili-qr-code-surface'),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.black.withValues(alpha: 0.1),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.28 : 0.08,
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '扫码登录哔哩哔哩',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: visualTheme.textPrimary,
+                        ),
                       ),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
+                    ),
+                    IconButton(
+                      onPressed: _dismiss,
+                      icon: const Icon(AppIcons.closeFill),
+                      tooltip: '关闭',
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: SizedBox(
-                    width: qrSize,
-                    height: qrSize,
-                    child: BiliQrCodeView(
-                      ticket: _controller.ticket.value,
-                      isLoading: _controller.isLoading.value,
+                const SizedBox(height: 6),
+                if (constraints.hasBoundedHeight)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: scrollContent,
                     ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            _buildStatusMessage(context),
-            const SizedBox(height: 20),
-            _buildActions(context),
-          ],
+                  )
+                else
+                  scrollContent,
+                const SizedBox(height: 14),
+                _buildActions(context),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -179,7 +200,10 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
             style: theme.textTheme.bodyMedium?.copyWith(
               color: _controller.errorMessage.value == null
                   ? visualTheme.textSecondary
-                  : theme.colorScheme.error,
+                  : visualTheme.destructive,
+              fontWeight: _controller.errorMessage.value == null
+                  ? null
+                  : FontWeight.w600,
               height: 1.5,
             ),
           ),
@@ -189,7 +213,7 @@ class _BiliQrLoginSheetState extends State<BiliQrLoginSheet> {
           Text(
             '状态更新时间 ${_formatTimestamp(timestampMs)}',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+              color: visualTheme.textTertiary,
             ),
           ),
         ],

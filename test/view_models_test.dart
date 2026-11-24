@@ -17,32 +17,36 @@ import 'package:vesper_player/vesper_player.dart';
 
 void main() {
   group('OfflineCacheViewModel', () {
-    test('initializes storage and deletes entries', () async {
-      final entry = _offlineEntry();
-      final controller = _FakeOfflineController(
-        <BiliOfflineDownloadEntry>[entry],
-        storageUsage: const BiliOfflineStorageUsage(
-          cacheBytes: 2048,
-          freeBytes: 4096,
-          totalBytes: 6144,
-        ),
-      );
-      final viewModel = OfflineCacheViewModel(controller: controller);
-      addTearDown(viewModel.dispose);
+    test(
+      'offline cache classifies and deletes a metadata-only entry',
+      () async {
+        final entry = _offlineEntry();
+        final controller = _FakeOfflineController(
+          <BiliOfflineDownloadEntry>[entry],
+          storageUsage: const BiliOfflineStorageUsage(
+            cacheBytes: 2048,
+            freeBytes: 4096,
+            totalBytes: 6144,
+          ),
+        );
+        final viewModel = OfflineCacheViewModel(controller: controller);
+        addTearDown(viewModel.dispose);
 
-      await viewModel.initialize();
+        await viewModel.initialize();
 
-      expect(viewModel.loading.value, isFalse);
-      expect(viewModel.storageUsage.value?.cacheBytes, 2048);
-      expect(viewModel.completedEntries.value, hasLength(1));
+        expect(viewModel.loading.value, isFalse);
+        expect(viewModel.storageUsage.value?.cacheBytes, 2048);
+        expect(viewModel.completedEntries.value, isEmpty);
+        expect(viewModel.attentionEntries.value, [entry]);
 
-      final result = await viewModel.deleteEntry(entry);
+        final result = await viewModel.deleteEntry(entry);
 
-      expect(result.deleted, isTrue);
-      expect(result.message, '已删除缓存');
-      expect(controller.removedAssetIds, <String>[entry.metadata.assetId]);
-      expect(viewModel.entries.value, isEmpty);
-    });
+        expect(result.deleted, isTrue);
+        expect(result.message, '已删除缓存');
+        expect(controller.removedAssetIds, <String>[entry.metadata.assetId]);
+        expect(viewModel.entries.value, isEmpty);
+      },
+    );
 
     test('reports delete failures without removing entry', () async {
       final entry = _offlineEntry();

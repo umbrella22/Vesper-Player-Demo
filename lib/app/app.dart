@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:vesper_media/app/services/app_settings_store.dart';
+// liquid_glass_widgets 1.20.0 resolves CupertinoColors from flutter/cupertino.dart's CupertinoTheme.
+// ignore: deprecated_member_use
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
@@ -71,6 +74,13 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didChangeAccessibilityFeatures() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _refreshPreferredOrientations() {
     final refresh = widget.host.refreshPreferredOrientations;
     if (refresh != null) {
@@ -132,17 +142,20 @@ class _VesperAppState extends State<VesperApp> with WidgetsBindingObserver {
       themeAnimationCurve: Curves.easeOutCubic,
       builder: (context, child) {
         final theme = Theme.of(context);
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: isTvMode
-              ? widget.host.tvSystemUiStyle ??
-                    mediaSystemUiStyleForBrightness(Brightness.dark)
-              : widget.host.systemUiStyleForBrightness?.call(
-                      theme.brightness,
-                    ) ??
-                    mediaSystemUiStyleForBrightness(theme.brightness),
-          child: ColoredBox(
-            color: theme.scaffoldBackgroundColor,
-            child: child ?? const SizedBox.shrink(),
+        return cupertino.CupertinoTheme(
+          data: cupertino.CupertinoThemeData(brightness: theme.brightness),
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: isTvMode
+                ? widget.host.tvSystemUiStyle ??
+                      mediaSystemUiStyleForBrightness(Brightness.dark)
+                : widget.host.systemUiStyleForBrightness?.call(
+                        theme.brightness,
+                      ) ??
+                      mediaSystemUiStyleForBrightness(theme.brightness),
+            child: ColoredBox(
+              color: theme.scaffoldBackgroundColor,
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },

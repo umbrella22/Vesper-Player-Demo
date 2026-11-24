@@ -1,6 +1,7 @@
 import 'package:flutter/widget_previews.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vesper_media/bili/app_mode/widgets/bili_video_grid_card.dart';
 import 'package:vesper_media/common/widgets/app_qr_code_view.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 
@@ -606,43 +607,46 @@ class _MobileVideoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: visualTheme.surfaceRaised,
-              borderRadius: BorderRadius.circular(
-                AppVisualTokens.contentRadius,
+    return BiliVideoGridCard(
+      onTap: () {},
+      cover: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: visualTheme.surfaceRaised,
+            border: Border.all(color: visualTheme.imageOutline),
+          ),
+          child: Icon(
+            AppIcons.movieLine,
+            color: visualTheme.textTertiary,
+            size: 38,
+          ),
+        ),
+      ),
+      details: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: visualTheme.textPrimary,
+                fontWeight: FontWeight.w700,
               ),
-              border: Border.all(color: visualTheme.imageOutline),
             ),
-            alignment: Alignment.center,
-            child: Icon(
-              AppIcons.movieLine,
-              color: visualTheme.textTertiary,
-              size: 38,
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: visualTheme.textSecondary, fontSize: 12),
             ),
-          ),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          maxLines: 1,
-          style: TextStyle(color: visualTheme.textSecondary, fontSize: 12),
-        ),
-      ],
+      ),
     );
   }
 }

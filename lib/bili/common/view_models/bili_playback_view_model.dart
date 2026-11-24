@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import 'package:vesper_media/bili/bili_media_platform_adapter.dart';
 import 'package:vesper_media/download/services/offline_download_controller.dart';
 import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/media/media.dart';
+
 import '../models/bili_comment_like_models.dart';
 import '../models/bili_favorites_models.dart';
 import '../models/bili_models.dart';
@@ -82,7 +84,15 @@ final class BiliPlaybackViewModel {
       preferTextureViewForPlayback: _usesLegacyAndroidPlaybackCompatibility,
     );
     unawaited(loadEngagementState());
-    unawaited(loadWatchLaterState());
+    _watchEntry = effect(() {
+      // TV, listen mode and the mobile episode picker share the same selection.
+      _playback.selectedEntry;
+      untracked(() {
+        _isInWatchLater.value = false;
+        _watchLaterKnown.value = false;
+        unawaited(loadWatchLaterState());
+      });
+    });
     unawaited(loadComments());
     unawaited(loadRelatedVideos());
   }
@@ -92,6 +102,7 @@ final class BiliPlaybackViewModel {
   final BiliHistoryStore historyStore;
   final BiliOfflineDownloadController offlineController;
   late final MediaPlaybackViewModel _playback;
+  late final VoidCallback _watchEntry;
   late final BiliDanmakuProvider _danmakuProvider;
 
   /// 内部播放编排 VM（供壳页面消费；生命周期随本类 dispose）。
@@ -206,22 +217,13 @@ final class BiliPlaybackViewModel {
 
   Future<void> reloadCurrentPage() => _playback.reloadCurrentPage();
 
-  Future<String?> switchPage(BiliVideoPageEntry page) async {
-    final previousEntryId = _playback.selectedEntry.entryId;
-    final result = await _playback.switchEntry(
-      BiliMediaMapper.toGenericEntry(
-        page,
-        fallbackAid: detail.aid,
-        fallbackBvid: detail.bvid,
-      ),
-    );
-    if (result == null && _playback.selectedEntry.entryId != previousEntryId) {
-      _isInWatchLater.value = false;
-      _watchLaterKnown.value = false;
-      unawaited(loadWatchLaterState());
-    }
-    return result;
-  }
+  Future<String?> switchPage(BiliVideoPageEntry page) => _playback.switchEntry(
+    BiliMediaMapper.toGenericEntry(
+      page,
+      fallbackAid: detail.aid,
+      fallbackBvid: detail.bvid,
+    ),
+  );
 
   Future<String?> loadCurrentPageToDlna() => _playback.loadCurrentEntryToDlna();
 
@@ -1146,6 +1148,7 @@ final class BiliPlaybackViewModel {
     _isDisposed = true;
     _commentRepliesRequestGeneration += 1;
     _watchLaterRequestGeneration += 1;
+    _watchEntry();
     _playback.dispose();
     _danmakuProvider.dispose();
     _coinCountLabel.dispose();

@@ -191,29 +191,38 @@ void main() {
       },
     );
 
-    test(
-      'coalesces concurrent checks and waits for a completed download before installation',
-      () async {
-        final response = Completer<AppUpdateRelease?>();
-        client.checkResult = response.future;
-        final controller = makeController();
-        final first = controller.check();
-        final second = controller.check();
-        response.complete(updateRelease());
-        await Future.wait([first, second]);
-        expect(client.checks, 1);
-        final download = Completer<File>();
-        client.downloadResult = download.future;
-        final operation = controller.downloadAndInstall();
-        await controller.downloadAndInstall();
-        expect(client.downloads, 1);
-        expect(installer.installCalls, 0);
-        download.complete(File('/cache/vesper-updates/update.apk'));
-        await operation;
-        expect(installer.installCalls, 1);
-        expect(controller.state.value.phase, AppUpdatePhase.handedOff);
-      },
-    );
+    test('coalesces concurrent checks and waits for a completed download before installation', () async {
+      final response = Completer<AppUpdateRelease?>();
+      client.checkResult = response.future;
+      final controller = makeController();
+      final first = controller.check();
+      final second = controller.check();
+      response.complete(updateRelease());
+      await Future.wait([first, second]);
+      expect(client.checks, 1);
+      final download = Completer<File>();
+      client.downloadResult = download.future;
+      final operation = controller.downloadAndInstall();
+      await controller.downloadAndInstall();
+      expect(client.downloads, 1);
+      expect(installer.installCalls, 0);
+      download.complete(File('/cache/vesper-updates/update.apk'));
+      await operation;
+      expect(installer.installCalls, 1);
+      expect(controller.state.value.phase, AppUpdatePhase.handedOff);
+    });
+
+    test('installer failure can fetch a fresh package', () async {
+      final controller = makeController();
+      await controller.check();
+      installer.installError = PlatformException(code: 'missing');
+      await controller.downloadAndInstall();
+      expect(controller.state.value.phase, AppUpdatePhase.ready);
+      installer.installError = null;
+      await controller.redownload();
+      expect(controller.state.value.phase, AppUpdatePhase.handedOff);
+      expect(client.downloads, 2);
+    });
 
     test(
       'cancelled download cannot install even if completion arrives late',
@@ -246,24 +255,21 @@ void main() {
       },
     );
 
-    test(
-      'permission denial retains the file; granting permission resumes without redownloading',
-      () async {
-        installer.result = AppUpdateInstallResult.permissionRequired;
-        final controller = makeController();
-        await controller.check();
-        await controller.downloadAndInstall();
-        expect(controller.state.value.phase, AppUpdatePhase.permissionRequired);
-        await controller.resumeInstallation();
-        expect(installer.installCalls, 1);
-        installer.allowed = true;
-        installer.result = AppUpdateInstallResult.opened;
-        await controller.resumeInstallation();
-        expect(installer.installCalls, 2);
-        expect(client.downloads, 1);
-        expect(controller.state.value.phase, AppUpdatePhase.handedOff);
-      },
-    );
+    test('permission denial retains the file; granting permission resumes without redownloading', () async {
+      installer.result = AppUpdateInstallResult.permissionRequired;
+      final controller = makeController();
+      await controller.check();
+      await controller.downloadAndInstall();
+      expect(controller.state.value.phase, AppUpdatePhase.permissionRequired);
+      await controller.resumeInstallation();
+      expect(installer.installCalls, 1);
+      installer.allowed = true;
+      installer.result = AppUpdateInstallResult.opened;
+      await controller.resumeInstallation();
+      expect(installer.installCalls, 2);
+      expect(client.downloads, 1);
+      expect(controller.state.value.phase, AppUpdatePhase.handedOff);
+    });
 
     test(
       'PlayCover launch failure keeps the IPA for retry or export',
@@ -283,6 +289,26 @@ void main() {
         expect(controller.state.value.exported, isTrue);
       },
     );
+
+    test('concurrent exportDownloaded calls coalesce to a single export', () async {
+      installer.target = AppUpdatePlatform.playCover;
+      final gate = Completer<void>();
+      final blockingInstaller = _BlockingExportInstaller(gate.future);
+      final controller = AppUpdateController(
+        client: client,
+        installer: blockingInstaller,
+        currentVersion: () async => '1.14.0',
+      );
+      addTearDown(controller.dispose);
+      await controller.check();
+      await controller.downloadAndInstall();
+      final first = controller.exportDownloaded();
+      final second = controller.exportDownloaded();
+      expect(blockingInstaller.exports, 1);
+      gate.complete();
+      await Future.wait([first, second]);
+      expect(blockingInstaller.exports, 1);
+    });
   });
 
   test(
@@ -314,4 +340,16 @@ void main() {
       expect(calls[1].arguments, {'path': '/cache/update.ipa'});
     },
   );
+}
+
+class _BlockingExportInstaller extends FakeUpdateInstaller {
+  _BlockingExportInstaller(this.exportFuture);
+
+  final Future<void> exportFuture;
+
+  @override
+  Future<void> export(File file) async {
+    exports++;
+    await exportFuture;
+  }
 }

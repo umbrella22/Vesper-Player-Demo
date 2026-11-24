@@ -1,11 +1,15 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/services.dart';
+import 'package:signals/signals_flutter.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
+
+import '../system_presentation.dart';
 
 /// Bridges App-owned split `material_ui` surfaces into Liquid Glass's
 /// Cupertino-only scaffold without coupling either package to legacy Material.
@@ -47,7 +51,7 @@ class AppGlassScaffold extends StatelessWidget {
             ambientMediaQuery,
             scaffoldHandlesKeyboard: resizeToAvoidBottomInset,
           );
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       body: GlassScaffold(
@@ -58,12 +62,26 @@ class AppGlassScaffold extends StatelessWidget {
         // material_ui scaffold color explicitly.
         backgroundColor: resolvedBackgroundColor,
         enableBackgroundSampling: false,
-        statusBarStyle: statusBarStyle,
+        // The outer Material scaffold owns IME insets and system bar styling.
+        resizeToAvoidBottomInset: false,
+        statusBarStyle: GlassStatusBarStyle.none,
         extendBody: extendBody,
         appBarHeight: appBarHeight,
         bottomBarHeight: bottomBarHeight,
       ),
     );
+    final brightness = switch (statusBarStyle) {
+      GlassStatusBarStyle.none => null,
+      GlassStatusBarStyle.auto => Theme.of(context).brightness,
+      GlassStatusBarStyle.light => Brightness.dark,
+      GlassStatusBarStyle.dark => Brightness.light,
+    };
+    return brightness == null
+        ? scaffold
+        : AnnotatedRegion<SystemUiOverlayStyle>(
+            value: appSystemUiStyleForBrightness(brightness),
+            child: scaffold,
+          );
   }
 
   static Widget _materialSurface(Widget child) {
@@ -128,10 +146,11 @@ class AppGlassButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final scheme = Theme.of(context).colorScheme;
     final foreground = enabled
-        ? (primary ? Colors.white : Theme.of(context).colorScheme.onSurface)
+        ? (primary ? scheme.onPrimary : scheme.onSurface)
         : Theme.of(context).disabledColor;
-    return GlassButton.custom(
+    final button = GlassButton.custom(
       onTap: onPressed,
       enabled: enabled,
       label: label,
@@ -150,9 +169,7 @@ class AppGlassButton extends StatelessWidget {
       settings: LiquidGlassSettings(
         blur: 7,
         thickness: 18,
-        glassColor: primary
-            ? AppVisualTokens.primaryBlue40
-            : visualTheme.glassTint,
+        glassColor: primary ? scheme.primary : visualTheme.glassTint,
         lightIntensity: 0.7,
         saturation: 1.15,
       ),
@@ -180,6 +197,14 @@ class AppGlassButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+    if (!primary || !enabled) return button;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(AppVisualTokens.controlRadius),
+      ),
+      child: button,
     );
   }
 }
@@ -573,9 +598,8 @@ class AppGlassBottomNavigation extends StatelessWidget {
       unselectedLabelStyle: _AppGlassTabStyle.unselectedLabelStyle,
       iconSize: _AppGlassTabStyle.iconSize,
       iconLabelSpacing: _AppGlassTabStyle.iconLabelSpacing,
-      textStyle: Theme.of(
-        context,
-      ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+      textStyle: Theme.of(context).textTheme.bodyMedium
+          ?.copyWith(fontWeight: FontWeight.w700),
       quality: inheritedQuality,
       maskingQuality: MaskingQuality.high,
       magnification: 1.12,
@@ -1520,13 +1544,13 @@ class AppSectionLabel extends StatelessWidget {
   }
 }
 
-class AppFrostedScrollAppBar extends StatelessWidget
+class AppFrostedScrollAppBar extends StatefulWidget
     implements PreferredSizeWidget {
   const AppFrostedScrollAppBar({
     super.key,
     required this.scrollController,
     required this.child,
-    this.height = 44,
+    this.height = 48,
     this.fadeStart = 8,
     this.fadeEnd = 56,
   }) : assert(fadeEnd > fadeStart);
@@ -1544,55 +1568,98 @@ class AppFrostedScrollAppBar extends StatelessWidget
   @override
   Size get preferredSize => Size.fromHeight(height);
 
-  double _progress() {
-    if (!scrollController.hasClients ||
-        scrollController.positions.length != 1) {
-      return 0;
+  @override
+  State<AppFrostedScrollAppBar> createState() => _AppFrostedScrollAppBarState();
+}
+
+class _AppFrostedScrollAppBarState extends State<AppFrostedScrollAppBar> {
+  final _progress = signal(0.0);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController.addListener(_syncProgress);
+    _syncProgress();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncProgress();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AppFrostedScrollAppBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController.removeListener(_syncProgress);
+      widget.scrollController.addListener(_syncProgress);
     }
-    return ((scrollController.offset - fadeStart) / (fadeEnd - fadeStart))
-        .clamp(0.0, 1.0);
+    _syncProgress();
+  }
+
+  void _syncProgress() {
+    final controller = widget.scrollController;
+    _progress.value = controller.positions.length == 1
+        ? ((controller.offset - widget.fadeStart) /
+                  (widget.fadeEnd - widget.fadeStart))
+              .clamp(0.0, 1.0)
+        : 0;
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_syncProgress);
+    _progress.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ListenableBuilder(
-      listenable: scrollController,
-      builder: (context, child) {
-        final progress = _progress();
-        final blur = ui.lerpDouble(0, 18, progress)!;
-        final surfaceAlpha = ui.lerpDouble(0, isDark ? 0.74 : 0.82, progress)!;
-        final dividerAlpha = ui.lerpDouble(0, isDark ? 0.16 : 0.08, progress)!;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                  child: DecoratedBox(
-                    key: surfaceKey,
-                    decoration: BoxDecoration(
-                      color: visualTheme.surface.withValues(
-                        alpha: surfaceAlpha,
+    final solid =
+        MediaQuery.highContrastOf(context) ||
+        GlassAdaptiveScopeData.maybeOf(context)?.effectiveQuality ==
+            GlassQuality.minimal;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: SignalBuilder(
+            builder: (_) {
+              final progress = _progress.value;
+              final surface = DecoratedBox(
+                key: AppFrostedScrollAppBar.surfaceKey,
+                decoration: BoxDecoration(
+                  color: visualTheme.surface.withValues(
+                    alpha:
+                        progress *
+                        (solid
+                            ? 1
+                            : isDark
+                            ? 0.74
+                            : 0.82),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: progress * (isDark ? 0.16 : 0.08),
                       ),
-                      border: Border(
-                        bottom: BorderSide(
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withValues(alpha: dividerAlpha),
-                          width: 0.5,
-                        ),
-                      ),
+                      width: 0.5,
                     ),
                   ),
                 ),
-              ),
-            ),
-            child!,
-          ],
-        );
-      },
-      child: child,
+              );
+              if (solid || progress == 0) return surface;
+              final blur = 18 * progress;
+              return ClipRect(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                  child: surface,
+                ),
+              );
+            },
+          ),
+        ),
+        widget.child,
+      ],
     );
   }
 }

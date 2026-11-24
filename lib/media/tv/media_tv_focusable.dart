@@ -22,6 +22,7 @@ enum TvFocusArea {
   regionCategories,
   regionGrid,
   playbackControls,
+  playbackSeek,
   playbackPanel,
 }
 
@@ -153,19 +154,17 @@ class TvFocusable extends StatefulWidget {
 }
 
 class _TvFocusableState extends State<TvFocusable> {
-  late final FocusNode _internalNode;
-  FocusNode get _node => widget.focusNode ?? _internalNode;
+  FocusNode? _ownedNode;
+  FocusNode get _node =>
+      widget.focusNode ??
+      (_ownedNode ??= FocusNode(debugLabel: widget.debugLabel));
   bool _hasFocus = false;
   bool _pressed = false;
-  TvFocusArea? _lastFocusArea;
-  Object? _lastFocusGroup;
 
   @override
   void initState() {
     super.initState();
-    _internalNode = widget.focusNode == null
-        ? FocusNode(debugLabel: widget.debugLabel)
-        : (widget.focusNode!..debugLabel ??= widget.debugLabel);
+    _node.debugLabel ??= widget.debugLabel;
     if (widget.autofocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -173,50 +172,46 @@ class _TvFocusableState extends State<TvFocusable> {
         }
       });
     }
-    _node.addListener(_handleFocusChange);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _applyFocusArea(widget.focusArea ?? TvFocusAreaScope.maybeOf(context));
-    _applyFocusGroup(TvFocusGroupScope.maybeOf(context));
+    _tagFocusNode();
   }
 
   @override
   void didUpdateWidget(TvFocusable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _applyFocusArea(widget.focusArea ?? TvFocusAreaScope.maybeOf(context));
-    _applyFocusGroup(TvFocusGroupScope.maybeOf(context));
+    if (oldWidget.focusNode != widget.focusNode) {
+      final previous = oldWidget.focusNode ?? _ownedNode!;
+      setTvFocusArea(previous, null);
+      setTvFocusGroup(previous, null);
+      _node.debugLabel ??= widget.debugLabel;
+      if (previous.hasPrimaryFocus && _node.canRequestFocus) {
+        _node.requestFocus();
+      }
+    }
+    _tagFocusNode();
+  }
+
+  void _tagFocusNode() {
+    setTvFocusArea(
+      _node,
+      widget.focusArea ?? TvFocusAreaScope.maybeOf(context),
+    );
+    setTvFocusGroup(_node, TvFocusGroupScope.maybeOf(context));
   }
 
   @override
   void dispose() {
-    _node.removeListener(_handleFocusChange);
-    if (widget.focusNode == null) {
-      _internalNode.dispose();
-    }
+    setTvFocusArea(_node, null);
+    setTvFocusGroup(_node, null);
+    _ownedNode?.dispose();
     super.dispose();
   }
 
-  void _applyFocusArea(TvFocusArea? area) {
-    if (_lastFocusArea == area) {
-      return;
-    }
-    _lastFocusArea = area;
-    setTvFocusArea(_node, area);
-  }
-
-  void _applyFocusGroup(Object? group) {
-    if (_lastFocusGroup == group) {
-      return;
-    }
-    _lastFocusGroup = group;
-    setTvFocusGroup(_node, group);
-  }
-
-  void _handleFocusChange() {
-    final focused = _node.hasFocus;
+  void _handleFocusChange(bool focused) {
     if (_hasFocus != focused) {
       _hasFocus = focused;
       widget.onFocusChange?.call(focused);
@@ -227,6 +222,11 @@ class _TvFocusableState extends State<TvFocusable> {
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final activate =
+        event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.space;
+    if (activate && event is KeyRepeatEvent) return KeyEventResult.handled;
     if (event is KeyDownEvent) {
       final direction = switch (event.logicalKey) {
         LogicalKeyboardKey.arrowUp => TraversalDirection.up,
@@ -238,9 +238,7 @@ class _TvFocusableState extends State<TvFocusable> {
       if (direction != null) {
         return _moveFocus(direction);
       }
-      if (event.logicalKey == LogicalKeyboardKey.select ||
-          event.logicalKey == LogicalKeyboardKey.enter ||
-          event.logicalKey == LogicalKeyboardKey.space) {
+      if (activate) {
         _setPressed(true);
         widget.onTap();
         WidgetsBinding.instance.addPostFrameCallback((_) => _setPressed(false));
@@ -281,6 +279,7 @@ class _TvFocusableState extends State<TvFocusable> {
       onTap: widget.onTap,
       child: Focus(
         focusNode: _node,
+        onFocusChange: _handleFocusChange,
         autofocus: widget.autofocus,
         onKeyEvent: _handleKeyEvent,
         child: _TvFocusRevealBounds(
@@ -336,8 +335,10 @@ class _TvFocusableState extends State<TvFocusable> {
 
 enum TvGlassSelectableState { idle, selected, focused, pressed }
 
-typedef TvGlassSelectableBuilder =
-    Widget Function(BuildContext context, TvGlassSelectableState state);
+typedef TvGlassSelectableBuilder = Widget Function(
+  BuildContext context,
+  TvGlassSelectableState state,
+);
 
 class TvGlassSelectable extends StatefulWidget {
   const TvGlassSelectable({
@@ -527,8 +528,10 @@ class TvGlowOverlay extends StatelessWidget {
   }
 }
 
-typedef TvFocusableSurfaceBuilder =
-    Widget Function(BuildContext context, bool focused);
+typedef TvFocusableSurfaceBuilder = Widget Function(
+  BuildContext context,
+  bool focused,
+);
 
 class TvFocusableSurface extends StatefulWidget {
   const TvFocusableSurface({
@@ -957,6 +960,11 @@ bool moveTvFocusSpatially(
       allowedAreas: allowedAreas,
     );
   }
+  if (currentArea == TvFocusArea.playbackSeek &&
+      direction == TraversalDirection.down &&
+      _restoreRememberedTvFocus(current, TvFocusArea.playbackControls)) {
+    return true;
+  }
   final horizontal =
       direction == TraversalDirection.left ||
       direction == TraversalDirection.right;
@@ -1001,11 +1009,13 @@ bool moveTvFocusSpatially(
           direction,
           allowedAreas: {currentArea!},
         ) ||
+        _restoreRememberedTvFocus(current, TvFocusArea.rail) ||
         _moveTvFocusSpatially(
           current,
           direction,
           allowedAreas: {TvFocusArea.rail},
         ) ||
+        _restoreRememberedTvFocus(current, TvFocusArea.homeRail) ||
         _moveTvFocusSpatially(
           current,
           direction,
@@ -1153,7 +1163,12 @@ Set<TvFocusArea>? _defaultAllowedAreas(
       TvFocusArea.regionCategories,
     },
     TvFocusArea.regionGrid => {TvFocusArea.regionGrid},
-    TvFocusArea.playbackControls => {TvFocusArea.playbackControls},
+    TvFocusArea.playbackControls when direction == TraversalDirection.up => {
+      TvFocusArea.playbackControls,
+      TvFocusArea.playbackSeek,
+    },
+    TvFocusArea.playbackControls ||
+    TvFocusArea.playbackSeek => {TvFocusArea.playbackControls},
     TvFocusArea.playbackPanel => {TvFocusArea.playbackPanel},
     null => null,
   };

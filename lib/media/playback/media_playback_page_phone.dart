@@ -124,7 +124,16 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
                     )!;
                     return Column(
                       children: [
-                        SizedBox(
+                        AnimatedContainer(
+                          duration:
+                              snapshot.playbackState ==
+                                  VesperPlaybackState.playing
+                              ? AppVisualTokens.motionDuration(
+                                  context,
+                                  const Duration(milliseconds: 180),
+                                )
+                              : Duration.zero,
+                          curve: Curves.easeOutCubic,
                           height: stageHeight,
                           child: _buildCollapsibleStageFrame(
                             stage,
@@ -188,29 +197,33 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
     required EdgeInsetsGeometry padding,
     required double progress,
   }) {
-    final stageOpacity = (1 - progress * 1.35).clamp(0.0, 1.0).toDouble();
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerMove: _handleMobileStagePointerMove,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (progress < 0.55)
-            IgnorePointer(
-              ignoring: progress > 0.42,
-              child: Opacity(
-                opacity: stageOpacity,
-                child: _buildStageFrame(
-                  stage,
-                  padding: padding,
-                  safeBottom: false,
-                ),
+    final stageOpacity = (1 - progress / 0.55).clamp(0.0, 1.0).toDouble();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(
+          offstage: stageOpacity == 0,
+          child: IgnorePointer(
+            ignoring: progress > 0.42,
+            child: Opacity(
+              opacity: stageOpacity,
+              child: _buildStageFrame(
+                stage,
+                padding: padding,
+                safeBottom: false,
               ),
             ),
-          IgnorePointer(
-            ignoring: progress < 0.08,
-            child: Opacity(
-              opacity: progress,
+          ),
+        ),
+        IgnorePointer(
+          ignoring: progress <= 0.42,
+          child: Opacity(
+            opacity: progress,
+            child: GestureDetector(
+              onVerticalDragUpdate: (details) =>
+                  _updateMobileStageCollapseOffset(
+                    _mobileStageCollapseOffset - details.delta.dy,
+                  ),
               child: CollapsedPlaybackBar(
                 title: _playbackStateLabel(snapshot),
                 isPlaying:
@@ -235,8 +248,8 @@ extension _MediaPlaybackPagePhoneLayout on _MediaPlaybackPageState {
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

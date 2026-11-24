@@ -398,9 +398,15 @@ class _BiliUserSpacePageState extends State<BiliUserSpacePage> {
     if (_loading && !_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null && _videos.isEmpty && _profile == null) {
+    if (_error != null &&
+        (_authenticationRequired || (_videos.isEmpty && _profile == null))) {
       return _BiliUserSpaceStatus(
-        icon: AppIcons.lockLine,
+        icon: _authenticationRequired
+            ? AppIcons.lockLine
+            : AppIcons.errorWarningLine,
+        iconColor: _authenticationRequired
+            ? AppVisualTokens.primaryBlue
+            : AppVisualTheme.of(context).destructive,
         message: _error!,
         primaryLabel: _authenticationRequired && widget.onLoginTap != null
             ? '登录'
@@ -717,7 +723,10 @@ class _BiliUserSpaceVideoTile extends StatelessWidget {
                             horizontal: 4,
                             vertical: 2,
                           ),
-                          color: Colors.black.withValues(alpha: 0.68),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.68),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                           child: Text(
                             video.durationLabel,
                             style: const TextStyle(
@@ -770,12 +779,14 @@ class _BiliUserSpaceVideoTile extends StatelessWidget {
 class _BiliUserSpaceStatus extends StatelessWidget {
   const _BiliUserSpaceStatus({
     required this.icon,
+    this.iconColor,
     required this.message,
     required this.primaryLabel,
     required this.onPrimary,
   });
 
   final IconData icon;
+  final Color? iconColor;
   final String message;
   final String primaryLabel;
   final Future<void> Function() onPrimary;
@@ -788,7 +799,7 @@ class _BiliUserSpaceStatus extends StatelessWidget {
       padding: const EdgeInsets.all(28),
       children: [
         const SizedBox(height: 72),
-        Icon(icon, size: 44, color: AppVisualTokens.primaryBlue),
+        Icon(icon, size: 44, color: iconColor ?? visualTheme.accent),
         const SizedBox(height: 14),
         Text(
           message,
@@ -796,9 +807,11 @@ class _BiliUserSpaceStatus extends StatelessWidget {
           style: TextStyle(color: visualTheme.textPrimary),
         ),
         const SizedBox(height: 18),
-        FilledButton(
-          onPressed: () => unawaited(onPrimary()),
-          child: Text(primaryLabel),
+        Center(
+          child: FilledButton(
+            onPressed: () => unawaited(onPrimary()),
+            child: Text(primaryLabel),
+          ),
         ),
       ],
     );

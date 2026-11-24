@@ -1562,8 +1562,10 @@ class _TvFollowingSpaceStatus extends StatelessWidget {
                   builder: (context, focused) => DecoratedBox(
                     decoration: BoxDecoration(
                       color: focused
-                          ? AppVisualTokens.primaryBlue
-                          : AppVisualTokens.primaryBlue.withValues(alpha: 0.78),
+                          ? AppVisualTokens.primaryActionBlueDark
+                          : AppVisualTokens.primaryActionBlueDark.withValues(
+                              alpha: 0.84,
+                            ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Padding(

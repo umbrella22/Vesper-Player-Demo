@@ -183,21 +183,13 @@ class TvPanelOptionList extends StatefulWidget {
 class _TvPanelOptionListState extends State<TvPanelOptionList> {
   late final ScrollController _controller;
   late List<FocusNode> _focusNodes;
-  bool _autofocusSelected = true;
 
   @override
   void initState() {
     super.initState();
     _controller = ScrollController();
     _focusNodes = _createFocusNodes(widget.options);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusSelectedOption();
-      if (mounted) {
-        setState(() {
-          _autofocusSelected = false;
-        });
-      }
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusSelectedOption());
   }
 
   @override
@@ -280,44 +272,51 @@ class _TvPanelOptionListState extends State<TvPanelOptionList> {
     return options.indexWhere((option) => option.enabled);
   }
 
-  void _focusSelectedOption() {
-    if (!mounted || widget.options.isEmpty) {
-      return;
-    }
-    final selectedIndex = _selectedIndex(widget.options);
-    if (selectedIndex < 0 || selectedIndex >= _focusNodes.length) {
-      return;
-    }
-    final focusNode = _focusNodes[selectedIndex];
-    if (focusNode.canRequestFocus) {
-      focusNode.requestFocus();
-    }
-    if (!_controller.hasClients) {
-      return;
-    }
-    _controller.animateTo(
-      (selectedIndex * 86.0).clamp(0.0, _controller.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
+  double _optionExtent() {
+    final scaler = MediaQuery.textScalerOf(context);
+    final hasSubtitles = widget.options.any(
+      (option) => option.subtitle != null,
     );
+    final textHeight =
+        scaler.scale(16) * 1.5 +
+        (hasSubtitles ? 3 + scaler.scale(12) * 1.25 * 2 : 0);
+    // Leave space for the focus outline, tile padding and gap between rows.
+    return 50 + (textHeight < 34 ? 34 : textHeight);
+  }
+
+  void _focusSelectedOption() {
+    if (!mounted || !_controller.hasClients) return;
+    final index = _selectedIndex(widget.options);
+    if (index < 0) return;
+    final node = _focusNodes[index];
+    final position = _controller.position;
+    final extent = _optionExtent();
+    final start = 8 + index * extent;
+    if (start < position.pixels ||
+        start + extent > position.pixels + position.viewportDimension) {
+      _controller.jumpTo(start.clamp(0.0, position.maxScrollExtent));
+    }
+    // An unattached FocusNode remembers this request until its lazy row mounts.
+    node.requestFocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = _selectedIndex(widget.options);
-    return ListView.separated(
+    return ListView.builder(
       key: PageStorageKey<String>('tv-panel-list-${widget.panelKey}'),
       controller: _controller,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 28),
+      itemExtent: _optionExtent(),
       itemCount: widget.options.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final option = widget.options[index];
-        return _TvPanelOptionTile(
-          key: ObjectKey(_focusNodes[index]),
-          option: option,
-          focusNode: _focusNodes[index],
-          autofocus: _autofocusSelected && index == selectedIndex,
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _TvPanelOptionTile(
+            key: ObjectKey(_focusNodes[index]),
+            option: option,
+            focusNode: _focusNodes[index],
+          ),
         );
       },
     );
@@ -329,12 +328,10 @@ class _TvPanelOptionTile extends StatefulWidget {
     super.key,
     required this.option,
     required this.focusNode,
-    required this.autofocus,
   });
 
   final TvPanelOption option;
   final FocusNode focusNode;
-  final bool autofocus;
 
   @override
   State<_TvPanelOptionTile> createState() => _TvPanelOptionTileState();
@@ -366,7 +363,7 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
             color: focused
                 ? Colors.white.withValues(alpha: 0.24)
                 : selected
-                ? AppVisualTokens.primaryBlue
+                ? AppVisualTokens.primaryActionBlueDark
                 : !enabled
                 ? const Color(0x0AFFFFFF)
                 : const Color(0x14FFFFFF),
@@ -375,7 +372,7 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
               color: focused
                   ? const Color(0xF2F8FBFF)
                   : selected
-                  ? AppVisualTokens.primaryBlue80
+                  ? const Color(0x66FFFFFF)
                   : !enabled
                   ? const Color(0x10FFFFFF)
                   : const Color(0x16FFFFFF),
@@ -438,10 +435,10 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: focused || selected
-                              ? Colors.white.withValues(alpha: 0.82)
+                              ? Colors.white.withValues(alpha: 0.85)
                               : !enabled
                               ? const Color(0x55FFFFFF)
-                              : const Color(0x88FFFFFF),
+                              : const Color(0xB3FFFFFF),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           height: 1.25,
@@ -475,7 +472,6 @@ class _TvPanelOptionTileState extends State<_TvPanelOptionTile> {
     final child = enabled
         ? TvFocusable(
             focusNode: widget.focusNode,
-            autofocus: widget.autofocus,
             debugLabel: 'tv_panel_${option.label}',
             showGlow: false,
             scale: 1,

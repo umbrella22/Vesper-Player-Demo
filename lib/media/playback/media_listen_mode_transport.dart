@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:signals/signals_flutter.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
 import 'package:vesper_player/vesper_player.dart';
 
@@ -32,50 +33,14 @@ final class MediaListenTransport extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    final timeline = snapshot.timeline;
-    final enabled = timeline.isSeekable && (timeline.durationMs ?? 0) > 0;
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: [
-            Text(
-              formatMediaListenMilliseconds(timeline.positionMs),
-              style: TextStyle(
-                color: visualTheme.textSecondary,
-                fontSize: isTv ? 14 : 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: isTv ? 4 : 3,
-                  activeTrackColor: AppVisualTokens.primaryBlue,
-                  inactiveTrackColor: visualTheme.divider,
-                  thumbColor: AppVisualTokens.primaryBlue,
-                  overlayColor: AppVisualTokens.primaryBlue20,
-                  thumbShape: RoundSliderThumbShape(
-                    enabledThumbRadius: isTv ? 6 : 5,
-                  ),
-                  overlayShape: RoundSliderOverlayShape(
-                    overlayRadius: isTv ? 14 : 12,
-                  ),
-                ),
-                child: Slider(value: ratio, onChanged: enabled ? onSeek : null),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              formatMediaListenMilliseconds(timeline.durationMs ?? 0),
-              style: TextStyle(
-                color: visualTheme.textSecondary,
-                fontSize: isTv ? 14 : 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        _ListenTimeline(
+          snapshot: snapshot,
+          isTv: isTv,
+          ratio: ratio,
+          onSeek: onSeek,
         ),
         SizedBox(height: isTv ? 8 : 4),
         Row(
@@ -128,6 +93,92 @@ final class MediaListenTransport extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
         child: content,
+      ),
+    );
+  }
+}
+
+final class _ListenTimeline extends StatefulWidget {
+  const _ListenTimeline({
+    required this.snapshot,
+    required this.isTv,
+    required this.ratio,
+    required this.onSeek,
+  });
+  final VesperPlayerSnapshot snapshot;
+  final bool isTv;
+  final double ratio;
+  final ValueChanged<double> onSeek;
+  @override
+  State<_ListenTimeline> createState() => _ListenTimelineState();
+}
+
+final class _ListenTimelineState extends State<_ListenTimeline> {
+  final _preview = signal<double?>(null);
+  @override
+  void dispose() {
+    _preview.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visualTheme = AppVisualTheme.of(context);
+    final timeline = widget.snapshot.timeline;
+    final enabled = timeline.isSeekable && (timeline.durationMs ?? 0) > 0;
+    return SignalBuilder(
+      builder: (_) => Row(
+        children: [
+          Text(
+            formatMediaListenMilliseconds(
+              (_preview.value == null
+                  ? timeline.positionMs
+                  : (_preview.value! * (timeline.durationMs ?? 0)).round()),
+            ),
+            style: TextStyle(
+              color: visualTheme.textSecondary,
+              fontSize: widget.isTv ? 14 : 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: widget.isTv ? 4 : 3,
+                activeTrackColor: AppVisualTokens.primaryBlue,
+                inactiveTrackColor: visualTheme.divider,
+                thumbColor: AppVisualTokens.primaryBlue,
+                overlayColor: AppVisualTokens.primaryBlue20,
+                thumbShape: RoundSliderThumbShape(
+                  enabledThumbRadius: widget.isTv ? 6 : 5,
+                ),
+                overlayShape: RoundSliderOverlayShape(
+                  overlayRadius: widget.isTv ? 14 : 12,
+                ),
+              ),
+              child: Slider(
+                value: _preview.value ?? widget.ratio,
+                onChanged: enabled ? (value) => _preview.value = value : null,
+                onChangeEnd: enabled
+                    ? (value) {
+                        _preview.value = null;
+                        widget.onSeek(value);
+                      }
+                    : null,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            formatMediaListenMilliseconds(timeline.durationMs ?? 0),
+            style: TextStyle(
+              color: visualTheme.textSecondary,
+              fontSize: widget.isTv ? 14 : 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

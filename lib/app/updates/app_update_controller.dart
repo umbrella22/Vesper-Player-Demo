@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:signals/signals.dart';
+import 'package:vesper_media/media/player/media_text.dart';
 
 import '../app_version.dart';
 import 'app_update_installer.dart';
@@ -86,6 +87,7 @@ final class AppUpdateController {
   bool _disposed = false;
   bool _startupChecked = false;
   bool _cancelRequested = false;
+  bool _exporting = false;
   bool dialogOpen = false;
   Future<void>? _checking;
 
@@ -151,6 +153,7 @@ final class AppUpdateController {
     final asset = _state.value.release?.asset;
     if (asset == null) return;
     _cancelRequested = false;
+    final progressAge = Stopwatch()..start();
     _state.value = _state.value.withPhase(
       AppUpdatePhase.downloading,
       received: 0,
@@ -160,7 +163,12 @@ final class AppUpdateController {
       final file = await _client.download(
         asset,
         onProgress: (received, total) {
-          if (!_disposed && !_cancelRequested) {
+          if (!_disposed &&
+              !_cancelRequested &&
+              (_state.value.received == 0 ||
+                  received == total ||
+                  progressAge.elapsedMilliseconds >= 100)) {
+            progressAge.reset();
             _state.value = _state.value.withPhase(
               AppUpdatePhase.downloading,
               received: received,
@@ -185,6 +193,26 @@ final class AppUpdateController {
         );
       }
     }
+  }
+
+  Future<void> redownload() async {
+    if (_disposed) return;
+    final state = _state.value;
+    if (state.file == null ||
+        !const {
+          AppUpdatePhase.ready,
+          AppUpdatePhase.handedOff,
+          AppUpdatePhase.permissionRequired,
+        }.contains(state.phase)) {
+      return;
+    }
+    _state.value = AppUpdateState(
+      phase: AppUpdatePhase.available,
+      platform: state.platform,
+      currentVersion: state.currentVersion,
+      release: state.release,
+    );
+    await downloadAndInstall();
   }
 
   void cancelDownload() {
@@ -239,7 +267,16 @@ final class AppUpdateController {
   }
 
   Future<void> exportDownloaded() async {
-    if (_disposed || _state.value.file == null) return;
+    if (_disposed ||
+        _exporting ||
+        _state.value.file == null ||
+        !const {
+          AppUpdatePhase.ready,
+          AppUpdatePhase.handedOff,
+        }.contains(_state.value.phase)) {
+      return;
+    }
+    _exporting = true;
     try {
       await _installer.export(_state.value.file!);
       if (!_disposed) {
@@ -255,6 +292,8 @@ final class AppUpdateController {
           error: _errorMessage(error),
         );
       }
+    } finally {
+      _exporting = false;
     }
   }
 
@@ -267,9 +306,22 @@ final class AppUpdateController {
 
 String _errorMessage(Object error) => switch (error) {
   AppUpdateException() => error.message,
-  PlatformException() => error.message ?? '无法打开安装程序，请重试。',
-  SocketException() || TimeoutException() => '连接 GitHub 失败，请检查网络后重试。',
+  PlatformException() => _platformUpdateErrorMessage(error),
+  SocketException() ||
+  HandshakeException() ||
+  TlsException() ||
+  HttpException() ||
+  TimeoutException() => '连接 GitHub 失败，请检查网络后重试。',
   FileSystemException() => '无法保存安装包，请检查可用存储空间。',
   FormatException() => '无法识别版本或发布信息，请稍后重试。',
   _ => '更新失败，请稍后重试。',
 };
+
+String _platformUpdateErrorMessage(PlatformException error) {
+  final msg = error.message?.trim() ?? '';
+  if (RegExp(r'[\u4E00-\u9FFF]').hasMatch(msg)) {
+    return msg;
+  }
+  final formatted = mediaErrorMessage(error);
+  return formatted == '系统操作失败，请稍后重试。' ? '无法完成系统安装或导出操作，请重试。' : formatted;
+}

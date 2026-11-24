@@ -55,8 +55,11 @@ class BiliTvVideoCard extends StatelessWidget {
       builder: (context, focused) => LayoutBuilder(
         builder: (context, constraints) {
           final boundedHeight = constraints.hasBoundedHeight;
-          final tight = boundedHeight && constraints.maxHeight < 116;
-          final condensed = boundedHeight && constraints.maxHeight < 136;
+          final remainingHeight = boundedHeight
+              ? constraints.maxHeight - (constraints.maxWidth * 9 / 16)
+              : double.infinity;
+          final tight = remainingHeight < 34;
+          final condensed = remainingHeight < 46;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -84,6 +87,27 @@ class BiliTvVideoCard extends StatelessWidget {
                                     const ColoredBox(color: Color(0xFF1A1A24)),
                               ),
                       ),
+                      if (leadingLabel.isNotEmpty || durationLabel.isNotEmpty)
+                        const Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 44,
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Color(0x99000000),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       if (leadingLabel.isNotEmpty)
                         Positioned(
                           left: 8,

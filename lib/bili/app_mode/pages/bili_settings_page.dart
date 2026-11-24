@@ -10,6 +10,7 @@ import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/app_version.dart';
+import 'package:vesper_media/app/updates/app_update_controller.dart';
 import 'package:vesper_media/app/updates/app_update_widgets.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/bili_ui_mode_controller.dart';
@@ -55,6 +56,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   late final BiliUiModeController _uiModeController;
   bool _uiModeControllerTransferred = false;
   bool _initialForceTvMode = false;
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _forceTvMode = signal(false);
   final _hasAuthenticatedSession = signal(false);
   final _loading = signal(true);
@@ -92,22 +94,24 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _load() async {
+    final sessionRevision = _client.sessionRevision;
     final values = await Future.wait<Object>([
       _appSettings.getForceTvMode(),
-      _sessionStore.loadCookies(),
+      if (sessionRevision == 0 && !_client.hasAuthenticatedSession)
+        _sessionStore.loadCookies()
+      else
+        Future.value(const <String, String>{}),
     ]);
     final forceTvMode = values[0] as bool;
     final cookies = values[1] as Map<String, String>;
-    if (cookies.isNotEmpty) {
+    if (!mounted) return;
+    if (cookies.isNotEmpty && _client.sessionRevision == sessionRevision) {
       _client.restoreCookies(cookies);
     }
-    if (mounted) {
-      _initialForceTvMode = forceTvMode;
-      _forceTvMode.value = forceTvMode;
-      _hasAuthenticatedSession.value =
-          _client.hasAuthenticatedSession || _isAuthenticatedCookieSet(cookies);
-      _loading.value = false;
-    }
+    _initialForceTvMode = forceTvMode;
+    _forceTvMode.value = forceTvMode;
+    _hasAuthenticatedSession.value = _client.hasAuthenticatedSession;
+    _loading.value = false;
     unawaited(_loadVersion());
   }
 
@@ -119,7 +123,14 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _toggleForceTvMode(bool value) async {
-    await _appSettings.setForceTvMode(value);
+    try {
+      await _appSettings.setForceTvMode(value);
+    } catch (error) {
+      if (mounted) {
+        _showMessage('保存界面模式失败：${biliErrorMessage(error)}');
+      }
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -128,7 +139,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     if (value == _initialForceTvMode) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    _messengerKey.currentState!.showSnackBar(
       SnackBar(
         content: Text(value ? 'TV 模式已开启' : 'TV 模式已关闭'),
         action: SnackBarAction(label: '返回首页切换', onPressed: () => _switchHome()),
@@ -138,8 +149,10 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _switchHome() async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     _clearMessages();
     final nextMode = await _uiModeController.refresh();
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     await _applyPresentationFor(nextMode);
     if (!mounted) {
       return;
@@ -190,7 +203,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     final confirmed = await showMediaGlassDialog<bool>(
       context: context,
       title: '退出登录',
-      message: '将清除本地 cookie 和登录态，并暂停当前离线缓存任务。',
+      message: '将清除本机保存的登录状态，并暂停当前离线缓存任务。',
       actions: const [
         MediaGlassDialogAction(label: '取消', value: false),
         MediaGlassDialogAction(label: '退出', value: true, isDestructive: true),
@@ -210,11 +223,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         sessionStore: _sessionStore,
         offlineController: _offlineController,
       );
+      if (!mounted) return;
       _hasAuthenticatedSession.value = false;
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
+      _messengerKey.currentState!
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
@@ -229,7 +240,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
+      _messengerKey.currentState!
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(content: Text('退出登录失败：${biliErrorMessage(error)}')),
@@ -242,6 +253,9 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   }
 
   Future<void> _applyPresentationFor(BiliUiMode mode) async {
+    final style = mode == BiliUiMode.tv
+        ? biliTvSystemUiStyle
+        : appSystemUiStyleForBrightness(_preferredAppBrightness());
     if (mode == BiliUiMode.tv) {
       await setBiliPreferredOrientations(biliLandscapeOrientations);
     } else {
@@ -252,11 +266,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
           ? SystemUiMode.immersiveSticky
           : SystemUiMode.edgeToEdge,
     );
-    setBiliSystemUiOverlayStyle(
-      mode == BiliUiMode.tv
-          ? biliTvSystemUiStyle
-          : appSystemUiStyleForBrightness(_preferredAppBrightness()),
-    );
+    setBiliSystemUiOverlayStyle(style);
   }
 
   Brightness _preferredAppBrightness() {
@@ -283,9 +293,8 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
               padding: const EdgeInsets.fromLTRB(4, 8, 4, 14),
               child: Text(
                 '外观',
-                style: Theme.of(
-                  sheetContext,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(sheetContext).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             AppGroupedSurface(
@@ -328,20 +337,23 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   Future<void> _openOfflineCache() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            OfflineCachePage(controller: _offlineController, client: _client),
+        builder: (_) => OfflineCachePage(
+          controller: _offlineController,
+          client: _client,
+          historyStore: _historyStore,
+        ),
       ),
     );
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
+    _messengerKey.currentState!
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _clearMessages() {
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    final messenger = _messengerKey.currentState;
     messenger?.clearSnackBars();
     messenger?.removeCurrentSnackBar();
   }
@@ -349,22 +361,25 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return AppGlassScaffold(
-      backgroundColor: visualTheme.background,
-      statusBarStyle: GlassStatusBarStyle.auto,
-      extendBody: false,
-      appBar: GlassAppBar(
-        centerTitle: false,
-        title: Text(
-          '设置',
-          style: TextStyle(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
+    return ScaffoldMessenger(
+      key: _messengerKey,
+      child: AppGlassScaffold(
+        backgroundColor: visualTheme.background,
+        statusBarStyle: GlassStatusBarStyle.auto,
+        extendBody: false,
+        appBar: GlassAppBar(
+          centerTitle: false,
+          title: Text(
+            '设置',
+            style: TextStyle(
+              color: visualTheme.textPrimary,
+              fontWeight: FontWeight.w900,
+              fontSize: 22,
+            ),
           ),
         ),
+        body: SignalBuilder(builder: _buildBody),
       ),
-      body: SignalBuilder(builder: _buildBody),
     );
   }
 
@@ -409,16 +424,25 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
           ],
         ),
         const AppSectionLabel('关于'),
-        AppGroupedSurface(
-          children: [
-            AppSettingsRow(
-              icon: AppIcons.playCircleLine,
-              title: 'Vesper',
-              subtitle: '版本 ${_version.value.isEmpty ? '--' : _version.value}',
-              trailing: const SizedBox(width: 24),
-            ),
-            const AppUpdateSettingsRow(),
-          ],
+        SignalBuilder(
+          builder: (context) {
+            final updateController = AppUpdateScope.maybeOf(context);
+            final showUpdateRow =
+                updateController != null &&
+                updateController.state.value.phase !=
+                    AppUpdatePhase.unsupported;
+            return AppGroupedSurface(
+              children: [
+                AppSettingsRow(
+                  icon: AppIcons.playCircleLine,
+                  title: 'Vesper',
+                  subtitle: '版本 ${_version.value.isEmpty ? '--' : _version.value}',
+                  trailing: const SizedBox(width: 24),
+                ),
+                if (showUpdateRow) const AppUpdateSettingsRow(),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -428,9 +452,7 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     final loggedIn = _hasAuthenticatedSession.value;
     final loggingOut = _loggingOut.value;
     return AppSettingsRow(
-      icon: loggedIn
-          ? AppIcons.accountCircleFill
-          : AppIcons.accountCircleLine,
+      icon: loggedIn ? AppIcons.accountCircleFill : AppIcons.accountCircleLine,
       iconColor: AppVisualTokens.biliSourcePink,
       title: loggedIn ? '已登录' : '未登录',
       subtitle: loggedIn ? '登录信息仅保存在本机' : '可在“我的”页面扫码登录',
@@ -453,15 +475,16 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
     return AppSettingsRow(
       icon: AppIcons.tvLine,
       title: '强制 TV 模式',
-      subtitle: forceTvMode ? '返回首页后切换为 TV 界面' : '根据设备自动选择界面',
+      subtitle: forceTvMode ? '始终使用 TV 界面' : '根据设备自动选择界面',
       onTap: () => unawaited(_toggleForceTvMode(!forceTvMode)),
       trailing: Switch(value: forceTvMode, onChanged: _toggleForceTvMode),
     );
   }
 
   Widget _buildReturnHomeAction(BuildContext context) {
-    if (_forceTvMode.value ==
-        (_uiModeController.currentMode == BiliUiMode.tv)) {
+    if (_forceTvMode.value == _initialForceTvMode &&
+        !(_forceTvMode.value &&
+            _uiModeController.currentMode != BiliUiMode.tv)) {
       return const SizedBox.shrink();
     }
     return Padding(
@@ -475,11 +498,6 @@ class _BiliSettingsPageState extends State<BiliSettingsPage> {
         ),
       ),
     );
-  }
-
-  bool _isAuthenticatedCookieSet(Map<String, String> cookies) {
-    return (cookies['SESSDATA'] ?? '').isNotEmpty &&
-        (cookies['bili_jct'] ?? '').isNotEmpty;
   }
 }
 

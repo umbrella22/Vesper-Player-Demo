@@ -5,6 +5,7 @@ import 'common/services/bili_audio_policy.dart';
 import 'common/services/bili_audio_policy_controller.dart';
 import 'package:vesper_media/media/media.dart';
 
+import 'common/services/bili_api_core.dart';
 import 'common/services/bili_client.dart';
 import 'common/services/bili_history_store.dart';
 import 'common/services/bili_media_history_adapter.dart';
@@ -69,6 +70,9 @@ final class BiliMediaPlatformAdapter extends MediaPlatformAdapter {
   @override
   MediaQualityPolicy get qualityPolicy =>
       BiliQualityMapping.buildQualityPolicy();
+
+  @override
+  String formatError(Object error) => biliErrorMessage(error);
 
   @override
   MediaDlnaConfig? get dlnaConfig =>

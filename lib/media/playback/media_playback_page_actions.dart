@@ -14,21 +14,38 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
   }
 
   bool _handleTvHardwareKeyEvent(KeyEvent event) {
-    if (!_isTvMode || event is! KeyDownEvent || !mounted) {
+    final repeat = event is KeyRepeatEvent;
+    if (!_isTvMode || !mounted || (event is! KeyDownEvent && !repeat)) {
       return false;
     }
     final key = event.logicalKey;
     final isBackKey =
         key == LogicalKeyboardKey.browserBack ||
         key == LogicalKeyboardKey.escape;
+    final route = ModalRoute.of(context);
+    final current = route?.isCurrent == true && !_playbackModalRouteOpen;
+    if (current &&
+        (key == LogicalKeyboardKey.mediaPlay ||
+            key == LogicalKeyboardKey.mediaPause)) {
+      final controller = _viewModel.controller;
+      if (controller == null) return false;
+      // An explicit Play/Pause command can arrive before the snapshot from the
+      // previous command. Let the player apply the requested state directly.
+      if (!repeat) {
+        unawaited(
+          key == LogicalKeyboardKey.mediaPlay
+              ? controller.play()
+              : controller.pause(),
+        );
+      }
+      return true;
+    }
     if (_displayMode == _MediaPlaybackDisplayMode.listen) {
-      if (isBackKey && ModalRoute.of(context)?.isCurrent == true) {
-        _returnToVideoMode();
+      if (current && !repeat && isBackKey) {
+        unawaited(_returnToVideoMode(popOnFailure: true));
         return true;
       }
-      if (key == LogicalKeyboardKey.mediaPlayPause ||
-          key == LogicalKeyboardKey.mediaPlay ||
-          key == LogicalKeyboardKey.mediaPause) {
+      if (current && !repeat && key == LogicalKeyboardKey.mediaPlayPause) {
         final controller = _viewModel.controller;
         if (controller != null) {
           _toggleTvPlayback(controller, controller.snapshot);
@@ -37,33 +54,28 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
       }
       return false;
     }
-    final route = ModalRoute.of(context);
-    if (!isBackKey &&
-        route?.isCurrent == true &&
-        !_playbackModalRouteOpen &&
-        !_tvPanelOpen &&
-        !_tvControlBarVisible) {
+    if (!isBackKey && current && !_tvPanelOpen && !_tvControlBarVisible) {
       final controller = _viewModel.controller;
       if (controller == null) {
         return false;
       }
       final snapshot = controller.snapshot;
       if (key == LogicalKeyboardKey.arrowLeft) {
-        _seekTvBy(controller, snapshot, -10000);
+        _seekTvBy(snapshot, -10000);
         return true;
       }
       if (key == LogicalKeyboardKey.arrowRight) {
-        _seekTvBy(controller, snapshot, 10000);
+        _seekTvBy(snapshot, 10000);
         return true;
       }
       if (key == LogicalKeyboardKey.select ||
           key == LogicalKeyboardKey.enter ||
           key == LogicalKeyboardKey.space) {
-        _toggleTvPlayback(controller, snapshot);
+        if (!repeat) _toggleTvPlayback(controller, snapshot);
         return true;
       }
     }
-    if (!isBackKey) {
+    if (!isBackKey || repeat) {
       return false;
     }
     if (route != null && !route.isCurrent) {
@@ -107,7 +119,7 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     _syncPictureInPictureConfiguration();
   }
 
-  Future<void> _returnToVideoMode() async {
+  Future<void> _returnToVideoMode({bool popOnFailure = false}) async {
     if (_displayMode == _MediaPlaybackDisplayMode.video) {
       return;
     }
@@ -116,6 +128,12 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
       return;
     }
     if (message != null) {
+      if (popOnFailure &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        return;
+      }
       _showMessage(message);
       return;
     }
@@ -310,20 +328,6 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     });
   }
 
-  void _handleMobileStagePointerMove(PointerMoveEvent event) {
-    if (_isTvMode ||
-        _viewModel.isFullscreen ||
-        _viewModel.controller?.snapshot.playbackState ==
-            VesperPlaybackState.playing) {
-      return;
-    }
-    final delta = event.delta;
-    if (delta.dy.abs() < 1 || delta.dy.abs() < delta.dx.abs()) {
-      return;
-    }
-    _updateMobileStageCollapseOffset(_mobileStageCollapseOffset - delta.dy);
-  }
-
   void _updateMobileStageCollapseOffset(double rawOffset) {
     final nextOffset = rawOffset.clamp(0.0, 1000.0).toDouble();
     if ((nextOffset - _mobileStageCollapseOffset).abs() < 1) {
@@ -506,9 +510,9 @@ extension _MediaPlaybackPageActions on _MediaPlaybackPageState {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showPlaybackRecoveryNotice(

@@ -78,6 +78,9 @@ final class BiliFavoritesViewModel {
   var _generation = 0;
   var _disposed = false;
   int? _accountSessionRevision;
+  String? _lastCreateFolderError;
+
+  String? get lastCreateFolderError => _lastCreateFolderError;
 
   Future<void> initialize() => _load(reloadFolders: true);
 
@@ -198,6 +201,7 @@ final class BiliFavoritesViewModel {
     required String title,
     required bool isPrivate,
   }) async {
+    _lastCreateFolderError = null;
     if (_disposed || _isMutating.value) return null;
     if (!_checkSession(_accountSessionRevision)) return null;
     final generation = _generation;
@@ -218,10 +222,11 @@ final class BiliFavoritesViewModel {
         return null;
       }
       if (isBiliSessionInvalidError(error)) {
+        _lastCreateFolderError = '登录状态已失效，请重新登录。';
         _clearAccountData(authenticationRequired: true);
         return null;
       }
-      _errorMessage.value = biliErrorMessage(error);
+      _lastCreateFolderError = biliErrorMessage(error);
       return null;
     } finally {
       if (!_disposed) _isMutating.value = false;

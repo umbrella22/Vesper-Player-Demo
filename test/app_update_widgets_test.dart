@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/app/updates/app_update_controller.dart';
@@ -190,4 +191,31 @@ void main() {
     expect(find.text('播放页'), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  testWidgets(
+    'startup check forwards tvModeListenable so dialog supports Escape and autofocus',
+    (tester) async {
+      final tvMode = ValueNotifier<bool>(true);
+      addTearDown(tvMode.dispose);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(
+        AppUpdateScope(
+          controller: controller,
+          child: MaterialApp(
+            theme: AppVisualTokens.tvTheme(),
+            home: AppUpdateStartupCheck(
+              controller: controller,
+              tvModeListenable: tvMode,
+              child: const Scaffold(body: Text('首页')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('发现新版本 1.15.0'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
 }

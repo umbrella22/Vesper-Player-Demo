@@ -26,7 +26,7 @@ final class MediaListenPhoneTabs extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _MediaListenPhoneTab(
-          label: '字幕',
+          label: '字幕状态',
           selected: section == MediaListenSection.subtitles,
           onTap: () => onChanged(MediaListenSection.subtitles),
         ),
@@ -510,7 +510,7 @@ String _subtitleStatusLabel(VesperSubtitleState state) {
   return switch (state.catalogState) {
     VesperSubtitleCatalogState.loading => '字幕正在准备',
     VesperSubtitleCatalogState.ready when state.selectableTrackCount > 0 =>
-      '字幕已就绪',
+      '有 ${state.selectableTrackCount} 条可选字幕',
     VesperSubtitleCatalogState.ready => '当前视频没有可用字幕',
     VesperSubtitleCatalogState.failed => '字幕暂不可用',
     VesperSubtitleCatalogState.unavailable => '当前视频没有可用字幕',

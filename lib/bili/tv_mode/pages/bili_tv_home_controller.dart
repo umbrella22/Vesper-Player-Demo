@@ -13,7 +13,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
     await _applySystemPresentation(
       useAppOrientationPolicy: true,
       systemUiMode: SystemUiMode.edgeToEdge,
-      overlayStyle: biliAppSystemUiStyle,
+      overlayStyle: _appOverlayStyle,
     );
   }
 
@@ -301,44 +301,73 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
 
   /// 打开 TV 收藏浏览页（左收藏夹栏 + 右网格）。
   Future<void> _openFavorites() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => _buildTvFavoritesPage()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: _buildTvFavoritesPage));
     if (mounted) {
       await _loadHistory();
     }
   }
 
-  Widget _buildTvFavoritesPage() {
-    final visualTheme = AppVisualTheme.of(context);
-    return AppGlassScaffold(
-      backgroundColor: visualTheme.background,
-      extendBody: false,
-      appBarHeight: 52,
-      appBar: GlassAppBar(
-        centerTitle: false,
-        leading: AppPressScale(
-          child: IconButton(
-            tooltip: '返回',
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(AppIcons.arrowLeftLine),
+  Widget _buildTvFavoritesPage(BuildContext context) {
+    return TvDirectionalFocusScope(
+      handleGoBackKey: false,
+      autofocus: false,
+      debugLabel: 'tv_favorites',
+      child: Scaffold(
+        backgroundColor: AppVisualTokens.tvBackground,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TvGlassSelectable(
+                  debugLabel: 'tv_favorites_back',
+                  focusArea: TvFocusArea.rail,
+                  onTap: () => Navigator.of(context).maybePop(),
+                  builder: (context, _) => const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(AppIcons.arrowLeftLine),
+                        SizedBox(width: 8),
+                        Text('我的收藏', style: TextStyle(fontSize: 20)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: BiliFavoritesTvView(
+                    client: _viewModel.client,
+                    historyStore: _viewModel.historyStore,
+                    offlineController: _viewModel.offlineController,
+                    onLoginTap: _openQrLogin,
+                    confirmRemoval: (count) => showBiliTvGlassDialog<bool>(
+                      context: context,
+                      title: '移出收藏夹？',
+                      message: '将从当前收藏夹移出已选的 $count 个内容。',
+                      icon: AppIcons.deleteBinLine,
+                      actions: const [
+                        BiliTvDialogAction(
+                          label: '取消',
+                          value: false,
+                          icon: AppIcons.closeFill,
+                        ),
+                        BiliTvDialogAction(
+                          label: '移出',
+                          value: true,
+                          icon: AppIcons.deleteBinLine,
+                          isDestructive: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        title: Text(
-          '我的收藏',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: BiliFavoritesTvView(
-          client: _viewModel.client,
-          historyStore: _viewModel.historyStore,
-          offlineController: _viewModel.offlineController,
-          onLoginTap: _openQrLogin,
         ),
       ),
     );
@@ -474,18 +503,22 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
       return;
     }
     final nextSection = section ?? _selectedRegion;
+    if (_regionLoading && nextSection.id == _selectedRegion.id) return;
+    final requestId = ++_regionRequestId;
     _mutate(() {
+      _regionItems = const [];
+      _regionLoadingMore = false;
       _selectedRegion = nextSection;
       _regionLoading = true;
       _regionErrorMessage = null;
-      _hasMoreRegion = true;
+      _hasMoreRegion = false;
     });
     try {
       final items = await _viewModel.client.fetchRegionVideos(
         nextSection,
         page: 1,
       );
-      if (!mounted) {
+      if (!mounted || requestId != _regionRequestId) {
         return;
       }
       _mutate(() {
@@ -496,7 +529,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
         _regionLoading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || requestId != _regionRequestId) {
         return;
       }
       _mutate(() {
@@ -519,10 +552,13 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
         !_hasMoreRegion) {
       return;
     }
+    final requestId = _regionRequestId;
     _regionLoadMoreQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _regionLoadMoreQueued = false;
-      if (!mounted) {
+      if (!mounted ||
+          requestId != _regionRequestId ||
+          _selectedNav != _TvNavItem.regions) {
         return;
       }
       unawaited(_loadMoreRegion());
@@ -533,6 +569,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
     if (_regionLoading || _regionLoadingMore || !_hasMoreRegion) {
       return;
     }
+    final requestId = _regionRequestId;
     _mutate(() {
       _regionLoadingMore = true;
     });
@@ -542,7 +579,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
         _selectedRegion,
         page: nextPage,
       );
-      if (!mounted) {
+      if (!mounted || requestId != _regionRequestId) {
         return;
       }
       final existingIds = _regionItems.map((item) => item.id).toSet();
@@ -556,7 +593,7 @@ extension _BiliTvHomeController on _BiliTvHomePageState {
         _regionLoadingMore = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || requestId != _regionRequestId) {
         return;
       }
       _mutate(() {

@@ -58,9 +58,12 @@ Future<T?> showBiliTvGlassOverlay<T>({
     },
     pageBuilder: (dialogContext, animation, secondaryAnimation) {
       void dismiss() => Navigator.of(dialogContext).pop();
+      final dialogTheme = MediaQuery.highContrastOf(dialogContext)
+          ? AppVisualTokens.mobileDarkHighContrastTheme()
+          : AppVisualTokens.tvTheme();
 
       return Theme(
-        data: AppVisualTokens.tvTheme(),
+        data: dialogTheme,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -172,9 +175,8 @@ class BiliTvGlassDialogSurface extends StatelessWidget {
           width: highContrast ? 1.5 : 1,
         ),
       ),
-      child: SingleChildScrollView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(36, 34, 36, 32),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 32, 36, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -213,24 +215,36 @@ class BiliTvGlassDialogSurface extends StatelessWidget {
                 ),
               ],
             ),
-            if (message case final value?) ...[
-              const SizedBox(height: 22),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Color(0xC7FFFFFF),
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  height: 1.5,
+            if (message != null || this.content != null) ...[
+              const SizedBox(height: 20),
+              Flexible(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (message case final value?)
+                        Text(
+                          value,
+                          style: const TextStyle(
+                            color: Color(0xC7FFFFFF),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w500,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (this.content case final value?) ...[
+                        if (message != null) const SizedBox(height: 22),
+                        value,
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ],
-            if (this.content case final value?) ...[
-              const SizedBox(height: 24),
-              value,
-            ],
             if (footer case final value?) ...[
-              const SizedBox(height: 30),
+              const SizedBox(height: 24),
               value,
             ],
           ],
@@ -271,6 +285,7 @@ class BiliTvDialogButton extends StatelessWidget {
     this.isDestructive = false,
     this.enabled = true,
     this.debugLabel,
+    this.focusNode,
   });
 
   final String label;
@@ -280,6 +295,7 @@ class BiliTvDialogButton extends StatelessWidget {
   final bool isDestructive;
   final bool enabled;
   final String? debugLabel;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +316,7 @@ class BiliTvDialogButton extends StatelessWidget {
       excludeSemantics: true,
       child: TvGlassSelectable(
         autofocus: autofocus,
+        focusNode: focusNode,
         debugLabel: resolvedDebugLabel,
         borderRadius: 14,
         scale: 1.025,
@@ -337,7 +354,9 @@ class BiliTvDialogButton extends StatelessWidget {
         color: !enabled
             ? const Color(0x0AFFFFFF)
             : focused
-            ? const Color(0x26FFFFFF)
+            ? (isDestructive
+                  ? const Color(0x38FF6B63)
+                  : const Color(0x26FFFFFF))
             : isDestructive
             ? const Color(0x16FF6B63)
             : const Color(0x14FFFFFF),
@@ -346,7 +365,9 @@ class BiliTvDialogButton extends StatelessWidget {
           color: !enabled
               ? const Color(0x12FFFFFF)
               : focused
-              ? const Color(0xB3FFFFFF)
+              ? (isDestructive
+                    ? const Color(0xFFFF9B94)
+                    : const Color(0xB3FFFFFF))
               : isDestructive
               ? const Color(0x42FF8A83)
               : const Color(0x24FFFFFF),

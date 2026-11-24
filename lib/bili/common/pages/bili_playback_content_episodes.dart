@@ -57,7 +57,7 @@ class _EpisodePreviewTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final titleColor = selected
-        ? AppVisualTokens.primaryBlue
+        ? visualTheme.accent
         : visualTheme.textPrimary;
     final label = isPgc ? '第 ${page.pageNumber} 话' : 'P${page.pageNumber}';
     return Material(
@@ -72,19 +72,24 @@ class _EpisodePreviewTile extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: SizedBox(
-                  width: 174,
-                  height: 104,
+                  width: 136,
+                  height: 76.5,
                   child: (page.coverUrl ?? coverUrl).isEmpty
                       ? ColoredBox(color: visualTheme.surfaceRaised)
                       : AppNetworkImage(
                           page.coverUrl ?? coverUrl,
                           fit: BoxFit.cover,
+                          cacheWidth:
+                              (136 * MediaQuery.devicePixelRatioOf(context))
+                                  .round()
+                                  .clamp(220, 420)
+                                  .toInt(),
                           errorBuilder: (_, _, _) =>
                               ColoredBox(color: visualTheme.surfaceRaised),
                         ),
                 ),
               ),
-              const SizedBox(width: 22),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,6 +144,7 @@ class _RelatedVideoSliverList extends StatelessWidget {
     required this.errorMessage,
     required this.openingBvid,
     required this.onTap,
+    this.onRetry,
   });
 
   final List<BiliFeedVideo> items;
@@ -146,6 +152,7 @@ class _RelatedVideoSliverList extends StatelessWidget {
   final String? errorMessage;
   final String? openingBvid;
   final ValueChanged<BiliFeedVideo> onTap;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -170,13 +177,23 @@ class _RelatedVideoSliverList extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: Text(
-              errorMessage!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: visualTheme.destructive,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    errorMessage!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: visualTheme.destructive,
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (onRetry != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton(onPressed: onRetry, child: const Text('重新加载')),
+                ],
+              ],
             ),
           ),
         ),
@@ -244,7 +261,7 @@ class _RelatedVideoTile extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final coverWidth = constraints.maxWidth < 390 ? 132.0 : 150.0;
-        final coverHeight = (coverWidth * 9 / 16).clamp(86.0, 96.0);
+        final coverHeight = coverWidth * 9 / 16;
         final cacheWidth = (coverWidth * MediaQuery.devicePixelRatioOf(context))
             .round()
             .clamp(220, 560)
@@ -340,77 +357,85 @@ class _RelatedVideoTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: SizedBox(
-                      height: coverHeight,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: coverHeight),
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            item.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: visualTheme.textPrimary,
-                              fontWeight: FontWeight.w900,
-                              height: 1.25,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            item.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: visualTheme.textTertiary,
-                              fontWeight: FontWeight.w700,
-                              height: 1.1,
-                            ),
-                          ),
-                          const Spacer(),
-                          Row(
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                AppIcons.playCircleLine,
-                                size: 15,
-                                color: visualTheme.textTertiary,
-                              ),
-                              const SizedBox(width: 3),
-                              Flexible(
-                                child: Text(
-                                  item.playCountLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: visualTheme.textTertiary,
-                                    fontWeight: FontWeight.w700,
-                                    fontFeatures: const [
-                                      ui.FontFeature.tabularFigures(),
-                                    ],
-                                  ),
+                              Text(
+                                item.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: visualTheme.textPrimary,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.25,
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                              Icon(
-                                AppIcons.closedCaptioningLine,
-                                size: 15,
-                                color: visualTheme.textTertiary,
-                              ),
-                              const SizedBox(width: 3),
-                              Flexible(
-                                child: Text(
-                                  item.danmakuCountLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: visualTheme.textTertiary,
-                                    fontWeight: FontWeight.w700,
-                                    fontFeatures: const [
-                                      ui.FontFeature.tabularFigures(),
-                                    ],
-                                  ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item.author,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: visualTheme.textTertiary,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.1,
                                 ),
                               ),
                             ],
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  AppIcons.playCircleLine,
+                                  size: 15,
+                                  color: visualTheme.textTertiary,
+                                ),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    item.playCountLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: visualTheme.textTertiary,
+                                      fontWeight: FontWeight.w700,
+                                      fontFeatures: const [
+                                        ui.FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Icon(
+                                  AppIcons.closedCaptioningLine,
+                                  size: 15,
+                                  color: visualTheme.textTertiary,
+                                ),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    item.danmakuCountLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: visualTheme.textTertiary,
+                                      fontWeight: FontWeight.w700,
+                                      fontFeatures: const [
+                                        ui.FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

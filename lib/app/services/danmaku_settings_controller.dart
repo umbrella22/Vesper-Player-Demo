@@ -42,6 +42,11 @@ final class DanmakuSettingsController {
   ValueListenable<BiliDanmakuSourceFilterSettings> get sourceFilterListenable =>
       _sourceFilter;
 
+  /// A slider drag updates the renderer without writing preferences to disk.
+  void previewOverlay(MediaDanmakuOverlaySettings? preview) {
+    if (!_disposed) _overlay.value = preview ?? value.overlay;
+  }
+
   Future<bool> setOverlay(MediaDanmakuOverlaySettings overlay) {
     return setValue(value.copyWith(overlay: overlay));
   }

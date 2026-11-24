@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/services/danmaku_settings_controller.dart';
+import 'package:vesper_media/common/storage/application_storage.dart';
 import 'package:vesper_media/danmaku/danmaku.dart';
 import 'package:vesper_media/common/state/optimistic_value.dart';
 
@@ -113,6 +114,41 @@ void main() {
       await failure;
       await value.setValue(2);
       expect(published, [1]);
+    },
+  );
+
+  test(
+    'invalid UTF-8 settings file degrades to defaults and self-heals on write',
+    () async {
+      final dir = Directory('${root.path}/settings-utf8');
+      await dir.create(recursive: true);
+      final file = File('${dir.path}/vesper-app-settings.json');
+      await file.writeAsBytes(const <int>[0xFF, 0xFE, 0x00]);
+      final store = AppSettingsStore(baseDirectory: dir, legacyDirectory: dir);
+      final snapshot = await store.loadSnapshot();
+      expect(snapshot.themePreference, AppThemePreference.system);
+      await store.setThemePreference(AppThemePreference.dark);
+      expect(
+        (await store.loadSnapshot()).themePreference,
+        AppThemePreference.dark,
+      );
+    },
+  );
+
+  test(
+    'resolveApplicationStorageFile does not self-copy when base equals legacy',
+    () async {
+      final dir = Directory('${root.path}/same-dir');
+      await dir.create(recursive: true);
+      final existing = File('${dir.path}/sample.json');
+      await existing.writeAsString('{"ok":true}');
+      final resolved = await resolveApplicationStorageFile(
+        fileName: 'sample.json',
+        baseDirectory: dir,
+        legacyDirectory: dir,
+      );
+      expect(resolved.path, existing.path);
+      expect(await resolved.readAsString(), '{"ok":true}');
     },
   );
 }

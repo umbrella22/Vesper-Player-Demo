@@ -111,6 +111,26 @@ void main() {
     expect(sender.requests, hasLength(1));
   });
 
+  testWidgets('a thrown send unlocks dismissal and preserves the draft', (
+    tester,
+  ) async {
+    final sender = _FakeSender()..delay = Completer<void>();
+    await _pumpComposer(tester, sender);
+    await tester.enterText(_input, '保留这条弹幕');
+    await tester.tap(find.byKey(const ValueKey('bili-danmaku-send')));
+    await tester.pump();
+    sender.delay!.completeError(StateError('connection lost'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('发送结果未确认'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_input, findsNothing);
+    await tester.tap(_entry);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(_input).controller!.text, '保留这条弹幕');
+    expect(sender.requests, hasLength(1));
+  });
+
   testWidgets('rapid taps do not submit twice', (tester) async {
     final sender = _FakeSender()..delay = Completer<void>();
     await _pumpComposer(tester, sender);

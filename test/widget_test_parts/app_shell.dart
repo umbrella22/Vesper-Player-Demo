@@ -31,7 +31,13 @@ void _registerAppShellWidgetTests() {
       find.byKey(const ValueKey<String>('bili-home-region-button')),
       findsOneWidget,
     );
-    expect(find.byIcon(AppIcons.gridLine), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byTooltip('分区'),
+        matching: find.byIcon(AppIcons.listUnordered),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('bili-home-title')),
       findsOneWidget,
@@ -68,11 +74,7 @@ void _registerAppShellWidgetTests() {
     expect(bottomBar.tabWidth, AppGlassBottomNavigation.tabItemWidth);
     expect(
       bottomBar.tabs.last.icon,
-      isA<Icon>().having(
-        (icon) => icon.icon,
-        'icon',
-        AppIcons.user3Line,
-      ),
+      isA<Icon>().having((icon) => icon.icon, 'icon', AppIcons.user3Line),
     );
     expect(bottomBar.iconSize, 22);
     expect(bottomBar.iconLabelSpacing, 2);
@@ -197,15 +199,13 @@ void _registerAppShellWidgetTests() {
         same(tabBarStateBeforeKeyboard),
       );
       expect(
-        MediaQuery.viewInsetsOf(
-          tester.element(find.byType(BiliHubPage)),
-        ).bottom,
+        MediaQuery.viewInsetsOf(tester.element(find.byType(BiliHubPage)))
+            .bottom,
         greaterThan(0),
       );
       expect(
-        MediaQuery.viewInsetsOf(
-          tester.element(find.byType(GlassTabBar)),
-        ).bottom,
+        MediaQuery.viewInsetsOf(tester.element(find.byType(GlassTabBar)))
+            .bottom,
         0,
       );
       expect(
@@ -633,6 +633,161 @@ void _registerAppShellWidgetTests() {
       isTrue,
     );
   });
+
+  testWidgets('phone mine long press on Space keeps the signed-in session', (
+    tester,
+  ) async {
+    final client = _FakeMobileMineClient()
+      ..restoreCookies({'SESSDATA': 'test', 'bili_jct': 'test'});
+    await _pumpMobileHub(tester, client: client);
+    await tester.tapAt(tester.getCenter(find.text('我的').last));
+    await _pumpBottomBarMorph(tester);
+    final revision = client.sessionRevision;
+    final hub = tester.widget<BiliHubPage>(find.byType(BiliHubPage));
+    final downloads = hub.offlineController! as _FakeOfflineController;
+    await tester.longPress(find.text('空间'));
+    await _pumpBottomBarMorph(tester);
+    expect(client.sessionRevision, revision);
+    expect(client.snapshotCookies()['SESSDATA'], 'test');
+    expect(downloads.pauseAllActiveCalls, 0);
+  });
+
+  testWidgets('phone home cache target clears a two-line title at large text', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    const title = '一段足够长、需要换行显示的推荐视频标题';
+    final client = await _pumpMobileHub(
+      tester,
+      surfaceSize: const Size(320, 720),
+      feedItems: [
+        const BiliFeedVideo(
+          aid: 1,
+          bvid: 'BV1',
+          title: title,
+          author: '作者',
+          coverUrl: '',
+          durationLabel: '12:34',
+          playCountLabel: '1234',
+          danmakuCountLabel: '23',
+        ),
+      ],
+    );
+    final target = find.byTooltip('缓存').first;
+    final titleBox = tester.getRect(find.text(client.feedItems.first.title));
+    expect(titleBox.overlaps(tester.getRect(target)), isFalse);
+    expect(tester.getSize(target), const Size(48, 48));
+    await tester.tapAt(tester.getTopLeft(target) + const Offset(4, 4));
+    await _pumpUntilFound(tester, find.byType(BiliCacheDownloadPanel));
+    expect(find.byType(BiliCacheDownloadPanel), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'phone home card uses compact bottom whitespace with a 48dp cache target',
+    (tester) async {
+      final client = await _pumpMobileHub(
+        tester,
+        surfaceSize: const Size(390, 844),
+      );
+      final cardFinder = find.byKey(
+        ValueKey<String>('${client.feedItems.first.bvid}-0'),
+      );
+      final cardSize = tester.getSize(cardFinder);
+      final coverHeight = cardSize.width * 9 / 16;
+      final infoHeight = cardSize.height - coverHeight;
+      expect(infoHeight, lessThan(84));
+
+      final target = find.byTooltip('缓存').first;
+      expect(tester.getSize(target), const Size(48, 48));
+      await tester.tapAt(tester.getTopLeft(target) + const Offset(4, 4));
+      await _pumpUntilFound(tester, find.byType(BiliCacheDownloadPanel));
+      expect(find.byType(BiliCacheDownloadPanel), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'phone search resets scroll and refreshes the submitted keyword',
+    (tester) async {
+      final client = await _pumpMobileHub(tester);
+      final scroll = tester
+          .widget<CustomScrollView>(find.byType(CustomScrollView).first)
+          .controller!;
+      scroll.jumpTo(100);
+      await tester.pump();
+      await tester.tap(find.byKey(AppGlassBottomNavigation.searchButtonKey));
+      await _pumpBottomBarMorph(tester);
+      final first = Completer<List<BiliSearchResult>>();
+      client.searchCompleter = first;
+      final field = find.byType(EditableText);
+      await tester.enterText(field, 'submitted');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      expect(scroll.offset, 0);
+      expect(find.text('搜索结果'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      first.complete([]);
+      await tester.pump();
+      await tester.enterText(field, 'draft');
+      final feedRequests = client.recommendedFeedRequests;
+      await tester
+          .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+          .onRefresh();
+      await tester.pump();
+      expect(client.requestedSearchKeywords, ['submitted', 'submitted']);
+      expect(tester.widget<EditableText>(field).controller.text, 'draft');
+      expect(client.recommendedFeedRequests, feedRequests);
+    },
+  );
+
+  testWidgets('region directory slides in from the left and returns that way', (
+    tester,
+  ) async {
+    await _pumpMobileHub(tester, client: _FakeMobileMineClient());
+    final directory = find.byType(BiliRegionHubPage);
+    await tester.tap(find.byTooltip('分区'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 55));
+    final entering = tester.getTopLeft(directory);
+    expect(entering.dx, inExclusiveRange(-390, 0));
+    expect(entering.dy, 0);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(directory), Offset.zero);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+    expect(tester.getTopLeft(directory).dx, inExclusiveRange(-390, 0));
+    await tester.pumpAndSettle();
+    expect(directory, findsNothing);
+    expect(find.byTooltip('分区'), findsOneWidget);
+  });
+
+  testWidgets(
+    'region directory opens and closes immediately with Reduce Motion',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(reduceMotion: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await _pumpMobileHub(tester, client: _FakeMobileMineClient());
+      await tester.tap(find.byTooltip('分区'));
+      await tester.pump();
+      final directory = find.byType(BiliRegionHubPage);
+      expect(tester.getTopLeft(directory), Offset.zero);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(directory, findsNothing);
+    },
+  );
 
   testWidgets('mine opens favorites with the injected signed-in client', (
     tester,

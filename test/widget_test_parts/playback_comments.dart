@@ -178,6 +178,11 @@ void _registerPlaybackCommentsWidgetTests() {
       await tester.tap(find.text('评论 78'));
       await tester.pumpAndSettle();
 
+      final stage = find.byType(
+        vesper_ui.VesperPlayerStage,
+        skipOffstage: false,
+      );
+      final mountedStage = tester.element(stage);
       final collapsedOpacityBefore = tester
           .widget<Opacity>(
             find
@@ -203,7 +208,12 @@ void _registerPlaybackCommentsWidgetTests() {
 
       expect(find.text('简介'), findsOneWidget);
       expect(find.text('评论 78'), findsOneWidget);
-      expect(collapsedOpacityAfter, greaterThan(collapsedOpacityBefore));
+      expect(collapsedOpacityAfter, 1);
+      expect(collapsedOpacityBefore, 0);
+      expect(tester.element(stage), same(mountedStage));
+      await tester.tap(find.text('继续播放'));
+      await tester.pumpAndSettle();
+      expect(tester.element(stage), same(mountedStage));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -249,11 +259,21 @@ void _registerPlaybackCommentsWidgetTests() {
             authorName: '第二页用户',
             authorAvatarUrl: '',
             createdAtLabel: '1分钟前',
-            message: '第二页评论',
+            message: '00:01 第二页评论 00:04',
             likeCountLabel: '0',
             pictures: <BiliCommentPicture>[],
             replies: <BiliVideoComment>[],
-            timeLinks: <BiliCommentTimeLink>[],
+            timeLinks: <BiliCommentTimeLink>[
+              BiliCommentTimeLink(label: '00:01', seconds: 1, start: 0, end: 5),
+              BiliCommentTimeLink(label: 'bad', seconds: 2, start: 2, end: 4),
+              BiliCommentTimeLink(label: 'bad', seconds: 3, start: 6, end: 200),
+              BiliCommentTimeLink(
+                label: '00:04',
+                seconds: 4,
+                start: 12,
+                end: 17,
+              ),
+            ],
           ),
         );
       },
@@ -274,7 +294,19 @@ void _registerPlaybackCommentsWidgetTests() {
 
     expect(harness.client.commentPageRequests, contains(2));
     expect(find.text('第二页用户'), findsOneWidget);
-    expect(find.text('第二页评论', findRichText: true), findsOneWidget);
+    final message = find.text('00:01 第二页评论 00:04', findRichText: true);
+    final text = tester.widget<RichText>(message).text as TextSpan;
+    final links = text.children!
+        .whereType<TextSpan>()
+        .where((span) => span.recognizer != null)
+        .toList();
+    expect(links.map((link) => link.text), ['00:01', '00:04']);
+    (links.last.recognizer as TapGestureRecognizer).onTap!();
+    await tester.pump();
+    expect(
+      harness.platform.seekRatios.last,
+      closeTo(4000 / _playbackSnapshot.timeline.durationMs!, .0001),
+    );
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
   testWidgets(
@@ -517,7 +549,11 @@ void _registerPlaybackCommentsWidgetTests() {
         );
       });
 
-      await _pumpPlaybackPage(tester);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await _pumpPlaybackPage(tester, surfaceSize: const Size(390, 844));
 
       List<List<String>> orientationCalls() {
         return platformCalls
@@ -577,8 +613,7 @@ void _registerPlaybackCommentsWidgetTests() {
     final externalPlayback = _ExternalPlaybackHarness(
       loadResult: const <String, Object?>{
         'status': 'unsupported',
-        'message':
-            'Host-prepared relay remux v1 only accepts remote HTTP(S) DASH sources.',
+        'message': 'Host-prepared relay remux v1 only accepts remote HTTP(S) DASH sources.',
       },
     )..install();
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -668,4 +703,86 @@ void _registerPlaybackCommentsWidgetTests() {
 
     expect(find.text('快退 10s'), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets(
+    'mobile playback follow button distinguishes state with accessible contrast',
+    (WidgetTester tester) async {
+      await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 844),
+        theme: AppVisualTokens.mobileLightTheme(),
+      );
+
+      final followButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '关注'),
+      );
+      expect(
+        followButton.style?.backgroundColor?.resolve(const <WidgetState>{}),
+        AppVisualTokens.primaryActionBlue,
+      );
+      expect(
+        followButton.style?.foregroundColor?.resolve(const <WidgetState>{}),
+        Colors.white,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, '关注'));
+      await _flushRealAsync(tester);
+      await tester.pump();
+
+      final followedButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '已关注'),
+      );
+      expect(
+        followedButton.style?.backgroundColor?.resolve(const <WidgetState>{}),
+        AppVisualTheme.light.surfaceRaised,
+      );
+      expect(
+        followedButton.style?.foregroundColor?.resolve(const <WidgetState>{}),
+        AppVisualTheme.light.textSecondary,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'favorite folder picker pins confirm button above long folder list',
+    (WidgetTester tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        surfaceSize: const Size(390, 844),
+        theme: AppVisualTokens.mobileLightTheme(),
+        configureClient: (client) {
+          client.favoriteFolders = <BiliFavoriteFolder>[
+            for (var i = 1; i <= 18; i += 1)
+              BiliFavoriteFolder(
+                id: i,
+                title: '收藏夹 $i',
+                containsCurrentVideo: i == 1,
+                mediaCount: i,
+              ),
+          ];
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('engagement-favorite')));
+      await _flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('选择收藏夹'), findsOneWidget);
+      final confirmFinder = find.text('确认');
+      expect(confirmFinder, findsOneWidget);
+      expect(tester.getRect(find.text('选择收藏夹')).top, greaterThanOrEqualTo(0));
+      expect(tester.getRect(confirmFinder).bottom, lessThanOrEqualTo(844));
+
+      await tester.tap(find.byKey(const ValueKey('favorite-folder-2')));
+      await tester.pump();
+      await tester.tap(confirmFinder);
+      await _flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      expect(harness.client.lastFavoriteSelection?.addFolderIds, <int>{2});
+      expect(find.text('选择收藏夹'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
 }

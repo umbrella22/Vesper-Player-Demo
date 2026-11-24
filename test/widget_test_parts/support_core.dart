@@ -8,10 +8,12 @@ final class _FakeOfflineController extends BiliOfflineDownloadController {
       freeBytes: 0,
       totalBytes: 0,
     ),
+    this.storageError,
   }) : super(client: BiliClient());
 
   final List<BiliOfflineDownloadEntry> _entries;
   final BiliOfflineStorageUsage storageUsage;
+  final Object? storageError;
   final List<String> removedAssetIds = <String>[];
   final List<int> pausedTaskIds = <int>[];
   final List<int> resumedTaskIds = <int>[];
@@ -30,6 +32,9 @@ final class _FakeOfflineController extends BiliOfflineDownloadController {
 
   @override
   Future<BiliOfflineStorageUsage> resolveStorageUsage() async {
+    if (storageError != null) {
+      throw storageError!;
+    }
     return storageUsage;
   }
 
@@ -82,15 +87,28 @@ final class _FakeOfflineController extends BiliOfflineDownloadController {
 }
 
 final class _FakeCacheController extends BiliOfflineDownloadController {
-  _FakeCacheController({required this.options}) : super(client: BiliClient());
+  _FakeCacheController({
+    required this.options,
+    this.fakeEntries = const <BiliOfflineDownloadEntry>[],
+  }) : super(client: BiliClient());
 
   final BiliDownloadOptions options;
+  List<BiliOfflineDownloadEntry> fakeEntries;
   final List<int> enqueuedCids = <int>[];
   final List<int> enqueuedQualityIds = <int>[];
   Completer<BiliDownloadOptions>? resolveCompleter;
   Completer<BiliOfflineDownloadEntry>? enqueueCompleter;
   Object? resolveError;
   Object? enqueueError;
+
+  @override
+  List<BiliOfflineDownloadEntry> get entries =>
+      List<BiliOfflineDownloadEntry>.unmodifiable(fakeEntries);
+
+  void setFakeEntries(List<BiliOfflineDownloadEntry> next) {
+    fakeEntries = next;
+    notifyListeners();
+  }
 
   @override
   bool get isInitialized => true;

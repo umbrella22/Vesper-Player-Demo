@@ -69,10 +69,14 @@ class MediaPlaybackErrorState extends StatelessWidget {
     super.key,
     required this.error,
     required this.onRetry,
+    this.title = '播放器启动失败',
+    this.errorFormatter = mediaErrorMessage,
   });
 
   final Object error;
   final Future<void> Function() onRetry;
+  final String title;
+  final String Function(Object error) errorFormatter;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +106,7 @@ class MediaPlaybackErrorState extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '播放器启动失败',
+                    title,
                     style: theme.textTheme.titleLarge?.copyWith(
                       color: visualTheme.textPrimary,
                       fontWeight: FontWeight.w800,
@@ -110,16 +114,26 @@ class MediaPlaybackErrorState extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    mediaErrorMessage(error),
+                    errorFormatter(error),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: visualTheme.textSecondary,
                       height: 1.6,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  FilledButton(
-                    onPressed: () => unawaited(onRetry()),
-                    child: const Text('重新尝试'),
+                  Wrap(
+                    spacing: 12,
+                    children: [
+                      FilledButton(
+                        onPressed: () => unawaited(onRetry()),
+                        child: const Text('重新尝试'),
+                      ),
+                      if (Navigator.canPop(context))
+                        TextButton(
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          child: const Text('返回'),
+                        ),
+                    ],
                   ),
                 ],
               ),

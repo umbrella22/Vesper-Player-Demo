@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+// Verifies flutter/cupertino.dart CupertinoTheme brightness sync required by liquid_glass_widgets.
+// ignore: deprecated_member_use
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
@@ -11,6 +14,9 @@ import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/services/app_settings_store.dart';
 import 'package:vesper_media/app/system_presentation.dart';
+import 'package:vesper_media/media/models/media_detail.dart';
+import 'package:vesper_media/media/playback/media_listen_mode_view.dart';
+import 'package:vesper_player/vesper_player.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -96,6 +102,60 @@ void main() {
       expect(await settings.getThemePreference(), AppThemePreference.dark);
     });
 
+    double contrastRatio(Color a, Color b) {
+      final l1 = a.computeLuminance();
+      final l2 = b.computeLuminance();
+      final lighter = l1 > l2 ? l1 : l2;
+      final darker = l1 > l2 ? l2 : l1;
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    test('small metadata stays legible on regular and selected cards', () {
+      for (final visual in [
+        AppVisualTheme.light,
+        AppVisualTheme.dark,
+        AppVisualTheme.lightHighContrast,
+        AppVisualTheme.darkHighContrast,
+      ]) {
+        for (final surface in [visual.surface, visual.surfaceRaised]) {
+          expect(
+            contrastRatio(visual.textTertiary, surface),
+            greaterThanOrEqualTo(4.5),
+          );
+        }
+      }
+    });
+
+    test('primary button label stays legible in both brightness and contrast modes', () {
+      for (final (theme, visual) in [
+        (AppVisualTokens.mobileLightTheme(), AppVisualTheme.light),
+        (AppVisualTokens.mobileDarkTheme(), AppVisualTheme.dark),
+        (
+          AppVisualTokens.mobileLightHighContrastTheme(),
+          AppVisualTheme.lightHighContrast,
+        ),
+        (
+          AppVisualTokens.mobileDarkHighContrastTheme(),
+          AppVisualTheme.darkHighContrast,
+        ),
+        (AppVisualTokens.tvTheme(), AppVisualTheme.tv),
+      ]) {
+        expect(theme.colorScheme.onPrimary, Colors.white);
+        expect(
+          contrastRatio(theme.colorScheme.primary, theme.colorScheme.onPrimary),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrastRatio(visual.accent, visual.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrastRatio(visual.accent, visual.surfaceRaised),
+          greaterThanOrEqualTo(4.5),
+        );
+      }
+    });
+
     test('light, dark, and TV themes retain their intended surfaces', () {
       final light = AppVisualTokens.mobileLightTheme();
       final dark = AppVisualTokens.mobileDarkTheme();
@@ -105,9 +165,105 @@ void main() {
       expect(dark.scaffoldBackgroundColor, const Color(0xFF111318));
       expect(tv.brightness, Brightness.dark);
       expect(tv.scaffoldBackgroundColor, const Color(0xFF111318));
-      expect(light.colorScheme.primary, const Color(0xFF409EFF));
-      expect(dark.colorScheme.primary, const Color(0xFF409EFF));
+      expect(AppVisualTokens.primaryBlue, const Color(0xFF409EFF));
+      expect(light.colorScheme.primary, AppVisualTokens.primaryActionBlue);
+      expect(dark.colorScheme.primary, AppVisualTokens.primaryActionBlueDark);
     });
+
+    test('text/outlined buttons and dialog/snackbar themes meet contrast rules', () {
+      for (final (theme, visual) in [
+        (AppVisualTokens.mobileLightTheme(), AppVisualTheme.light),
+        (AppVisualTokens.mobileDarkTheme(), AppVisualTheme.dark),
+        (
+          AppVisualTokens.mobileLightHighContrastTheme(),
+          AppVisualTheme.lightHighContrast,
+        ),
+        (
+          AppVisualTokens.mobileDarkHighContrastTheme(),
+          AppVisualTheme.darkHighContrast,
+        ),
+      ]) {
+        final textBtnFg = theme.textButtonTheme.style!.foregroundColor!
+            .resolve(const <WidgetState>{})!;
+        final outlinedBtnFg = theme.outlinedButtonTheme.style!.foregroundColor!
+            .resolve(const <WidgetState>{})!;
+        expect(contrastRatio(textBtnFg, visual.surface), greaterThanOrEqualTo(4.5));
+        expect(
+          contrastRatio(outlinedBtnFg, visual.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(theme.dialogTheme.backgroundColor, visual.opaqueGlassFallback);
+        expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);
+      }
+    });
+
+    testWidgets('VesperApp syncs flutter cupertino brightness with ThemeMode', (
+      tester,
+    ) async {
+      Brightness? cupertinoBrightness;
+      Brightness? materialBrightness;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(platformBrightness: Brightness.light),
+          child: VesperApp(
+            appSettings: settings,
+            initialThemePreference: AppThemePreference.dark,
+            host: VesperAppHost(
+              homeBuilder: (context) {
+                cupertinoBrightness = cupertino.CupertinoTheme.brightnessOf(
+                  context,
+                );
+                materialBrightness = Theme.of(context).brightness;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(materialBrightness, Brightness.dark);
+      expect(cupertinoBrightness, Brightness.dark);
+    });
+
+    testWidgets(
+      'MediaListenModeView renders readable light ink when hosted under light theme',
+      (tester) async {
+        final controller = _DummyListenPlayerController();
+        const entry = MediaPlaybackEntry(
+          entryId: '1',
+          pageNumber: 1,
+          title: '听视频测试分P',
+          durationSeconds: 120,
+        );
+        const detail = MediaDetail(
+          mediaId: 'BV1listen',
+          title: '听视频亮色对比度测试标题',
+          ownerName: '听视频UP主',
+          coverUrl: '',
+          pages: [entry],
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppVisualTokens.mobileLightTheme(),
+            home: Scaffold(
+              body: MediaListenModeView(
+                controller: controller,
+                snapshot: const VesperPlayerSnapshot.initial(),
+                detail: detail,
+                selectedEntry: entry,
+                isTv: false,
+                onReturnToVideo: () {},
+                onSelectEntry: (_) async {},
+                onSeek: (_) {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        final title = tester.widget<Text>(find.text('听视频亮色对比度测试标题'));
+        expect(title.style?.color, AppVisualTheme.tv.textPrimary);
+      },
+    );
   });
 
   test('system bars follow the resolved app brightness', () {
@@ -136,14 +292,8 @@ void main() {
                 selectedIndex: 0,
                 onSelected: (_) {},
                 items: const [
-                  AppGlassNavigationItem(
-                    label: '首页',
-                    icon: AppIcons.home5Line,
-                  ),
-                  AppGlassNavigationItem(
-                    label: '我的',
-                    icon: AppIcons.user3Line,
-                  ),
+                  AppGlassNavigationItem(label: '首页', icon: AppIcons.home5Line),
+                  AppGlassNavigationItem(label: '我的', icon: AppIcons.user3Line),
                 ],
               ),
             ),
@@ -450,10 +600,7 @@ void main() {
               ),
               items: const [
                 AppGlassNavigationItem(label: '首页', icon: AppIcons.home5Line),
-                AppGlassNavigationItem(
-                  label: '我的',
-                  icon: AppIcons.user3Line,
-                ),
+                AppGlassNavigationItem(label: '我的', icon: AppIcons.user3Line),
               ],
             ),
           ),
@@ -467,15 +614,13 @@ void main() {
   group('Vesper native branding contracts', () {
     test('Dart, Android, and iOS identifiers stay aligned', () async {
       final pubspec = await File('pubspec.yaml').readAsString();
-      final androidGradle = await File(
-        'android/app/build.gradle.kts',
-      ).readAsString();
+      final androidGradle = await File('android/app/build.gradle.kts')
+          .readAsString();
       final androidManifest = await File(
         'android/app/src/main/AndroidManifest.xml',
       ).readAsString();
-      final iosProject = await File(
-        'ios/Runner.xcodeproj/project.pbxproj',
-      ).readAsString();
+      final iosProject = await File('ios/Runner.xcodeproj/project.pbxproj')
+          .readAsString();
       final iosInfo = await File('ios/Runner/Info.plist').readAsString();
 
       expect(pubspec, startsWith('name: vesper_media\n'));
@@ -577,4 +722,14 @@ void main() {
       },
     );
   });
+}
+
+final class _DummyListenPlayerController implements VesperPlayerController {
+  @override
+  final snapshotListenable = ValueNotifier(
+    const VesperPlayerSnapshot.initial(),
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -80,7 +80,10 @@ final class _MediaListenModeViewState extends State<MediaListenModeView> {
       data: AppVisualTokens.tvTheme(),
       child: MediaListenAmbientBackground(
         coverUrl: _coverUrl,
-        child: widget.isTv ? _buildTv(context) : _buildPhone(context),
+        child: Builder(
+          builder: (themedContext) =>
+              widget.isTv ? _buildTv(themedContext) : _buildPhone(themedContext),
+        ),
       ),
     );
   }

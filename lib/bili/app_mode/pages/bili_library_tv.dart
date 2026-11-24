@@ -311,7 +311,7 @@ class _TvLibraryActionButton extends StatelessWidget {
               color: focused
                   ? Colors.white.withValues(alpha: 0.22)
                   : primary
-                  ? AppVisualTokens.primaryBlue
+                  ? AppVisualTokens.primaryActionBlueDark
                   : Colors.white.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
@@ -347,6 +347,8 @@ class _TvLibraryActionButton extends StatelessWidget {
     );
   }
 }
+
+enum _WatchLaterFocusGroup { videos, removeButtons }
 
 class _TvLibraryVideoCard extends StatelessWidget {
   const _TvLibraryVideoCard({
@@ -386,118 +388,128 @@ class _TvLibraryVideoCard extends StatelessWidget {
           context,
           _tvLibraryCoverDecodeLogicalWidth,
         );
+        final card = TvFocusableSurface(
+          autofocus: autofocus,
+          scale: BiliTvVideoCard.focusScale,
+          focusPadding: 8,
+          borderRadius: AppVisualTokens.contentRadius,
+          focusArea: TvFocusArea.content,
+          debugLabel: debugLabel,
+          onTap: onTap,
+          builder: (context, focused) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    foregroundDecoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(
+                        AppVisualTokens.contentRadius,
+                      ),
+                      border: Border.all(color: visualTheme.imageOutline),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(
+                        AppVisualTokens.contentRadius,
+                      ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ColoredBox(
+                            color: visualTheme.surfaceRaised,
+                            child: coverUrl.isEmpty
+                                ? Icon(
+                                    AppIcons.filmLine,
+                                    color: visualTheme.textTertiary,
+                                    size: 42,
+                                  )
+                                : AppNetworkImage(
+                                    coverUrl,
+                                    fit: BoxFit.cover,
+                                    cacheWidth: cacheWidth,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (_, _, _) => ColoredBox(
+                                      color: visualTheme.surfaceRaised,
+                                      child: Icon(
+                                        AppIcons.imageLine,
+                                        color: visualTheme.textTertiary,
+                                        size: 36,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          if (progress > 0)
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 4,
+                                backgroundColor: Colors.black.withValues(
+                                  alpha: 0.42,
+                                ),
+                                color: AppVisualTokens.primaryBlue,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: focused
+                        ? visualTheme.textPrimary
+                        : visualTheme.textSecondary,
+                    fontSize: 14,
+                    fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: visualTheme.textTertiary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
         return Stack(
           clipBehavior: Clip.none,
           children: [
             Positioned.fill(
-              child: TvFocusableSurface(
-                autofocus: autofocus,
-                scale: BiliTvVideoCard.focusScale,
-                focusPadding: 8,
-                borderRadius: AppVisualTokens.contentRadius,
-                focusArea: TvFocusArea.content,
-                debugLabel: debugLabel,
-                onTap: onTap,
-                builder: (context, focused) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          curve: Curves.easeOutCubic,
-                          foregroundDecoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(
-                              AppVisualTokens.contentRadius,
-                            ),
-                            border: Border.all(color: visualTheme.imageOutline),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(
-                              AppVisualTokens.contentRadius,
-                            ),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                ColoredBox(
-                                  color: visualTheme.surfaceRaised,
-                                  child: coverUrl.isEmpty
-                                      ? Icon(
-                                          AppIcons.filmLine,
-                                          color: visualTheme.textTertiary,
-                                          size: 42,
-                                        )
-                                      : AppNetworkImage(
-                                          coverUrl,
-                                          fit: BoxFit.cover,
-                                          cacheWidth: cacheWidth,
-                                          gaplessPlayback: true,
-                                          errorBuilder: (_, _, _) => ColoredBox(
-                                            color: visualTheme.surfaceRaised,
-                                            child: Icon(
-                                              AppIcons.imageLine,
-                                              color: visualTheme.textTertiary,
-                                              size: 36,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                                if (progress > 0)
-                                  Align(
-                                    alignment: Alignment.bottomCenter,
-                                    child: LinearProgressIndicator(
-                                      value: progress,
-                                      minHeight: 4,
-                                      backgroundColor: Colors.black.withValues(
-                                        alpha: 0.42,
-                                      ),
-                                      color: AppVisualTokens.primaryBlue,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: focused
-                              ? visualTheme.textPrimary
-                              : visualTheme.textSecondary,
-                          fontSize: 14,
-                          fontWeight: focused
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: visualTheme.textTertiary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1.15,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+              child: onRemove == null
+                  ? card
+                  : TvFocusGroupScope(
+                      group: _WatchLaterFocusGroup.videos,
+                      child: card,
+                    ),
             ),
             if (onRemove != null)
               Positioned(
                 top: 8,
                 right: 8,
-                child: _TvLibraryRemoveButton(key: removeKey, onTap: onRemove!),
+                child: TvFocusGroupScope(
+                  group: _WatchLaterFocusGroup.removeButtons,
+                  child: _TvLibraryRemoveButton(
+                    key: removeKey,
+                    onTap: onRemove!,
+                  ),
+                ),
               ),
           ],
         );
@@ -542,9 +554,9 @@ class _TvLibraryRemoveButton extends StatelessWidget {
                       : visualTheme.glassBorder,
                 ),
               ),
-              child: const Icon(
+              child: Icon(
                 AppIcons.indeterminateCircleLine,
-                color: Colors.white,
+                color: focused ? const Color(0xFF2B070B) : Colors.white,
                 size: 22,
               ),
             ),

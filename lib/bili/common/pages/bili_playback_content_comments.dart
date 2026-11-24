@@ -205,9 +205,14 @@ class _CommentThreadList extends StatelessWidget {
       );
     }
     if (comments.isEmpty && errorMessage != null) {
+      const prefix = '评论加载失败：';
+      final trimmed = errorMessage!;
+      final cleanMessage = trimmed.startsWith(prefix)
+          ? trimmed.substring(prefix.length)
+          : trimmed;
       return PlaybackInlineError(
         title: '评论加载失败',
-        message: errorMessage!,
+        message: cleanMessage,
         actionLabel: '重新加载',
         onPressed: onReload,
       );
@@ -230,10 +235,8 @@ class _CommentThreadList extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(AppIcons.sortDesc, size: 20, color: visualTheme.textTertiary),
-            const SizedBox(width: 5),
             Text(
-              '按热度',
+              '按热度排列',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: visualTheme.textTertiary,
                 fontWeight: FontWeight.w800,
@@ -278,14 +281,27 @@ class _CommentThreadList extends StatelessWidget {
           ] else if (errorMessage != null) ...[
             const SizedBox(height: 14),
             Center(
-              child: TextButton.icon(
-                onPressed: () => unawaited(onLoadMore()),
-                icon: const Icon(AppIcons.refreshLine, size: 18),
-                label: const Text('加载更多失败，点此重试'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppVisualTokens.primaryBlue,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: visualTheme.destructive,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    onPressed: () => unawaited(onLoadMore()),
+                    icon: const Icon(AppIcons.refreshLine, size: 18),
+                    label: const Text('点此重试'),
+                    style: TextButton.styleFrom(
+                      textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
               ),
             ),
           ] else if (!hasMore) ...[
@@ -446,7 +462,7 @@ class _CommentLevelBadge extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          AppVisualTokens.biliSourcePink.withValues(alpha: 0.12),
+          visualTheme.sourceAccent.withValues(alpha: 0.12),
           visualTheme.surfaceRaised,
         ),
         borderRadius: BorderRadius.circular(4),
@@ -455,12 +471,12 @@ class _CommentLevelBadge extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         child: Text(
           label,
-          style: const TextStyle(
-            color: AppVisualTokens.biliSourcePink,
+          style: TextStyle(
+            color: visualTheme.sourceAccent,
             fontSize: 10,
             fontWeight: FontWeight.w900,
             height: 1.15,
-            fontFeatures: [ui.FontFeature.tabularFigures()],
+            fontFeatures: const [ui.FontFeature.tabularFigures()],
           ),
         ),
       ),

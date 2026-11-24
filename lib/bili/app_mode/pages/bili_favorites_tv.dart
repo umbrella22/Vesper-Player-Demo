@@ -14,6 +14,7 @@ class BiliFavoritesTvView extends StatefulWidget {
     this.historyStore,
     this.offlineController,
     this.onLoginTap,
+    this.confirmRemoval,
     this.autofocusRail = true,
   });
 
@@ -21,6 +22,7 @@ class BiliFavoritesTvView extends StatefulWidget {
   final BiliHistoryStore? historyStore;
   final BiliOfflineDownloadController? offlineController;
   final Future<void> Function()? onLoginTap;
+  final Future<bool?> Function(int count)? confirmRemoval;
   final bool autofocusRail;
 
   @override
@@ -112,17 +114,31 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
     }
   }
 
+  Future<void> _login() async {
+    await widget.onLoginTap?.call();
+    if (mounted) {
+      await _viewModel.refresh();
+    }
+  }
+
   Future<void> _confirmRemoveSelected() async {
     final count = _viewModel.selectedResourceKeys.value.length;
-    final shouldRemove = await showMediaGlassDialog<bool>(
-      context: context,
-      title: '移出收藏夹？',
-      message: '将从当前收藏夹移出已选的 $count 个内容。',
-      actions: const [
-        MediaGlassDialogAction(label: '取消', value: false),
-        MediaGlassDialogAction(label: '移出', value: true, isDestructive: true),
-      ],
-    );
+    final shouldRemove =
+        await (widget.confirmRemoval?.call(count) ??
+            showMediaGlassDialog<bool>(
+              context: context,
+              appearance: MediaGlassDialogAppearance.readable,
+              title: '移出收藏夹？',
+              message: '将从当前收藏夹移出已选的 $count 个内容。',
+              actions: const [
+                MediaGlassDialogAction(label: '取消', value: false),
+                MediaGlassDialogAction(
+                  label: '移出',
+                  value: true,
+                  isDestructive: true,
+                ),
+              ],
+            ));
     if (shouldRemove != true || !mounted) return;
     final result = await _viewModel.removeSelected();
     if (result != null && mounted) {
@@ -136,10 +152,13 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
     final title = await showMediaGlassSheet<String>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentHandlesScrolling: true,
+      contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
       builder: (context) => _FolderCreateSheet(
         isBusy: () => _viewModel.isMutating.value,
         onCreate: (title, isPrivate) =>
             _viewModel.createFolder(title: title, isPrivate: isPrivate),
+        readError: () => _viewModel.lastCreateFolderError,
       ),
     );
     if (title != null && mounted) {
@@ -354,7 +373,7 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
               focusArea: TvFocusArea.rail,
               onTap: () {
                 if (authenticationRequired && widget.onLoginTap != null) {
-                  unawaited(widget.onLoginTap!.call());
+                  unawaited(_login());
                   return;
                 }
                 unawaited(_viewModel.refresh());
@@ -531,6 +550,8 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
         context,
         icon: AppIcons.cloudOffLine,
         message: '加载失败：$error',
+        isError: true,
+        onRetry: () => unawaited(vm.refresh()),
       );
     }
     if (items.isEmpty) {
@@ -642,19 +663,35 @@ class _BiliFavoritesTvViewState extends State<BiliFavoritesTvView> {
     BuildContext context, {
     required IconData icon,
     required String message,
+    bool isError = false,
+    VoidCallback? onRetry,
   }) {
     final visualTheme = AppVisualTheme.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 42, color: visualTheme.textTertiary),
+          Icon(
+            icon,
+            size: 42,
+            color: isError ? visualTheme.destructive : visualTheme.textTertiary,
+          ),
           const SizedBox(height: 12),
           Text(
             message,
             textAlign: TextAlign.center,
             style: TextStyle(color: visualTheme.textSecondary),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 16),
+            _buildHeaderAction(
+              context,
+              key: const ValueKey<String>('bili-tv-favorites-content-retry'),
+              label: '重试',
+              icon: AppIcons.refreshLine,
+              onTap: onRetry,
+            ),
+          ],
         ],
       ),
     );
@@ -709,7 +746,7 @@ class _TvFavoritesRailFolder extends StatelessWidget {
                   : MainAxisAlignment.start,
               children: [
                 Icon(
-                  selected ? AppIcons.folderLine : AppIcons.folderLine,
+                  selected ? AppIcons.folderOpenLine : AppIcons.folderLine,
                   size: 20,
                   color: selected ? AppVisualTokens.primaryBlue : foreground,
                 ),

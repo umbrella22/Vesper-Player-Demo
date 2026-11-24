@@ -1,3 +1,6 @@
+// liquid_glass_widgets 1.20.0 resolves CupertinoColors from flutter/cupertino.dart's CupertinoTheme.
+// ignore: deprecated_member_use
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -7,12 +10,20 @@ enum MediaGlassSheetAppearance { translucent, readable }
 
 enum MediaGlassDialogAppearance { translucent, readable }
 
+bool _shouldForceReadableModal(BuildContext context, GlassQuality? quality) {
+  return MediaQuery.highContrastOf(context) ||
+      quality == GlassQuality.minimal ||
+      GlassAdaptiveScopeData.maybeOf(context)?.effectiveQuality ==
+          GlassQuality.minimal;
+}
+
 /// Shared landscape container for the app's cache panels.
 Future<T?> showMediaReadableSideDrawer<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   Key? surfaceKey,
   EdgeInsetsGeometry contentPadding = const EdgeInsets.fromLTRB(20, 18, 20, 22),
+  bool scrollable = true,
 }) {
   return showGeneralDialog<T>(
     context: context,
@@ -23,33 +34,47 @@ Future<T?> showMediaReadableSideDrawer<T>({
       context,
       AppVisualTokens.overlayDuration,
     ),
-    pageBuilder: (drawerContext, _, _) => Padding(
-      padding: MediaQuery.viewInsetsOf(drawerContext),
-      child: MediaQuery.removeViewInsets(
-        context: drawerContext,
-        removeLeft: true,
-        removeTop: true,
-        removeRight: true,
-        removeBottom: true,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: MediaReadableSurface(
-            surfaceKey: surfaceKey,
-            child: SafeArea(
-              right: false,
-              child: SizedBox(
-                width: MediaQuery.sizeOf(drawerContext).width * 0.42,
-                height: double.infinity,
-                child: SingleChildScrollView(
-                  padding: contentPadding,
-                  child: Builder(builder: builder),
+    pageBuilder: (drawerContext, _, _) {
+      final screenWidth = MediaQuery.sizeOf(drawerContext).width;
+      final drawerWidth = (screenWidth * 0.42)
+          .clamp(300.0, 440.0)
+          .clamp(0.0, screenWidth * 0.9);
+      return Padding(
+        padding: MediaQuery.viewInsetsOf(drawerContext),
+        child: MediaQuery.removeViewInsets(
+          context: drawerContext,
+          removeLeft: true,
+          removeTop: true,
+          removeRight: true,
+          removeBottom: true,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: MediaReadableSurface(
+              surfaceKey: surfaceKey,
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(AppVisualTokens.sheetRadius),
+              ),
+              child: SafeArea(
+                right: false,
+                child: SizedBox(
+                  width: drawerWidth,
+                  height: double.infinity,
+                  child: scrollable
+                      ? SingleChildScrollView(
+                          padding: contentPadding,
+                          child: Builder(builder: builder),
+                        )
+                      : Padding(
+                          padding: contentPadding,
+                          child: Builder(builder: builder),
+                        ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    ),
+      );
+    },
     transitionBuilder: (context, animation, _, child) => SlideTransition(
       position: Tween(begin: const Offset(-1, 0), end: Offset.zero).animate(
         CurvedAnimation(
@@ -69,11 +94,14 @@ Future<T?> showMediaGlassSheet<T>({
   double maxContentHeightFactor = 0.74,
   EdgeInsetsGeometry contentPadding = const EdgeInsets.fromLTRB(18, 8, 18, 8),
   GlassQuality? quality,
-  MediaGlassSheetAppearance appearance = MediaGlassSheetAppearance.translucent,
+  MediaGlassSheetAppearance appearance = MediaGlassSheetAppearance.readable,
   bool barrierDismissible = true,
+  bool contentHandlesScrolling = false,
 }) {
   assert(maxContentHeightFactor > 0 && maxContentHeightFactor <= 1);
-  final readable = appearance == MediaGlassSheetAppearance.readable;
+  final readable =
+      appearance == MediaGlassSheetAppearance.readable ||
+      _shouldForceReadableModal(context, quality);
   final visualTheme = AppVisualTheme.of(context);
 
   final transitionDuration = AppVisualTokens.motionDuration(
@@ -131,6 +159,7 @@ Future<T?> showMediaGlassSheet<T>({
                     child: readable
                         ? _ReadableMediaSheet(
                             maxContentHeight: maxContentHeight,
+                            contentHandlesScrolling: contentHandlesScrolling,
                             contentPadding: contentPadding,
                             child: builder(context),
                           )
@@ -138,18 +167,23 @@ Future<T?> showMediaGlassSheet<T>({
                             constraints: BoxConstraints(
                               maxHeight: maxContentHeight,
                             ),
-                            child: GlassSheet(
-                              quality: quality,
-                              topBorderRadius: AppVisualTokens.sheetRadius,
-                              bottomBorderRadius: AppVisualTokens.sheetRadius,
-                              margin: EdgeInsets.zero,
-                              padding: contentPadding,
-                              suppressInteractionOnChildren: true,
-                              enableSaturationGlow: false,
-                              child: Material(
-                                type: MaterialType.transparency,
-                                child: GlassInteractionSilence(
-                                  child: builder(context),
+                            child: cupertino.CupertinoTheme(
+                              data: cupertino.CupertinoThemeData(
+                                brightness: Theme.of(context).brightness,
+                              ),
+                              child: GlassSheet(
+                                quality: quality,
+                                topBorderRadius: AppVisualTokens.sheetRadius,
+                                bottomBorderRadius: AppVisualTokens.sheetRadius,
+                                margin: EdgeInsets.zero,
+                                padding: contentPadding,
+                                suppressInteractionOnChildren: true,
+                                enableSaturationGlow: false,
+                                child: Material(
+                                  type: MaterialType.transparency,
+                                  child: GlassInteractionSilence(
+                                    child: builder(context),
+                                  ),
                                 ),
                               ),
                             ),
@@ -171,11 +205,13 @@ Future<T?> showMediaGlassSheet<T>({
 final class _ReadableMediaSheet extends StatelessWidget {
   const _ReadableMediaSheet({
     required this.maxContentHeight,
+    required this.contentHandlesScrolling,
     required this.contentPadding,
     required this.child,
   });
 
   final double maxContentHeight;
+  final bool contentHandlesScrolling;
   final EdgeInsetsGeometry contentPadding;
   final Widget child;
 
@@ -188,29 +224,32 @@ final class _ReadableMediaSheet extends StatelessWidget {
         surfaceKey: const ValueKey<String>('media-readable-glass-sheet'),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxContentHeight),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: 28,
-                  child: Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: visualTheme.textSecondary.withValues(
-                          alpha: 0.42,
-                        ),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 28,
+                child: Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: visualTheme.textSecondary.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-                Padding(padding: contentPadding, child: child),
-              ],
-            ),
+              ),
+              Flexible(
+                child: contentHandlesScrolling
+                    ? Padding(padding: contentPadding, child: child)
+                    : SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: contentPadding,
+                        child: child,
+                      ),
+              ),
+            ],
           ),
         ),
       ),
@@ -236,15 +275,20 @@ final class MediaReadableSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final highContrast = MediaQuery.highContrastOf(context);
+    final borderColor = highContrast
+        ? visualTheme.glassBorder
+        : (isDark ? const Color(0x38FFFFFF) : const Color(0x26000000));
     return Material(
       key: surfaceKey,
       color: visualTheme.opaqueGlassFallback,
-      elevation: 12,
-      shadowColor: visualTheme.shadow.withValues(alpha: 0.82),
+      elevation: 16,
+      shadowColor: visualTheme.shadow.withValues(alpha: isDark ? 0.9 : 0.45),
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: borderRadius,
-        side: BorderSide(color: visualTheme.glassBorder),
+        side: BorderSide(color: borderColor, width: highContrast ? 1.5 : 1.0),
       ),
       clipBehavior: Clip.antiAlias,
       child: child,
@@ -275,12 +319,13 @@ Future<T?> showMediaGlassDialog<T>({
   bool barrierDismissible = false,
   double maxWidth = 360,
   GlassQuality? quality,
-  MediaGlassDialogAppearance appearance =
-      MediaGlassDialogAppearance.translucent,
+  MediaGlassDialogAppearance appearance = MediaGlassDialogAppearance.readable,
 }) {
   assert(actions.isNotEmpty && actions.length <= 3);
   final visualTheme = AppVisualTheme.of(context);
-  final readable = appearance == MediaGlassDialogAppearance.readable;
+  final readable =
+      appearance == MediaGlassDialogAppearance.readable ||
+      _shouldForceReadableModal(context, quality);
   final transitionDuration = AppVisualTokens.motionDuration(
     context,
     AppVisualTokens.overlayDuration,
@@ -317,29 +362,33 @@ Future<T?> showMediaGlassDialog<T>({
           actions: actions,
         );
       }
-      return GlassDialog(
-        title: title,
-        message: message,
-        content: content,
-        quality: quality,
-        maxWidth: maxWidth,
-        actions: [
-          for (final action in actions)
-            GlassDialogAction(
-              label: action.label,
-              isPrimary: action.isPrimary,
-              isDestructive: action.isDestructive,
-              onPressed: () => Navigator.of(dialogContext).pop(action.value),
-            ),
-        ],
+      return cupertino.CupertinoTheme(
+        data: cupertino.CupertinoThemeData(
+          brightness: Theme.of(dialogContext).brightness,
+        ),
+        child: GlassDialog(
+          title: title,
+          message: message,
+          content: content,
+          quality: quality,
+          maxWidth: maxWidth,
+          actions: [
+            for (final action in actions)
+              GlassDialogAction(
+                label: action.label,
+                isPrimary: action.isPrimary,
+                isDestructive: action.isDestructive,
+                onPressed: () => Navigator.of(dialogContext).pop(action.value),
+              ),
+          ],
+        ),
       );
     },
   );
 }
 
 /// Opaque, theme-backed dialog used when the content must remain readable over
-/// image-rich app surfaces. The translucent third-party dialog remains the
-/// default for decorative/low-density confirmations.
+/// image-rich app surfaces.
 final class _ReadableMediaGlassDialog<T> extends StatelessWidget {
   const _ReadableMediaGlassDialog({
     required this.title,
@@ -359,40 +408,66 @@ final class _ReadableMediaGlassDialog<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final theme = Theme.of(context);
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: MediaReadableSurface(
-          surfaceKey: const ValueKey<String>('media-readable-glass-dialog'),
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: visualTheme.textPrimary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (message != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    message!,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: visualTheme.textSecondary,
-                      height: 1.5,
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          24,
+          24,
+          24 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: MediaReadableSurface(
+              surfaceKey: const ValueKey<String>(
+                'media-readable-glass-dialog',
+              ),
+              borderRadius: BorderRadius.circular(18),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: visualTheme.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                ],
-                if (content != null) ...[const SizedBox(height: 10), content!],
-                const SizedBox(height: 18),
-                _buildActions(context),
-              ],
+                    if (message != null || content != null) ...[
+                      const SizedBox(height: 10),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (message != null)
+                                Text(
+                                  message!,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: visualTheme.textSecondary,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              if (content != null) ...[
+                                if (message != null) const SizedBox(height: 10),
+                                content!,
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    _buildActions(context),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -424,20 +499,43 @@ final class _ReadableMediaGlassDialog<T> extends StatelessWidget {
 
   Widget _buildAction(BuildContext context, MediaGlassDialogAction<T> action) {
     final visualTheme = AppVisualTheme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final highContrast = MediaQuery.highContrastOf(context);
     void onPressed() {
       Navigator.of(context).pop(action.value);
     }
 
+    if (action.isDestructive) {
+      return FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: visualTheme.destructive,
+          foregroundColor: isDark ? const Color(0xFF2B070B) : Colors.white,
+        ),
+        child: Text(action.label),
+      );
+    }
     if (action.isPrimary) {
       return FilledButton(onPressed: onPressed, child: Text(action.label));
     }
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: action.isDestructive
-            ? visualTheme.destructive
-            : visualTheme.textPrimary,
-        side: BorderSide(color: visualTheme.glassBorder),
+        minimumSize: const Size(
+          AppVisualTokens.minimumTapTarget,
+          AppVisualTokens.minimumTapTarget,
+        ),
+        foregroundColor: visualTheme.textPrimary,
+        backgroundColor: visualTheme.surfaceRaised,
+        side: BorderSide(
+          color: highContrast ? visualTheme.textPrimary : visualTheme.divider,
+          width: highContrast ? 1.5 : 1.0,
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(
+            Radius.circular(AppVisualTokens.controlRadius),
+          ),
+        ),
       ),
       child: Text(action.label),
     );

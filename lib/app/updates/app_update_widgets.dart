@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/media/design/app_icons.dart';
+import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:signals/signals_flutter.dart';
 
 import '../design/app_glass_controls.dart';
@@ -27,9 +30,11 @@ class AppUpdateStartupCheck extends StatefulWidget {
     super.key,
     required this.controller,
     required this.child,
+    this.tvModeListenable,
   });
   final AppUpdateController controller;
   final Widget child;
+  final ValueListenable<bool>? tvModeListenable;
   @override
   State<AppUpdateStartupCheck> createState() => _AppUpdateStartupCheckState();
 }
@@ -50,7 +55,11 @@ class _AppUpdateStartupCheckState extends State<AppUpdateStartupCheck> {
         widget.controller.state.value.phase != AppUpdatePhase.available) {
       return;
     }
-    await showAppUpdateDialog(context, widget.controller);
+    await showAppUpdateDialog(
+      context,
+      widget.controller,
+      tvRemote: widget.tvModeListenable?.value ?? false,
+    );
   }
 
   @override
@@ -87,6 +96,7 @@ Future<void> showAppUpdateDialog(
   BuildContext context,
   AppUpdateController controller, {
   bool check = false,
+  bool tvRemote = false,
 }) async {
   if (controller.dialogOpen) return;
   controller.dialogOpen = true;
@@ -97,7 +107,34 @@ Future<void> showAppUpdateDialog(
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _AppUpdateDialog(controller: controller),
+      barrierColor: AppVisualTheme.of(context).scrim,
+      builder: (dialogContext) {
+        final dialog = _AppUpdateDialog(
+          controller: controller,
+          tvRemote: tvRemote,
+        );
+        if (!tvRemote) return dialog;
+        void back() => Navigator.of(dialogContext).maybePop();
+        final tvTheme = MediaQuery.highContrastOf(dialogContext)
+            ? AppVisualTokens.mobileDarkHighContrastTheme()
+            : AppVisualTokens.tvTheme();
+        return Theme(
+          data: tvTheme,
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+                includeRepeats: false,
+              ): back,
+              const SingleActivator(
+                LogicalKeyboardKey.browserBack,
+                includeRepeats: false,
+              ): back,
+            },
+            child: dialog,
+          ),
+        );
+      },
     );
   } finally {
     controller.dialogOpen = false;
@@ -105,7 +142,8 @@ Future<void> showAppUpdateDialog(
 }
 
 class _AppUpdateDialog extends StatefulWidget {
-  const _AppUpdateDialog({required this.controller});
+  const _AppUpdateDialog({required this.controller, required this.tvRemote});
+  final bool tvRemote;
   final AppUpdateController controller;
   @override
   State<_AppUpdateDialog> createState() => _AppUpdateDialogState();
@@ -159,7 +197,9 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_statusMessage(state)),
+                  if (state.phase != AppUpdatePhase.failed ||
+                      state.error == null)
+                    Text(_statusMessage(state)),
                   if (state.phase == AppUpdatePhase.checking ||
                       state.phase == AppUpdatePhase.installing ||
                       downloading) ...[
@@ -179,22 +219,19 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog>
                   if (state.phase == AppUpdatePhase.available &&
                       state.release!.notes.trim().isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          state.release!.notes,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
+                    Text(
+                      state.release!.notes,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                   if (state.error != null) ...[
-                    const SizedBox(height: 12),
+                    if (state.phase != AppUpdatePhase.failed)
+                      const SizedBox(height: 12),
                     Text(
                       state.error!,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                        color: AppVisualTheme.of(context).destructive,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -205,6 +242,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog>
           actions: [
             if (!busy)
               TextButton(
+                autofocus: widget.tvRemote,
                 onPressed: () => Navigator.of(context).pop(),
                 child: Text(
                   state.phase == AppUpdatePhase.available ? '稍后' : '关闭',
@@ -212,6 +250,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog>
               ),
             if (downloading)
               TextButton(
+                autofocus: widget.tvRemote,
                 onPressed: controller.cancelDownload,
                 child: const Text('取消下载'),
               ),
@@ -238,6 +277,18 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog>
                       ? '再次打开安装程序'
                       : '重试安装',
                 ),
+              ),
+            if (state.file != null && !busy)
+              TextButton(
+                onPressed: controller.redownload,
+                child: const Text('重新下载'),
+              ),
+            if (state.file != null &&
+                !busy &&
+                state.phase != AppUpdatePhase.permissionRequired)
+              TextButton(
+                onPressed: controller.check,
+                child: const Text('重新检查版本'),
               ),
             if (playCover &&
                 (state.phase == AppUpdatePhase.ready ||

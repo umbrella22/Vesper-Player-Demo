@@ -50,7 +50,7 @@ class TuningOptionButton extends StatelessWidget {
     final immersive = MediaPlaybackDrawerScope.isActive(context);
     final color = enabled
         ? selected
-              ? Theme.of(context).colorScheme.primary
+              ? visualTheme.accent
               : visualTheme.textPrimary
         : visualTheme.textTertiary;
     final detail = supportingText?.trim();
@@ -66,7 +66,7 @@ class TuningOptionButton extends StatelessWidget {
         child: Material(
           color: selected && enabled
               ? Color.alphaBlend(
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                  visualTheme.accent.withValues(alpha: 0.12),
                   visualTheme.surfaceRaised,
                 )
               : visualTheme.surfaceRaised,
@@ -167,18 +167,18 @@ class TuningOptionBadge extends StatelessWidget {
     final visualTheme = AppVisualTheme.of(context);
     final tone = enabled
         ? (confirmed
-              ? Theme.of(context).colorScheme.primary
+              ? visualTheme.accent
               : visualTheme.textSecondary)
         : visualTheme.textTertiary;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: confirmed && enabled
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
+            ? visualTheme.accent.withValues(alpha: 0.16)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         border: Border.all(
           color: confirmed && enabled
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
+              ? visualTheme.accent.withValues(alpha: 0.55)
               : tone.withValues(alpha: 0.5),
         ),
       ),
@@ -216,10 +216,10 @@ class CacheEntryButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 AppIcons.download2Line,
                 size: 20,
-                color: AppVisualTokens.primaryBlue,
+                color: visualTheme.accent,
               ),
               const SizedBox(width: 9),
               Expanded(
@@ -299,10 +299,10 @@ class PlaybackContextTabs extends StatelessWidget {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 dividerColor: Colors.transparent,
-                indicatorColor: AppVisualTokens.primaryBlue,
+                indicatorColor: visualTheme.accent,
                 indicatorSize: TabBarIndicatorSize.label,
                 indicatorWeight: 3,
-                labelColor: AppVisualTokens.primaryBlue,
+                labelColor: visualTheme.accent,
                 unselectedLabelColor: visualTheme.textSecondary,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 12),
                 splashBorderRadius: BorderRadius.circular(8),
@@ -464,61 +464,91 @@ class PlaybackBottomSheetScaffold extends StatelessWidget {
     super.key,
     required this.title,
     required this.child,
+    this.footer,
+    this.bodyPadding = const EdgeInsets.fromLTRB(18, 12, 18, 18),
+    this.footerPadding = const EdgeInsets.fromLTRB(18, 12, 18, 14),
+    this.expandToMaxHeight = false,
   });
 
   final String title;
   final Widget child;
+  final Widget? footer;
+  final EdgeInsetsGeometry bodyPadding;
+  final EdgeInsetsGeometry footerPadding;
+  final bool expandToMaxHeight;
 
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    final height = MediaQuery.sizeOf(context).height * 0.82;
-    return SizedBox(
-      height: height,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 54,
-            child: Row(
-              children: [
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: visualTheme.textPrimary,
-                      fontWeight: FontWeight.w900,
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boundedHeight = constraints.hasBoundedHeight;
+        final header = SizedBox(
+          height: 54,
+          child: Row(
+            children: [
+              const SizedBox(width: 18),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: visualTheme.textPrimary,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  constraints: const BoxConstraints(
-                    minWidth: 48,
-                    minHeight: 48,
-                  ),
-                  icon: Icon(
-                    AppIcons.closeFill,
-                    size: 30,
-                    color: visualTheme.textTertiary,
-                  ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                constraints: const BoxConstraints(
+                  minWidth: 48,
+                  minHeight: 48,
                 ),
-                const SizedBox(width: 4),
-              ],
-            ),
+                icon: Icon(
+                  AppIcons.closeFill,
+                  size: 30,
+                  color: visualTheme.textTertiary,
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
-          Divider(height: 1, color: visualTheme.divider),
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-              child: child,
+        );
+        final scrollBody = SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: bodyPadding,
+          child: child,
+        );
+        final scaffold = Column(
+          mainAxisSize:
+              boundedHeight && expandToMaxHeight ? MainAxisSize.max : MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            Divider(height: 1, color: visualTheme.divider),
+            Flexible(
+              fit: boundedHeight && expandToMaxHeight
+                  ? FlexFit.tight
+                  : FlexFit.loose,
+              child: scrollBody,
             ),
+            if (footer != null) ...[
+              Divider(height: 1, color: visualTheme.divider),
+              Padding(padding: footerPadding, child: footer!),
+            ],
+          ],
+        );
+        if (boundedHeight) {
+          return scaffold;
+        }
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.82,
           ),
-        ],
-      ),
+          child: scaffold,
+        );
+      },
     );
   }
 }
@@ -635,7 +665,7 @@ class _MediaEngagementActionButtonState
     final countText =
         action.countLabel ?? (action.count == null ? null : '${action.count}');
     final foreground = action.selected
-        ? AppVisualTokens.primaryBlue
+        ? visualTheme.accent
         : visualTheme.textPrimary;
     final semanticsLabel = countText == null
         ? action.label

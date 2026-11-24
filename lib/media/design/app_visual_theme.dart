@@ -3,6 +3,10 @@ import 'package:material_ui/material_ui.dart';
 
 abstract final class AppVisualTokens {
   static const Color primaryBlue = Color(0xFF409EFF);
+  static const Color primaryActionBlue = Color(0xFF0066CC);
+  static const Color primaryActionBlueHighContrast = Color(0xFF004080);
+  static const Color primaryActionBlueDark = Color(0xFF1470DB);
+  static const Color primaryActionBlueDarkHighContrast = Color(0xFF0E62C4);
   static const Color primaryBlue20 = Color(0x33409EFF);
   static const Color primaryBlue40 = Color(0x66409EFF);
   static const Color primaryBlue60 = Color(0x99409EFF);
@@ -16,8 +20,8 @@ abstract final class AppVisualTokens {
   static const Color mobileSurfaceRaised = Color(0xFFEDF0F4);
   static const Color mobileSurfaceMuted = Color(0xFFF7F8FA);
   static const Color mobileTextPrimary = Color(0xFF1D222B);
-  static const Color mobileTextSecondary = Color(0xFF69717D);
-  static const Color mobileTextTertiary = Color(0xFF9198A3);
+  static const Color mobileTextSecondary = Color(0xFF5B6370);
+  static const Color mobileTextTertiary = Color(0xFF666E79);
   static const Color mobileDivider = Color(0xFFDDE1E6);
 
   static const Color darkBackground = Color(0xFF111318);
@@ -26,7 +30,7 @@ abstract final class AppVisualTokens {
   static const Color darkSurfaceMuted = Color(0xFF20242B);
   static const Color darkTextPrimary = Color(0xFFF4F6FA);
   static const Color darkTextSecondary = Color(0xFFA9B0BB);
-  static const Color darkTextTertiary = Color(0xFF747C88);
+  static const Color darkTextTertiary = Color(0xFF89929F);
   static const Color darkDivider = Color(0xFF2F343E);
 
   // Compatibility aliases while page-level hard-coded colors are migrated.
@@ -50,7 +54,12 @@ abstract final class AppVisualTokens {
   static bool reduceMotion(BuildContext context) {
     final mediaQuery = MediaQuery.maybeOf(context);
     return mediaQuery?.disableAnimations == true ||
-        mediaQuery?.accessibleNavigation == true;
+        mediaQuery?.accessibleNavigation == true ||
+        View.maybeOf(context)
+                ?.platformDispatcher
+                .accessibilityFeatures
+                .reduceMotion ==
+            true;
   }
 
   static Duration motionDuration(BuildContext context, Duration duration) {
@@ -108,14 +117,21 @@ abstract final class AppVisualTokens {
     bool highContrast = false,
   }) {
     final isDark = brightness == Brightness.dark;
+    final filledPrimary = switch ((isDark, highContrast)) {
+      (false, false) => primaryActionBlue,
+      (false, true) => primaryActionBlueHighContrast,
+      (true, false) => primaryActionBlueDark,
+      (true, true) => primaryActionBlueDarkHighContrast,
+    };
     final colorScheme =
         ColorScheme.fromSeed(
           seedColor: primaryBlue,
           brightness: brightness,
+          contrastLevel: highContrast ? 1.0 : 0.0,
           surface: visualTheme.surface,
           error: isDark ? const Color(0xFFFFB4AB) : error,
         ).copyWith(
-          primary: primaryBlue,
+          primary: filledPrimary,
           onPrimary: Colors.white,
           surface: visualTheme.surface,
           onSurface: visualTheme.textPrimary,
@@ -124,6 +140,27 @@ abstract final class AppVisualTokens {
         );
 
     final outlineWidth = highContrast ? 1.5 : 1.0;
+    final actionBlue = visualTheme.accent;
+    final modalBorderColor = highContrast
+        ? visualTheme.glassBorder
+        : (isDark ? const Color(0x38FFFFFF) : const Color(0x26000000));
+    final modalBorder = BorderSide(
+      color: modalBorderColor,
+      width: outlineWidth,
+    );
+    final outlinedButtonBorder = highContrast
+        ? visualTheme.textPrimary
+        : (isDark ? const Color(0x47FFFFFF) : const Color(0x3D000000));
+    final snackBarBackground = switch ((isDark, highContrast)) {
+      (false, false) => const Color(0xFF1D222B),
+      (false, true) => Colors.black,
+      (true, false) => const Color(0xFF2B313D),
+      (true, true) => const Color(0xFFF4F6FA),
+    };
+    final snackBarForeground = isDark && highContrast
+        ? Colors.black
+        : const Color(0xFFF4F6FA);
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -153,17 +190,123 @@ abstract final class AppVisualTokens {
           borderRadius: const BorderRadius.all(Radius.circular(contentRadius)),
         ),
       ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: visualTheme.opaqueGlassFallback,
+        surfaceTintColor: Colors.transparent,
+        elevation: 16,
+        shadowColor: visualTheme.shadow.withValues(alpha: isDark ? 0.9 : 0.35),
+        barrierColor: visualTheme.scrim,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: modalBorder,
+        ),
+        titleTextStyle: TextStyle(
+          color: visualTheme.textPrimary,
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
+        ),
+        contentTextStyle: TextStyle(
+          color: visualTheme.textSecondary,
+          fontSize: 15,
+          height: 1.5,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: visualTheme.opaqueGlassFallback,
+        modalBackgroundColor: visualTheme.opaqueGlassFallback,
+        surfaceTintColor: Colors.transparent,
+        modalBarrierColor: visualTheme.scrim,
+        elevation: 16,
+        modalElevation: 16,
+        shadowColor: visualTheme.shadow.withValues(alpha: isDark ? 0.85 : 0.35),
+        dragHandleColor: visualTheme.textSecondary.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          side: modalBorder,
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        elevation: 10,
+        backgroundColor: snackBarBackground,
+        contentTextStyle: TextStyle(
+          color: snackBarForeground,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          height: 1.4,
+        ),
+        actionTextColor: isDark && highContrast
+            ? const Color(0xFF004080)
+            : const Color(0xFF7CC4FF),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: highContrast
+                ? (isDark ? Colors.white : Colors.black)
+                : (isDark ? const Color(0x3DFFFFFF) : const Color(0x26FFFFFF)),
+            width: outlineWidth,
+          ),
+        ),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(minimumTapTarget, minimumTapTarget),
-          backgroundColor: primaryBlue,
-          foregroundColor: Colors.white,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           disabledBackgroundColor: visualTheme.textPrimary.withValues(
             alpha: 0.12,
           ),
           disabledForegroundColor: visualTheme.textPrimary.withValues(
             alpha: 0.38,
           ),
+          side: highContrast
+              ? BorderSide(
+                  color: isDark ? Colors.white : Colors.black,
+                  width: outlineWidth,
+                )
+              : null,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(controlRadius)),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: ButtonStyle(
+          minimumSize: const WidgetStatePropertyAll(
+            Size(minimumTapTarget, minimumTapTarget),
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? visualTheme.textPrimary.withValues(alpha: 0.38)
+                : actionBlue,
+          ),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) {
+              return actionBlue.withValues(alpha: 0.22);
+            }
+            if (states.contains(WidgetState.pressed) ||
+                states.contains(WidgetState.hovered)) {
+              return actionBlue.withValues(alpha: 0.12);
+            }
+            return null;
+          }),
+          textStyle: const WidgetStatePropertyAll(
+            TextStyle(fontWeight: FontWeight.w700),
+          ),
+          shape: const WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(controlRadius)),
+            ),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(minimumTapTarget, minimumTapTarget),
+          foregroundColor: actionBlue,
+          side: BorderSide(color: outlinedButtonBorder, width: outlineWidth),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(controlRadius)),
@@ -186,9 +329,12 @@ abstract final class AppVisualTokens {
               : BorderSide.none,
           borderRadius: const BorderRadius.all(Radius.circular(controlRadius)),
         ),
-        focusedBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: primaryBlue40, width: 1.5),
-          borderRadius: BorderRadius.all(Radius.circular(controlRadius)),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: highContrast ? visualTheme.textPrimary : actionBlue,
+            width: highContrast ? 2.5 : 1.5,
+          ),
+          borderRadius: const BorderRadius.all(Radius.circular(controlRadius)),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -197,18 +343,15 @@ abstract final class AppVisualTokens {
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
-          (states) =>
-              states.contains(WidgetState.selected) ? primaryBlue : null,
+          (states) => states.contains(WidgetState.selected) ? actionBlue : null,
         ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? primaryBlue.withValues(alpha: 0.42)
+              ? actionBlue.withValues(alpha: 0.42)
               : visualTheme.surfaceRaised,
         ),
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: primaryBlue,
-      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: actionBlue),
       tabBarTheme: TabBarThemeData(
         labelColor: visualTheme.textPrimary,
         unselectedLabelColor: visualTheme.textSecondary,
@@ -238,6 +381,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     required this.shadow,
     required this.destructive,
     required this.opaqueGlassFallback,
+    required this.accent,
+    required this.sourceAccent,
   });
 
   static const AppVisualTheme light = AppVisualTheme(
@@ -258,6 +403,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     shadow: Color(0x1A000000),
     destructive: Color(0xFFD9485F),
     opaqueGlassFallback: AppVisualTokens.mobileSurface,
+    accent: Color(0xFF0B5CAD),
+    sourceAccent: Color(0xFFC93763),
   );
 
   static const AppVisualTheme dark = AppVisualTheme(
@@ -278,6 +425,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     shadow: Color(0x66000000),
     destructive: Color(0xFFFF7B83),
     opaqueGlassFallback: AppVisualTokens.darkSurface,
+    accent: AppVisualTokens.primaryBlue,
+    sourceAccent: AppVisualTokens.biliSourcePink,
   );
 
   static const AppVisualTheme tv = AppVisualTheme(
@@ -298,6 +447,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     shadow: Color(0x80000000),
     destructive: Color(0xFFFF7B83),
     opaqueGlassFallback: AppVisualTokens.darkSurface,
+    accent: AppVisualTokens.primaryBlue,
+    sourceAccent: AppVisualTokens.biliSourcePink,
   );
 
   static const AppVisualTheme lightHighContrast = AppVisualTheme(
@@ -318,6 +469,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     shadow: Color(0x33000000),
     destructive: Color(0xFF9E1E32),
     opaqueGlassFallback: Colors.white,
+    accent: Color(0xFF004080),
+    sourceAccent: Color(0xFF8C163B),
   );
 
   static const AppVisualTheme darkHighContrast = AppVisualTheme(
@@ -338,6 +491,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     shadow: Colors.black,
     destructive: Color(0xFFFFA1A7),
     opaqueGlassFallback: Color(0xFF111318),
+    accent: Color(0xFF70B8FF),
+    sourceAccent: Color(0xFFFF94B3),
   );
 
   final Color background;
@@ -357,6 +512,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
   final Color shadow;
   final Color destructive;
   final Color opaqueGlassFallback;
+  final Color accent;
+  final Color sourceAccent;
 
   static AppVisualTheme of(BuildContext context) {
     return Theme.of(context).extension<AppVisualTheme>() ??
@@ -382,6 +539,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
     Color? shadow,
     Color? destructive,
     Color? opaqueGlassFallback,
+    Color? accent,
+    Color? sourceAccent,
   }) {
     return AppVisualTheme(
       background: background ?? this.background,
@@ -401,6 +560,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
       shadow: shadow ?? this.shadow,
       destructive: destructive ?? this.destructive,
       opaqueGlassFallback: opaqueGlassFallback ?? this.opaqueGlassFallback,
+      accent: accent ?? this.accent,
+      sourceAccent: sourceAccent ?? this.sourceAccent,
     );
   }
 
@@ -435,6 +596,8 @@ final class AppVisualTheme extends ThemeExtension<AppVisualTheme> {
         other.opaqueGlassFallback,
         t,
       )!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      sourceAccent: Color.lerp(sourceAccent, other.sourceAccent, t)!,
     );
   }
 }

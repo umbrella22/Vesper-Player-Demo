@@ -20,7 +20,8 @@ void main() {
   test('visual theme uses blue primary and a single source pink token', () {
     final theme = AppVisualTokens.lightTheme();
 
-    expect(theme.colorScheme.primary, AppVisualTokens.primaryBlue);
+    expect(theme.colorScheme.primary, AppVisualTokens.primaryActionBlue);
+    expect(theme.colorScheme.onPrimary, Colors.white);
     expect(AppVisualTokens.primaryBlue, const Color(0xFF409EFF));
     expect(AppVisualTokens.biliSourcePink, const Color(0xFFFB7299));
     expect(theme.colorScheme.primary, isNot(AppVisualTokens.biliSourcePink));
@@ -84,6 +85,7 @@ void main() {
                 context: context,
                 title: '确认',
                 message: '继续操作？',
+                appearance: MediaGlassDialogAppearance.translucent,
                 actions: const [
                   MediaGlassDialogAction(label: '取消', value: false),
                   MediaGlassDialogAction(
@@ -236,6 +238,7 @@ void main() {
               result = await showMediaGlassSheet<String>(
                 context: context,
                 maxContentHeightFactor: 0.5,
+                appearance: MediaGlassSheetAppearance.translucent,
                 builder: (sheetContext) => SizedBox(
                   height: 1000,
                   child: Align(
@@ -300,6 +303,109 @@ void main() {
     expect(find.byType(GlassSheet), findsNothing);
     expect(tester.widget<Material>(sheet).color, AppVisualTokens.darkSurface);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('glass dialogs and sheets default to readable surfaces and inset cleanly', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileDarkTheme(),
+        home: Builder(
+          builder: (context) => Column(
+            children: [
+              FilledButton(
+                onPressed: () => showMediaGlassDialog<bool>(
+                  context: context,
+                  title: '删除确认',
+                  message: '确认删除该内容？',
+                  actions: const [
+                    MediaGlassDialogAction(label: '取消', value: false),
+                    MediaGlassDialogAction(
+                      label: '确认删除',
+                      value: true,
+                      isDestructive: true,
+                    ),
+                  ],
+                ),
+                child: const Text('打开弹窗'),
+              ),
+              FilledButton(
+                onPressed: () => showMediaGlassSheet<void>(
+                  context: context,
+                  builder: (_) => const Text('默认弹层内容'),
+                ),
+                child: const Text('打开弹层'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开弹窗'));
+    await tester.pump(const Duration(milliseconds: 240));
+    final dialogFinder = find.byKey(
+      const ValueKey<String>('media-readable-glass-dialog'),
+    );
+    expect(dialogFinder, findsOneWidget);
+    expect(find.byType(GlassDialog), findsNothing);
+    expect(tester.getRect(dialogFinder).left, greaterThanOrEqualTo(24));
+    expect(tester.getRect(dialogFinder).right, lessThanOrEqualTo(336));
+    expect(find.widgetWithText(FilledButton, '确认删除'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('打开弹层'));
+    await tester.pump(const Duration(milliseconds: 240));
+    expect(
+      find.byKey(const ValueKey<String>('media-readable-glass-sheet')),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassSheet), findsNothing);
+  });
+
+  testWidgets('explicit translucent modals upgrade to readable in minimal glass or high contrast', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppVisualTokens.mobileLightHighContrastTheme(),
+        home: MediaQuery(
+          data: const MediaQueryData(highContrast: true),
+          child: GlassAdaptiveScope(
+            minQuality: GlassQuality.minimal,
+            maxQuality: GlassQuality.minimal,
+            initialQuality: GlassQuality.minimal,
+            allowStepUp: false,
+            child: Builder(
+              builder: (context) => FilledButton(
+                onPressed: () => showMediaGlassDialog<bool>(
+                  context: context,
+                  title: '高对比验证',
+                  appearance: MediaGlassDialogAppearance.translucent,
+                  actions: const [
+                    MediaGlassDialogAction(label: '关闭', value: false),
+                  ],
+                ),
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pump(const Duration(milliseconds: 240));
+    expect(
+      find.byKey(const ValueKey<String>('media-readable-glass-dialog')),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassDialog), findsNothing);
   });
 
   testWidgets('glass scaffold bridges split Material descendants', (

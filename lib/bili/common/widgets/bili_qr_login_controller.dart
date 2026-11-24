@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:signals/signals_flutter.dart';
@@ -8,12 +9,7 @@ import '../services/bili_api_core.dart';
 import '../services/bili_client.dart';
 import '../services/bili_session_store.dart';
 
-/// 扫码登录流程的页面级状态机。
-///
-/// UI 状态用 signals 表达（`signal<T>` + ReadonlySignal），符合仓库的
-/// 状态管理约定：页面级控制器不应使用 ChangeNotifier。消费者通过
-/// [revision]（每次状态变化自增）驱动 SignalBuilder 重建，或直接读
-/// 各状态的 .value。
+/// Owns one QR ticket at a time. Both login surfaces read the same signals.
 final class BiliQrLoginController {
   BiliQrLoginController({
     required this.client,
@@ -25,56 +21,53 @@ final class BiliQrLoginController {
   final BiliSessionStore sessionStore;
   final ValueChanged<BiliUserProfile> onConfirmed;
 
-  final Signal<BiliQrLoginTicket?> _ticket = Signal<BiliQrLoginTicket?>(null);
-  final Signal<BiliQrLoginPollResult?> _pollResult =
-      Signal<BiliQrLoginPollResult?>(null);
-  final Signal<bool> _isLoading = Signal<bool>(true);
-  final Signal<bool> _isPolling = Signal<bool>(false);
-  final Signal<String?> _errorMessage = Signal<String?>(null);
-  // Bumped on every state change so SignalBuilder can rebuild on any field.
-  final Signal<int> _revision = Signal<int>(0);
+  final _ticket = signal<BiliQrLoginTicket?>(null);
+  final _pollResult = signal<BiliQrLoginPollResult?>(null);
+  final _isLoading = signal(true);
+  final _manualCheckPending = signal(false);
+  final _errorMessage = signal<String?>(null);
   Timer? _timer;
+  Future<void>? _inFlight;
   int _generation = 0;
-  bool _active = true;
+  int _pollDelaySeconds = 2;
   bool _disposed = false;
+  bool _active = false;
+  int _ticketSessionRevision = 0;
+  Map<String, String>? _previousCookies;
+  int? _provisionalRevision;
 
   ReadonlySignal<BiliQrLoginTicket?> get ticket => _ticket;
   ReadonlySignal<BiliQrLoginPollResult?> get pollResult => _pollResult;
   ReadonlySignal<bool> get isLoading => _isLoading;
-  ReadonlySignal<bool> get isPolling => _isPolling;
   ReadonlySignal<String?> get errorMessage => _errorMessage;
 
-  /// Increments on every state mutation; listen to it to rebuild the whole
-  /// login surface when any field changes.
-  ReadonlySignal<int> get revision => _revision;
-
-  bool get canRefresh {
-    final status = _pollResult.value?.status;
-    return _errorMessage.value != null ||
-        status == BiliQrLoginStatus.expired ||
-        status == BiliQrLoginStatus.failed;
-  }
-
-  bool get canCheck => _ticket.value != null && !_isPolling.value;
+  bool get canRefresh =>
+      !_isLoading.value &&
+      _pollResult.value?.status != BiliQrLoginStatus.confirmed;
+  bool get canCheck =>
+      _ticket.value != null &&
+      _pollResult.value?.status.isTerminal != true &&
+      !_manualCheckPending.value;
 
   String get statusMessage {
     final errorMessage = _errorMessage.value;
-    if (errorMessage != null) {
-      return errorMessage;
-    }
+    if (errorMessage != null) return errorMessage;
     return switch (_pollResult.value?.status) {
       BiliQrLoginStatus.waitingForScan || null => '用哔哩哔哩 App 扫码，然后在手机上确认登录。',
-      BiliQrLoginStatus.scannedAwaitingConfirm => '已经扫到码了，等手机端确认。',
+      BiliQrLoginStatus.scannedAwaitingConfirm => '已扫码，请在手机上确认登录。',
       BiliQrLoginStatus.confirmed => '登录成功，正在同步账号信息。',
       BiliQrLoginStatus.expired => '二维码已失效，刷新后重新扫码。',
-      BiliQrLoginStatus.failed => _pollResult.value?.message ?? '登录失败。',
+      BiliQrLoginStatus.failed => _failedMessage(),
     };
   }
 
+  String _failedMessage() {
+    final msg = _pollResult.value?.message.trim();
+    return (msg == null || msg.isEmpty) ? '登录失败，请刷新二维码重试。' : msg;
+  }
+
   String get checkLabel {
-    if (_isPolling.value) {
-      return '检查中';
-    }
+    if (_manualCheckPending.value) return '检查中';
     if (_pollResult.value?.status == BiliQrLoginStatus.scannedAwaitingConfirm) {
       return '已扫码，继续等待';
     }
@@ -84,129 +77,161 @@ final class BiliQrLoginController {
   Future<void> start() => refresh();
 
   Future<void> refresh() async {
-    if (_disposed) {
+    if (_disposed || _pollResult.value?.status == BiliQrLoginStatus.confirmed) {
       return;
     }
-    _stopPollingTimer();
+    cancel();
+    final generation = _generation;
     _active = true;
-    final generation = ++_generation;
+    _ticketSessionRevision = client.sessionRevision;
     _isLoading.value = true;
-    _isPolling.value = false;
-    _errorMessage.value = null;
     _ticket.value = null;
     _pollResult.value = null;
-    _notify();
-
+    _errorMessage.value = null;
+    _pollDelaySeconds = 2;
     try {
       final ticket = await client.generateQrLoginTicket();
-      if (!_isCurrent(generation)) {
-        return;
-      }
+      if (!_isCurrent(generation)) return;
       _ticket.value = ticket;
       _isLoading.value = false;
-      _notify();
-      _ensurePollingTimer();
-      unawaited(checkNow());
+      unawaited(_check());
     } catch (error) {
-      if (!_isCurrent(generation)) {
-        return;
-      }
+      if (!_isCurrent(generation)) return;
       _isLoading.value = false;
       _errorMessage.value = biliErrorMessage(error);
-      _notify();
     }
   }
 
-  Future<void> checkNow() async {
+  Future<void> checkNow() => _check(manual: true);
+
+  Future<void> _check({bool manual = false}) {
     final ticket = _ticket.value;
-    if (ticket == null || _isPolling.value || !_active || _disposed) {
-      return;
-    }
-    final generation = _generation;
-    _isPolling.value = true;
-    _errorMessage.value = null;
-    _notify();
-    try {
-      final result = await client.pollQrLogin(ticket.qrcodeKey);
-      if (!_isCurrent(generation)) {
-        return;
-      }
-      if (result.status == BiliQrLoginStatus.confirmed) {
-        client.acceptQrLogin(result);
-      }
-      _pollResult.value = result;
-      _errorMessage.value = null;
-      _notify();
-
-      if (result.status == BiliQrLoginStatus.confirmed) {
-        _stopPollingTimer();
-        final profile = await client.fetchCurrentUserProfile();
-        if (!_isCurrent(generation)) {
-          return;
-        }
-        await sessionStore.saveCookies(client.snapshotCookies());
-        if (!_isCurrent(generation)) {
-          return;
-        }
-        cancel();
-        onConfirmed(profile);
-        return;
-      }
-
-      if (result.status.isTerminal) {
-        _stopPollingTimer();
-      } else {
-        _ensurePollingTimer();
-      }
-    } catch (error) {
-      if (!_isCurrent(generation)) {
-        return;
-      }
-      _errorMessage.value = biliErrorMessage(error);
-      _stopPollingTimer();
-    } finally {
-      if (_isCurrent(generation)) {
-        _isPolling.value = false;
-        _notify();
-      }
-    }
-  }
-
-  void cancel() {
-    if (_disposed || !_active) {
-      return;
-    }
-    _active = false;
-    _generation += 1;
-    _isPolling.value = false;
-    _stopPollingTimer();
-  }
-
-  void _ensurePollingTimer() {
     if (!_active ||
         _disposed ||
-        _ticket.value == null ||
-        _timer?.isActive == true) {
+        ticket == null ||
+        _pollResult.value?.status.isTerminal == true) {
+      return Future<void>.value();
+    }
+    if (manual) _manualCheckPending.value = true;
+    _timer?.cancel();
+    final generation = _generation;
+    return _inFlight ??= _poll(ticket, generation).whenComplete(() {
+      if (_isCurrent(generation)) {
+        _inFlight = null;
+        _manualCheckPending.value = false;
+      }
+    });
+  }
+
+  Future<void> _poll(BiliQrLoginTicket ticket, int generation) async {
+    final BiliQrLoginPollResult result;
+    try {
+      result = await client.pollQrLogin(ticket.qrcodeKey);
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final transient =
+          error is SocketException ||
+          error is HandshakeException ||
+          error is TlsException ||
+          error is HttpException ||
+          error is TimeoutException ||
+          (error is BiliApiException &&
+              (error.outcomeUnknown ||
+                  (error.code != null &&
+                      error.code! >= 500 &&
+                      error.code! < 600)));
+      _errorMessage.value = transient ? '连接中断，将自动重试。' : biliErrorMessage(error);
+      if (transient) {
+        _pollDelaySeconds = (_pollDelaySeconds * 2).clamp(2, 32);
+        _schedulePoll();
+      }
       return;
     }
-    _timer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(checkNow()),
+    if (!_isCurrent(generation)) return;
+    if (client.sessionRevision != _ticketSessionRevision) {
+      _fail('账号状态已变更，请刷新二维码。');
+      return;
+    }
+    _pollResult.value = result;
+    _errorMessage.value = null;
+    _pollDelaySeconds = 2;
+    if (result.status == BiliQrLoginStatus.confirmed) {
+      await _confirm(result, generation);
+    } else if (!result.status.isTerminal) {
+      _schedulePoll();
+    }
+  }
+
+  Future<void> _confirm(BiliQrLoginPollResult result, int generation) async {
+    final BiliUserProfile profile;
+    try {
+      _previousCookies = client.snapshotCookies();
+      client.acceptQrLogin(result);
+      _provisionalRevision = client.sessionRevision;
+      bool ownsSession() =>
+          _isCurrent(generation) &&
+          _provisionalRevision == client.sessionRevision;
+      profile = await client.fetchCurrentUserProfile();
+      if (!ownsSession() || !profile.isLoggedIn) {
+        throw const BiliApiException('无法验证登录账号，请刷新二维码。');
+      }
+      try {
+        await sessionStore.saveCookiesWhileCurrent(
+          client.snapshotCookies(),
+          isCurrent: ownsSession,
+        );
+      } catch (error) {
+        debugPrint('[BiliQR] session persistence failed: ${error.runtimeType}');
+        throw const BiliApiException('无法保存登录信息，请稍后重新扫码。');
+      }
+      if (!ownsSession()) throw const BiliApiException('账号状态已变更，请刷新二维码。');
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      _rollbackCredentials();
+      _fail(biliErrorMessage(error));
+      return;
+    }
+    _previousCookies = null;
+    _provisionalRevision = null;
+    cancel();
+    onConfirmed(profile);
+  }
+
+  void _fail(String message) {
+    _pollResult.value = BiliQrLoginPollResult(
+      status: BiliQrLoginStatus.failed,
+      message: message,
+    );
+    _errorMessage.value = message;
+  }
+
+  void _schedulePoll() {
+    _timer = Timer(
+      Duration(seconds: _pollDelaySeconds),
+      () => unawaited(_check()),
     );
   }
 
-  void _stopPollingTimer() {
-    _timer?.cancel();
-    _timer = null;
+  void _rollbackCredentials() {
+    final previous = _previousCookies;
+    if (previous != null && _provisionalRevision == client.sessionRevision) {
+      client.restoreCookies(previous);
+    }
+    _previousCookies = null;
+    _provisionalRevision = null;
   }
 
   bool _isCurrent(int generation) =>
-      !_disposed && _active && generation == _generation;
+      _active && !_disposed && generation == _generation;
 
-  void _notify() {
-    if (!_disposed) {
-      _revision.value += 1;
-    }
+  void cancel() {
+    if (_disposed) return;
+    _generation++;
+    _active = false;
+    _timer?.cancel();
+    _inFlight = null;
+    _manualCheckPending.value = false;
+    _rollbackCredentials();
   }
 
   void dispose() {
@@ -215,8 +240,7 @@ final class BiliQrLoginController {
     _ticket.dispose();
     _pollResult.dispose();
     _isLoading.dispose();
-    _isPolling.dispose();
+    _manualCheckPending.dispose();
     _errorMessage.dispose();
-    _revision.dispose();
   }
 }

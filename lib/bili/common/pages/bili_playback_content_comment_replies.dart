@@ -40,7 +40,7 @@ class _CommentReplyPreview extends StatelessWidget {
                   Text(
                     '共$total条回复 >',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppVisualTokens.primaryBlue,
+                      color: visualTheme.accent,
                       fontWeight: FontWeight.w900,
                       height: 1.2,
                       fontFeatures: const [ui.FontFeature.tabularFigures()],
@@ -72,7 +72,7 @@ class _NestedReplyLine extends StatelessWidget {
         Text(
           '${reply.authorName}: ',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: AppVisualTokens.primaryBlue,
+            color: visualTheme.accent,
             fontWeight: FontWeight.w900,
             height: 1.45,
           ),
@@ -155,10 +155,7 @@ class _CommentComposerBar extends StatelessWidget {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           )
-                        : Icon(
-                            AppIcons.emotionHappyLine,
-                            color: visualTheme.textTertiary,
-                          ),
+                        : null,
                   ),
                 ),
               ),
@@ -168,9 +165,9 @@ class _CommentComposerBar extends StatelessWidget {
                     ? null
                     : () => onSubmitted(controller.text),
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: const Icon(
+                icon: Icon(
                   AppIcons.sendPlaneLine,
-                  color: AppVisualTokens.primaryBlue,
+                  color: visualTheme.accent,
                 ),
               ),
             ],
@@ -207,14 +204,8 @@ class _CommentReplySummary extends StatelessWidget {
                   ),
                 ),
               ),
-              Icon(
-                AppIcons.sortDesc,
-                size: 20,
-                color: visualTheme.textTertiary,
-              ),
-              const SizedBox(width: 5),
               Text(
-                '按时间',
+                '按时间排列',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w800,
@@ -305,7 +296,12 @@ class _CommentReplyPanel extends StatelessWidget {
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
-            padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
+            padding: EdgeInsets.fromLTRB(
+              0,
+              16,
+              0,
+              24 + MediaQuery.viewPaddingOf(context).bottom,
+            ),
             itemCount: replies.length + 3,
             itemBuilder: (context, index) {
               if (index == 0) {

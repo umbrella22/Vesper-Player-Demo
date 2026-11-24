@@ -75,7 +75,7 @@ void _registerQrLoginWidgetTests() {
     await _flushRealAsync(tester);
     await tester.pump(const Duration(milliseconds: 240));
 
-    expect(find.text('已经扫到码了，等手机端确认。'), findsOneWidget);
+    expect(find.text('已扫码，请在手机上确认登录。'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 80));
     expect(find.text('已扫码，继续等待'), findsOneWidget);
     expect(client.generatedTickets, 2);

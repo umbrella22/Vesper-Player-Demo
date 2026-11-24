@@ -33,6 +33,31 @@ void main() {
     expect(calls[2].method, 'SystemChrome.restoreSystemUIOverlays');
   });
 
+  test(
+    'new fullscreen request wins while an older overlay call is pending',
+    () async {
+      final calls = <MethodCall>[];
+      final pending = Completer<void>();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        calls.add(call);
+        if (call.method == 'SystemChrome.setEnabledSystemUIOverlays') {
+          await pending.future;
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+      final restore = setBiliSystemUiMode(SystemUiMode.edgeToEdge);
+      await setBiliSystemUiMode(SystemUiMode.immersiveSticky);
+      pending.complete();
+      await restore;
+      expect(calls.last.arguments, 'SystemUiMode.immersiveSticky');
+    },
+  );
+
   test('immersive system UI mode does not force overlays visible', () async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

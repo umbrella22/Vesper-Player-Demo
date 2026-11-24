@@ -2,6 +2,169 @@ part of '../widget_test.dart';
 
 void _registerPlaybackPlatformWidgetTests() {
   testWidgets(
+    'tv remote repeats seek, keeps Select single-shot and distinguishes Play and Pause',
+    (tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+      );
+      final platform = harness.platform;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(platform.seekDeltas, [10000, 10000]);
+      Future<void> mediaKey(LogicalKeyboardKey key) => tester.sendKeyEvent(
+        key,
+        platform: 'android',
+        physicalKey: PhysicalKeyboardKey.mediaPlayPause,
+      );
+      final playBefore = platform.playCalls;
+      final pauseBefore = platform.pauseCalls;
+      // No snapshot is delivered between commands.
+      await mediaKey(LogicalKeyboardKey.mediaPlay);
+      await mediaKey(LogicalKeyboardKey.mediaPause);
+      expect(platform.playCalls, playBefore + 1);
+      expect(platform.pauseCalls, pauseBefore + 1);
+      platform.emitSnapshot(_playingPlaybackSnapshot);
+      await tester.pump();
+      await mediaKey(LogicalKeyboardKey.mediaPlay);
+      expect(platform.playCalls, playBefore + 2);
+      expect(platform.pauseCalls, pauseBefore + 1);
+      platform.emitSnapshot(_playbackSnapshot);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      final beforeSelect = platform.playCalls;
+      await tester.sendKeyDownEvent(
+        LogicalKeyboardKey.select,
+        platform: 'android',
+        physicalKey: PhysicalKeyboardKey.enter,
+      );
+      await tester.sendKeyRepeatEvent(
+        LogicalKeyboardKey.select,
+        platform: 'android',
+        physicalKey: PhysicalKeyboardKey.enter,
+      );
+      await tester.sendKeyUpEvent(
+        LogicalKeyboardKey.select,
+        platform: 'android',
+        physicalKey: PhysicalKeyboardKey.enter,
+      );
+      await tester.pump();
+      expect(platform.playCalls, beforeSelect + 1);
+      expect(find.text('快退 10s'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv narrow playback bar reveals the final remote action and seek returns focus',
+    (tester) async {
+      final harness = await _pumpPlaybackPage(
+        tester,
+        presentationMode: BiliPlaybackPresentationMode.tv,
+        surfaceSize: const Size(640, 360),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      final play = FocusManager.instance.primaryFocus;
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_seek');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(harness.platform.seekRatios.single, greaterThan(0));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, same(play));
+      final last = find.text('稍后再看');
+      for (var i = 0; i < 15; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        if (Focus.of(tester.element(last)).hasPrimaryFocus) break;
+      }
+      expect(Focus.of(tester.element(last)).hasPrimaryFocus, isTrue);
+      expect(last.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'tv hardware Back leaves listen mode when the video source cannot be restored',
+    (tester) async {
+      final detail = _playbackDetail();
+      final harness = await _pumpPlaybackPage(
+        tester,
+        previousPage: const Scaffold(body: Text('TV library')),
+        presentationMode: BiliPlaybackPresentationMode.tv,
+        initialResolvedPlayback: BiliResolvedPlayback(
+          bvid: detail.bvid,
+          cid: detail.pages.first.cid,
+          title: detail.title,
+          subtitle: '',
+          uri: 'https://example.test/video.mp4',
+          protocol: VesperPlayerSourceProtocol.progressive,
+          transportLabel: 'Video',
+          isLocalFile: false,
+          audioOnlySource: const BiliResolvedPlaybackVariant(
+            uri: 'https://example.test/audio.mp4',
+            protocol: VesperPlayerSourceProtocol.progressive,
+            transportLabel: 'Audio',
+            isLocalFile: false,
+          ),
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(
+        LogicalKeyboardKey.select,
+        platform: 'android',
+        physicalKey: PhysicalKeyboardKey.enter,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('listen-mode-container')),
+        findsOneWidget,
+      );
+      final failure = StateError('video source rejected');
+      final selections = harness.platform.selectedSources.length;
+      harness.platform.nextSelectSourceException = failure;
+      // Android's system Back is delivered separately through PopScope. Send
+      // the remote's logical BrowserBack through Flutter's hardware dispatcher.
+      final keyboard = HardwareKeyboard.instance;
+      final handled = keyboard.handleKeyEvent(
+        const KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey.browserBack,
+          logicalKey: LogicalKeyboardKey.browserBack,
+          timeStamp: Duration.zero,
+        ),
+      );
+      keyboard.handleKeyEvent(
+        const KeyUpEvent(
+          physicalKey: PhysicalKeyboardKey.browserBack,
+          logicalKey: LogicalKeyboardKey.browserBack,
+          timeStamp: Duration(milliseconds: 1),
+        ),
+      );
+      expect(handled, isTrue);
+      await tester.pumpAndSettle();
+      // The SDK also reports the rejected platform command via FlutterError.
+      expect(tester.takeException(), same(failure));
+      expect(
+        harness.platform.selectedSources.skip(selections).map((s) => s.uri),
+        ['https://example.test/video.mp4', 'https://example.test/audio.mp4'],
+      );
+      expect(find.text('TV library'), findsOneWidget);
+      expect(find.byType(BiliPlaybackPage), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
     'tv playback uses dedicated stage without mobile player chrome',
     (WidgetTester tester) async {
       await _pumpPlaybackPage(
@@ -393,6 +556,7 @@ void _registerPlaybackPlatformWidgetTests() {
       await tester.pump();
 
       expect(harness.platform.seekRatios, isEmpty);
+      expect(harness.platform.seekDeltas, isEmpty);
       expect(
         FocusManager.instance.primaryFocus?.debugLabel?.startsWith('tv_panel_'),
         isTrue,
@@ -775,10 +939,7 @@ void _registerPlaybackPlatformWidgetTests() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
 
-      expect(
-        harness.platform.seekRatios.single,
-        closeTo(10000 / 120000, 0.001),
-      );
+      expect(harness.platform.seekDeltas, [10000]);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -799,9 +960,7 @@ void _registerPlaybackPlatformWidgetTests() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
 
-      expect(harness.platform.seekRatios, hasLength(2));
-      expect(harness.platform.seekRatios.first, closeTo(10000 / 120000, 0.001));
-      expect(harness.platform.seekRatios.last, 0);
+      expect(harness.platform.seekDeltas, [10000, -10000]);
       expect(find.text('播放'), findsNothing);
 
       final playCallsBeforeShortcut = harness.platform.playCalls;

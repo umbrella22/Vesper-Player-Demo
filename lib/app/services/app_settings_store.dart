@@ -190,7 +190,8 @@ final class AppSettingsStore {
       if (!await file.exists()) {
         return <String, Object?>{};
       }
-      final text = await file.readAsString();
+      final bytes = await file.readAsBytes();
+      final text = utf8.decode(bytes);
       if (text.trim().isEmpty) {
         return <String, Object?>{};
       }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:vesper_media/common/widgets/app_network_image.dart';
@@ -17,6 +18,8 @@ import 'package:vesper_media/bili/common/services/bili_history_store.dart';
 import 'package:vesper_media/bili/common/widgets/bili_cache_download_panel.dart';
 import 'package:vesper_media/media/player/media_glass_sheet.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
+
+import '../widgets/bili_video_grid_card.dart';
 import 'bili_region_visuals.dart';
 
 class BiliRegionVideoPage extends StatefulWidget {
@@ -47,6 +50,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   final _loading = signal(true);
   final _loadingMore = signal(false);
   final _hasMore = signal(true);
+  final _loadMoreFailed = signal(false);
   final _page = signal(1);
   final _errorMessage = signal<String?>(null);
   final _loginRequired = signal(false);
@@ -71,6 +75,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     _loading.dispose();
     _loadingMore.dispose();
     _hasMore.dispose();
+    _loadMoreFailed.dispose();
     _page.dispose();
     _errorMessage.dispose();
     _loginRequired.dispose();
@@ -81,7 +86,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     if (!_scrollController.hasClients ||
         _loading.value ||
         _loadingMore.value ||
-        !_hasMore.value) {
+        !_hasMore.value ||
+        _loadMoreFailed.value ||
+        _loginRequired.value) {
       return;
     }
     if (_scrollController.position.extentAfter > 400) {
@@ -91,6 +98,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Future<void> _loadPage() async {
+    _loadMoreFailed.value = false;
     if (!_client.hasAuthenticatedSession) {
       _loginRequired.value = true;
       _loading.value = false;
@@ -130,6 +138,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       _errorMessage.value = null;
       return;
     }
+    _loadMoreFailed.value = false;
     _loadingMore.value = true;
     try {
       final nextPage = _page.value + 1;
@@ -154,6 +163,8 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       if (isBiliSessionInvalidError(error)) {
         _loginRequired.value = true;
         _errorMessage.value = null;
+      } else {
+        _loadMoreFailed.value = true;
       }
       _loadingMore.value = false;
     }
@@ -168,6 +179,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
       extendBody: false,
       appBar: GlassAppBar(
         centerTitle: false,
+        leading: ModalRoute.of(context)?.canPop == true
+            ? const BackButton()
+            : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -288,7 +302,22 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
         const horizontalPadding = 10.0;
         const crossAxisSpacing = 10.0;
         const targetCoverWidth = 150.0;
-        const textHeight = 50.0;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final titleFontSize =
+            Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+        final subtitleFontSize =
+            Theme.of(context).textTheme.bodySmall?.fontSize ?? 12.0;
+        final scaledTitleHeight = (textScaler.scale(titleFontSize) * 1.2)
+            .ceilToDouble();
+        final scaledSubtitleHeight = (textScaler.scale(subtitleFontSize) * 1.25)
+            .ceilToDouble();
+        final metadataHeight = math.max(
+          kMinInteractiveDimension,
+          scaledSubtitleHeight + _RegionVideoCard.metadataBottomPadding,
+        );
+        final coverRatio = widget.section.apiType == BiliRegionApiType.pgc
+            ? 150 / 210
+            : 16 / 9;
         final usableWidth = constraints.maxWidth - horizontalPadding * 2;
         final crossAxisCount =
             (usableWidth / (targetCoverWidth + crossAxisSpacing))
@@ -298,8 +327,12 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
         final tileWidth =
             (usableWidth - crossAxisSpacing * (crossAxisCount - 1)) /
             crossAxisCount;
-        final coverHeight = tileWidth * 210 / 150;
-        final tileHeight = coverHeight + textHeight;
+        final coverHeight = tileWidth / coverRatio;
+        final tileHeight =
+            coverHeight +
+            _RegionVideoCard.titleTopPadding +
+            scaledTitleHeight +
+            metadataHeight;
 
         return GridView.builder(
           controller: _scrollController,
@@ -311,9 +344,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
           ),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            mainAxisSpacing: 14,
             crossAxisSpacing: crossAxisSpacing,
-            childAspectRatio: tileWidth / tileHeight,
+            mainAxisSpacing: crossAxisSpacing,
+            mainAxisExtent: tileHeight,
           ),
           itemCount: items.length + (_hasMore.value ? 1 : 0),
           itemBuilder: (context, index) {
@@ -322,6 +355,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
             }
             final item = items[index];
             return _RegionVideoCard(
+              coverRatio: coverRatio,
               item: item,
               onTap: () => _openVideo(item),
               onCacheTap: () => unawaited(_openCacheSurface(item)),
@@ -333,6 +367,11 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   }
 
   Widget _buildLoadMoreIndicator(BuildContext context) {
+    if (_loadMoreFailed.value) {
+      return Center(
+        child: TextButton(onPressed: _loadMore, child: const Text('重试加载更多')),
+      );
+    }
     if (!_loadingMore.value) {
       return const SizedBox.shrink();
     }
@@ -351,6 +390,7 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
 
     try {
       detail = await _resolveVideoDetail(item);
+      if (detail.pages.isEmpty) throw const BiliApiException('这个视频没有可播放的分 P。');
       initialPage = detail.pages.first;
     } catch (error) {
       if (mounted) {
@@ -377,14 +417,16 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
   Future<void> _openCacheSurface(BiliRegionVideo item) async {
     final isPortrait =
         MediaQuery.sizeOf(context).height >= MediaQuery.sizeOf(context).width;
-    final detailFuture = _resolveVideoDetail(item);
+    Future<BiliVideoDetail> loadDetail() => _resolveVideoDetail(item);
 
     if (isPortrait) {
       await showMediaGlassSheet<void>(
         context: context,
         appearance: MediaGlassSheetAppearance.readable,
+        contentHandlesScrolling: true,
+        contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
         builder: (_) => _RegionCacheSurface(
-          detailFuture: detailFuture,
+          loadDetail: loadDetail,
           client: _client,
           historyStore: _historyStore,
           controller: _offlineController,
@@ -397,8 +439,9 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     await showMediaReadableSideDrawer<void>(
       context: context,
       surfaceKey: const ValueKey<String>('media-readable-region-cache-drawer'),
+      scrollable: false,
       builder: (_) => _RegionCacheSurface(
-        detailFuture: detailFuture,
+        loadDetail: loadDetail,
         client: _client,
         historyStore: _historyStore,
         controller: _offlineController,
@@ -424,37 +467,42 @@ class _BiliRegionVideoPageState extends State<BiliRegionVideoPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
-class _RegionCacheSurface extends StatelessWidget {
+class _RegionCacheSurface extends StatefulWidget {
   const _RegionCacheSurface({
-    required this.detailFuture,
+    required this.loadDetail,
     required this.client,
     required this.historyStore,
     required this.controller,
     required this.onMessage,
   });
 
-  final Future<BiliVideoDetail> detailFuture;
+  final Future<BiliVideoDetail> Function() loadDetail;
   final BiliClient client;
   final BiliHistoryStore historyStore;
   final BiliOfflineDownloadController controller;
   final void Function(String message) onMessage;
 
   @override
+  State<_RegionCacheSurface> createState() => _RegionCacheSurfaceState();
+}
+
+class _RegionCacheSurfaceState extends State<_RegionCacheSurface> {
+  late Future<BiliVideoDetail> _detailFuture = widget.loadDetail();
+
+  void _retry() {
+    setState(() {
+      _detailFuture = widget.loadDetail();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<BiliVideoDetail>(
-      future: detailFuture,
+      future: _detailFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Padding(
@@ -464,21 +512,28 @@ class _RegionCacheSurface extends StatelessWidget {
         }
         final error = snapshot.error;
         if (error != null) {
-          return _RegionCacheError(message: biliErrorMessage(error));
+          return SingleChildScrollView(
+            child: _RegionCacheError(
+              message: biliErrorMessage(error),
+              onRetry: _retry,
+            ),
+          );
         }
         final detail = snapshot.data;
         if (detail == null || detail.pages.isEmpty) {
-          return const _RegionCacheError(message: '没有可缓存的分 P。');
+          return SingleChildScrollView(
+            child: _RegionCacheError(message: '没有可缓存的分 P。', onRetry: _retry),
+          );
         }
         return BiliCacheDownloadPanel(
           detail: detail,
           currentPage: detail.pages.first,
           selectedQualityId: null,
           codecPreference: BiliVideoCodecPreference.automatic,
-          controller: controller,
-          onMessage: onMessage,
-          client: client,
-          historyStore: historyStore,
+          controller: widget.controller,
+          onMessage: widget.onMessage,
+          client: widget.client,
+          historyStore: widget.historyStore,
         );
       },
     );
@@ -486,9 +541,10 @@ class _RegionCacheSurface extends StatelessWidget {
 }
 
 class _RegionCacheError extends StatelessWidget {
-  const _RegionCacheError({required this.message});
+  const _RegionCacheError({required this.message, this.onRetry});
 
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -508,10 +564,18 @@ class _RegionCacheError extends StatelessWidget {
             message,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: visualTheme.textSecondary,
+              color: visualTheme.destructive,
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(AppIcons.refreshLine, size: 18),
+              label: const Text('重试'),
+            ),
+          ],
         ],
       ),
     );
@@ -520,11 +584,16 @@ class _RegionCacheError extends StatelessWidget {
 
 class _RegionVideoCard extends StatelessWidget {
   const _RegionVideoCard({
+    required this.coverRatio,
     required this.item,
     required this.onTap,
     required this.onCacheTap,
   });
 
+  static const titleTopPadding = 6.0;
+  static const metadataBottomPadding = 16.0;
+
+  final double coverRatio;
   final BiliRegionVideo item;
   final VoidCallback onTap;
   final VoidCallback onCacheTap;
@@ -540,65 +609,57 @@ class _RegionVideoCard extends StatelessWidget {
         ? item.subtitle
         : item.followCountLabel;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Material(
-            color: visualTheme.surfaceRaised,
-            borderRadius: BorderRadius.circular(7),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onTap,
-              child: _CoverImage(
-                coverUrl: item.coverUrl,
-                aspectRatio: 150 / 210,
-                overlay: _RegionCoverOverlay(item: item, isPgc: isPgc),
+    return BiliVideoGridCard(
+      onTap: onTap,
+      cover: _CoverImage(
+        coverUrl: item.coverUrl,
+        aspectRatio: coverRatio,
+        overlay: _RegionCoverOverlay(item: item, isPgc: isPgc),
+      ),
+      details: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: titleTopPadding),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: visualTheme.textPrimary,
+                fontWeight: FontWeight.w800,
+                height: 1.15,
               ),
             ),
           ),
-        ),
-        const SizedBox(height: 6),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Text(
-            item.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: visualTheme.textPrimary,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-        ),
-        const SizedBox(height: 2),
-        SizedBox(
-          height: 28,
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onTap,
-                  child: Text(
-                    subtitle ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: visualTheme.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      height: 1.0,
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 8,
+                      bottom: metadataBottomPadding,
+                    ),
+                    child: Text(
+                      subtitle ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: visualTheme.textSecondary,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              _RegionCardMenuButton(onTap: onCacheTap),
-            ],
+                _RegionCardMenuButton(onTap: onCacheTap),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -611,8 +672,12 @@ class _RegionCoverOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomLabel = isPgc ? item.followCountLabel : item.indexLabel;
-    final theme = Theme.of(context);
+    final labelStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w900,
+      fontSize: 11,
+      shadows: const [Shadow(blurRadius: 4, color: Color(0xAA000000))],
+    );
     return Stack(
       children: [
         const Positioned.fill(
@@ -630,75 +695,48 @@ class _RegionCoverOverlay extends StatelessWidget {
             ),
           ),
         ),
-        if (isPgc && item.scoreLabel != null)
-          Positioned(
-            left: 6,
-            bottom: 6,
-            child: _ScoreBadge(score: item.scoreLabel!),
-          ),
-        if (!isPgc)
-          Positioned(
-            left: 7,
-            right: 7,
-            bottom: 7,
-            child: Row(
-              children: [
+        Positioned(
+          left: isPgc ? 6 : 7,
+          right: isPgc ? 6 : 7,
+          bottom: isPgc ? 6 : 7,
+          child: Row(
+            children: [
+              if (isPgc && item.scoreLabel != null) ...[
+                _ScoreBadge(score: item.scoreLabel!),
+                const SizedBox(width: 4),
+              ],
+              if (!isPgc) ...[
                 const Icon(
                   AppIcons.playCircleLine,
                   color: Colors.white,
                   size: 15,
                 ),
                 const SizedBox(width: 3),
-                Expanded(
-                  child: Text(
-                    item.followCountLabel ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 11,
-                      shadows: const <Shadow>[
-                        Shadow(blurRadius: 4, color: Color(0xAA000000)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  item.indexLabel ?? '',
+              ],
+              Expanded(
+                child: Text(
+                  item.followCountLabel ?? '',
+                  textAlign: isPgc ? TextAlign.end : TextAlign.start,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                    shadows: const <Shadow>[
-                      Shadow(blurRadius: 4, color: Color(0xAA000000)),
-                    ],
+                  style: labelStyle,
+                ),
+              ),
+              if (!isPgc && item.indexLabel != null) ...[
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    item.indexLabel!,
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle,
                   ),
                 ),
               ],
-            ),
-          )
-        else if (bottomLabel != null && bottomLabel.isNotEmpty)
-          Positioned(
-            right: 6,
-            bottom: 7,
-            child: Text(
-              bottomLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-                shadows: const <Shadow>[
-                  Shadow(blurRadius: 4, color: Color(0xAA000000)),
-                ],
-              ),
-            ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -713,11 +751,15 @@ class _RegionCardMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     return SizedBox.square(
-      dimension: AppVisualTokens.minimumTapTarget,
+      dimension: kMinInteractiveDimension,
       child: IconButton(
         onPressed: onTap,
-        padding: EdgeInsets.zero,
-        icon: const Icon(AppIcons.more2Fill, size: 20),
+        alignment: AlignmentDirectional.centerEnd,
+        padding: const EdgeInsetsDirectional.only(
+          end: 6,
+          bottom: _RegionVideoCard.metadataBottomPadding,
+        ),
+        icon: const Icon(AppIcons.moreFill, size: 18),
         color: visualTheme.textTertiary,
         tooltip: '缓存',
       ),
@@ -793,7 +835,7 @@ class _ScoreBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppVisualTokens.primaryBlue.withValues(alpha: 0.88),
+        color: AppVisualTokens.primaryActionBlue.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Padding(

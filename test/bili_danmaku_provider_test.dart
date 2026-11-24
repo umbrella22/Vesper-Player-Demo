@@ -55,9 +55,8 @@ void main() {
   group('BiliDanmakuProvider session', () {
     test('360 秒边界切段并只请求当前段前后窗口', () async {
       final repository = _FakeDanmakuRepository();
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       addTearDown(session.close);
 
       session.updatePosition(biliDanmakuSegmentDurationMs - 1);
@@ -93,9 +92,8 @@ void main() {
               .future;
         },
       );
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       final snapshots = <MediaDanmakuSnapshot>[];
       final subscription = session.snapshots.listen(snapshots.add);
       addTearDown(() async {
@@ -156,9 +154,8 @@ void main() {
           ];
         },
       );
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       final snapshots = <MediaDanmakuSnapshot>[];
       final subscription = session.snapshots.listen(snapshots.add);
       addTearDown(() async {
@@ -220,9 +217,8 @@ void main() {
               ]
             : const <BiliDanmakuEntry>[],
       );
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       final snapshots = <MediaDanmakuSnapshot>[];
       final subscription = session.snapshots.listen(snapshots.add);
       addTearDown(() async {
@@ -270,9 +266,8 @@ void main() {
           );
         },
       );
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       final snapshots = <MediaDanmakuSnapshot>[];
       final subscription = session.snapshots.listen(snapshots.add);
       addTearDown(() async {
@@ -384,6 +379,42 @@ void main() {
       expect(snapshots.last.error, isNull);
     });
 
+    test('seek 到在途预取段后失败会降级，XML 失败后仍可切到新段', () async {
+      final prefetch = Completer<List<BiliDanmakuEntry>>();
+      final repository = _FakeDanmakuRepository(
+        loadSegment: (request) async => request.segmentIndex == 2
+            ? await prefetch.future
+            : [_entry(id: 'segment-${request.segmentIndex}', timeMs: 800)],
+        legacyLoader: () async => throw StateError('XML unavailable'),
+      );
+      final provider = BiliDanmakuProvider(repository: repository);
+      final session = provider.openSession(_entryTarget);
+      final snapshots = <MediaDanmakuSnapshot>[];
+      final subscription = session.snapshots.listen(snapshots.add);
+      addTearDown(() async {
+        await subscription.cancel();
+        await session.close();
+        provider.dispose();
+      });
+      session.updatePosition(0);
+      await _flushAsyncWork();
+      session.updatePosition(biliDanmakuSegmentDurationMs);
+      prefetch.completeError(StateError('segment unavailable'));
+      await _flushAsyncWork();
+      expect(repository.legacyCalls, 1);
+      expect(snapshots.last.error, isNotNull);
+      expect(snapshots.last.isLoading, isFalse);
+      session.updatePosition(biliDanmakuSegmentDurationMs + 800);
+      expect(repository.legacyCalls, 1);
+      session.updatePosition(5 * biliDanmakuSegmentDurationMs);
+      await _flushAsyncWork();
+      expect(
+        snapshots.last.events.map((event) => event.id),
+        contains('segment-6'),
+      );
+      expect(snapshots.last.error, isNull);
+    });
+
     test('相邻段失败不触发全量降级', () async {
       final repository = _FakeDanmakuRepository(
         loadSegment: (request) async {
@@ -393,9 +424,8 @@ void main() {
           return <BiliDanmakuEntry>[_entry(id: 'current', timeMs: 100)];
         },
       );
-      final session = BiliDanmakuProvider(
-        repository: repository,
-      ).openSession(_entryTarget);
+      final session = BiliDanmakuProvider(repository: repository)
+          .openSession(_entryTarget);
       final snapshots = <MediaDanmakuSnapshot>[];
       final subscription = session.snapshots.listen(snapshots.add);
       addTearDown(() async {
@@ -536,6 +566,21 @@ void main() {
         contains('不能为空'),
       );
       expect(harness.repository.sends, isEmpty);
+    });
+
+    test('本地参数异常直接失败而不误报 pending', () async {
+      final harness = await openSendSession(
+        sendError: ArgumentError('不支持的弹幕模式：9'),
+      );
+      final sender = harness.session as MediaDanmakuSessionSender;
+
+      final result = await sender.send(
+        const MediaDanmakuSendRequest(text: '测试弹幕', positionMs: 100),
+      );
+
+      expect(result.isSuccess, isFalse);
+      expect(result.isPending, isFalse);
+      expect(result.errorMessage, '不支持的弹幕模式：9');
     });
 
     test('点赞去重、成功保留状态，失败回滚', () async {
@@ -682,8 +727,9 @@ void main() {
   });
 }
 
-typedef _SegmentLoader =
-    Future<List<BiliDanmakuEntry>> Function(_SegmentRequest request);
+typedef _SegmentLoader = Future<List<BiliDanmakuEntry>> Function(
+  _SegmentRequest request,
+);
 
 typedef _SpecialLoader = Future<List<BiliDanmakuEntry>> Function();
 
@@ -696,6 +742,7 @@ final class _FakeDanmakuRepository
   _FakeDanmakuRepository({
     this._loadSegment,
     this.specialLoader,
+    this.legacyLoader,
     this.legacyEntries = const <BiliDanmakuEntry>[],
     this.sendError,
     this.pendingSend = false,
@@ -703,6 +750,7 @@ final class _FakeDanmakuRepository
 
   final _SegmentLoader? _loadSegment;
   final _SpecialLoader? specialLoader;
+  final _SpecialLoader? legacyLoader;
   final List<BiliDanmakuEntry> legacyEntries;
   final List<_SegmentRequest> requests = <_SegmentRequest>[];
   final List<_SendRequest> sends = <_SendRequest>[];
@@ -801,7 +849,7 @@ final class _FakeDanmakuRepository
     required int cid,
   }) async {
     legacyCalls += 1;
-    return legacyEntries;
+    return legacyLoader == null ? legacyEntries : await legacyLoader!();
   }
 
   @override

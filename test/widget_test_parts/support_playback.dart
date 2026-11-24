@@ -277,6 +277,8 @@ final class _FakePlaybackClient extends BiliClient {
     defaultFavoriteMediaId: 99,
   );
   Completer<BiliVideoEngagement>? followCompleter;
+  List<BiliFavoriteFolder>? favoriteFolders;
+  BiliFavoriteSelection? lastFavoriteSelection;
   var followRequests = 0;
   var coinRequests = 0;
   final sentComments = <String>[];
@@ -504,6 +506,41 @@ final class _FakePlaybackClient extends BiliClient {
   }
 
   @override
+  Future<List<BiliFavoriteFolder>> fetchVideoFavoriteFolders(
+    BiliVideoDetail detail,
+  ) async {
+    return favoriteFolders ??
+        const <BiliFavoriteFolder>[
+          BiliFavoriteFolder(
+            id: 99,
+            title: '默认收藏夹',
+            containsCurrentVideo: false,
+            mediaCount: 1,
+          ),
+        ];
+  }
+
+  @override
+  Future<BiliVideoEngagement> applyVideoFavoriteSelection({
+    required BiliVideoDetail detail,
+    required BiliFavoriteSelection selection,
+    BiliVideoEngagement? current,
+  }) async {
+    lastFavoriteSelection = selection;
+    final nextIds = <int>{
+      ...?favoriteFolders
+          ?.where((f) => f.containsCurrentVideo)
+          .map((f) => f.id),
+      ...selection.addFolderIds,
+    }..removeAll(selection.removeFolderIds);
+    engagement = (current ?? engagement).copyWith(
+      isFavorited: nextIds.isNotEmpty,
+      favoriteMediaIds: nextIds.toList(growable: false),
+    );
+    return engagement;
+  }
+
+  @override
   Future<BiliVideoEngagement> setOwnerFollow({
     required BiliVideoDetail detail,
     required bool following,
@@ -549,6 +586,7 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   int refreshCalls = 0;
   int disposeCalls = 0;
   int clearSystemPlaybackCalls = 0;
+  Object? nextSelectSourceException;
   int failSelectedSourcesRemaining = 0;
   VesperPlayerError selectedSourceFailure = _expiredPlaybackAddressError;
   VesperPlayerSnapshot? selectedSourceSuccessSnapshot;
@@ -573,8 +611,6 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
         const VesperFrameProcessorConfiguration(),
     VesperNativeFramePipelineConfiguration nativeFramePipelineConfiguration =
         const VesperNativeFramePipelineConfiguration(),
-    VesperPipelineEventHookConfiguration pipelineEventHookConfiguration =
-        const VesperPipelineEventHookConfiguration(),
   }) async {
     lastRenderSurfaceKind = renderSurfaceKind;
     lastSourceNormalizerConfiguration = sourceNormalizerConfiguration;
@@ -607,6 +643,11 @@ final class _FakePlaybackVesperPlatform extends VesperPlayerPlatform {
   @override
   Future<void> selectSource(String playerId, VesperPlayerSource source) async {
     selectedSources.add(source);
+    final exception = nextSelectSourceException;
+    if (exception != null) {
+      nextSelectSourceException = null;
+      throw exception;
+    }
     if (failSelectedSourcesRemaining > 0) {
       failSelectedSourcesRemaining -= 1;
       scheduleMicrotask(() => emitPlaybackError(selectedSourceFailure));

@@ -103,17 +103,23 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
     final selected = await showMediaGlassSheet<BiliFavoriteOrder>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentPadding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Text('收藏排序', style: Theme.of(context).textTheme.titleMedium),
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+            child: Text(
+              '收藏排序',
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
           ),
           for (final order in BiliFavoriteOrder.values)
             AppPressScale(
               child: ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: Text(order.label),
                 selected: order == _viewModel.order.value,
                 trailing: order == _viewModel.order.value
@@ -221,10 +227,13 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
     final title = await showMediaGlassSheet<String>(
       context: context,
       appearance: MediaGlassSheetAppearance.readable,
+      contentHandlesScrolling: true,
+      contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
       builder: (context) => _FolderCreateSheet(
         isBusy: () => _viewModel.isMutating.value,
         onCreate: (title, isPrivate) =>
             _viewModel.createFolder(title: title, isPrivate: isPrivate),
+        readError: () => _viewModel.lastCreateFolderError,
       ),
     );
     if (title != null && mounted) {
@@ -401,12 +410,29 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
       ];
     }
     if (vm.activeFolderId.value == null) {
+      final visualTheme = AppVisualTheme.of(context);
       return [
         if (vm.errorMessage.value case final String error)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text('刷新失败：$error'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '刷新失败：$error',
+                      style: TextStyle(
+                        color: visualTheme.destructive,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: vm.isLoading.value ? null : vm.refresh,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
             ),
           ),
         SliverPadding(
@@ -488,7 +514,14 @@ class _BiliFavoritesPageState extends State<BiliFavoritesPage> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(28, 16, 28, 0),
-            child: Text('加载更多失败：$error', textAlign: TextAlign.center),
+            child: Text(
+              '加载更多失败：$error',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppVisualTheme.of(context).destructive,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       if (vm.hasMore.value && !vm.isLoading.value)
@@ -662,6 +695,25 @@ class _FavoriteVideoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
     final unavailableLabel = item.type == 2 ? '视频已失效' : '暂不支持播放此内容';
+    final titleStyle = Theme.of(context).textTheme.bodyMedium!.copyWith(
+      color: item.isAvailable
+          ? visualTheme.textPrimary
+          : visualTheme.textSecondary,
+      fontWeight: FontWeight.w700,
+      height: 1.35,
+    );
+    final firstLineHeight =
+        MediaQuery.textScalerOf(context).scale(titleStyle.fontSize!) *
+        titleStyle.height!;
+    const menuIconSize = 18.0;
+    final stats = [
+      if (item.playCountLabel.isNotEmpty) '${item.playCountLabel}播放',
+      if (item.durationLabel.isNotEmpty) item.durationLabel,
+    ].join(' · ');
+    final metadataStyle = TextStyle(
+      color: visualTheme.textTertiary,
+      fontSize: 12,
+    );
     final tile = Semantics(
       button: true,
       enabled: onTap != null,
@@ -739,90 +791,104 @@ class _FavoriteVideoTile extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            item.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: item.isAvailable
-                                  ? visualTheme.textPrimary
-                                  : visualTheme.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            item.isAvailable
-                                ? item.ownerName
-                                : unavailableLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: visualTheme.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            [
-                              if (item.playCountLabel.isNotEmpty)
-                                '${item.playCountLabel}播放',
-                              if (item.durationLabel.isNotEmpty)
-                                item.durationLabel,
-                            ].join(' · '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: visualTheme.textTertiary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          if (item.favoritedAtLabel.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '收藏于 ${item.favoritedAtLabel}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: visualTheme.textTertiary,
-                                fontSize: 12,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: titleStyle,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      item.isAvailable
+                                          ? item.ownerName
+                                          : unavailableLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: visualTheme.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
+                              if (!selectionMode && onRemove != null)
+                                AppPressScale(
+                                  child: SizedBox.square(
+                                    dimension: kMinInteractiveDimension,
+                                    child: IconButton(
+                                      key: ValueKey(
+                                        'favorite-remove-${item.type}-${item.id}',
+                                      ),
+                                      tooltip: '移出收藏夹',
+                                      onPressed: onRemove,
+                                      alignment: AlignmentDirectional.topEnd,
+                                      padding: EdgeInsetsDirectional.only(
+                                        end: 4,
+                                        top:
+                                            ((firstLineHeight - menuIconSize) /
+                                                    2)
+                                                .clamp(
+                                                  0.0,
+                                                  kMinInteractiveDimension -
+                                                      menuIconSize,
+                                                ),
+                                      ),
+                                      icon: Icon(
+                                        AppIcons.moreFill,
+                                        size: menuIconSize,
+                                        color: visualTheme.textTertiary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (stats.isNotEmpty ||
+                              item.favoritedAtLabel.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            OverflowBar(
+                              alignment: MainAxisAlignment.spaceBetween,
+                              spacing: 6,
+                              overflowSpacing: 2,
+                              children: [
+                                if (stats.isNotEmpty)
+                                  Text(stats, style: metadataStyle),
+                                if (item.favoritedAtLabel.isNotEmpty)
+                                  Text(
+                                    item.favoritedAtLabel,
+                                    semanticsLabel:
+                                        '收藏于 ${item.favoritedAtLabel}',
+                                    style: metadataStyle,
+                                  ),
+                              ],
                             ),
                           ],
                           if (opening)
                             const Padding(
                               padding: EdgeInsets.only(top: 8),
-                              child: SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                              child: Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                child: SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                             ),
                         ],
                       ),
                     ),
-                    if (!selectionMode && onRemove != null)
-                      AppPressScale(
-                        child: IconButton(
-                          key: ValueKey(
-                            'favorite-remove-${item.type}-${item.id}',
-                          ),
-                          tooltip: '移出收藏夹',
-                          onPressed: onRemove,
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints(
-                            minWidth: AppVisualTokens.minimumTapTarget,
-                            minHeight: AppVisualTokens.minimumTapTarget,
-                          ),
-                          icon: Icon(
-                            AppIcons.moreFill,
-                            color: visualTheme.textTertiary,
-                          ),
-                        ),
-                      ),
                   ],
                 );
               },
@@ -840,10 +906,15 @@ class _FavoriteVideoTile extends StatelessWidget {
 
 /// 新建收藏夹表单。提交成功后由调用方关闭并提示，失败时留在表单内展示原因。
 class _FolderCreateSheet extends StatefulWidget {
-  const _FolderCreateSheet({required this.isBusy, required this.onCreate});
+  const _FolderCreateSheet({
+    required this.isBusy,
+    required this.onCreate,
+    this.readError,
+  });
 
   final bool Function() isBusy;
   final Future<int?> Function(String title, bool isPrivate) onCreate;
+  final String? Function()? readError;
 
   @override
   State<_FolderCreateSheet> createState() => _FolderCreateSheetState();
@@ -863,7 +934,13 @@ class _FolderCreateSheetState extends State<_FolderCreateSheet> {
 
   Future<void> _submit() async {
     final title = _controller.text.trim();
-    if (title.isEmpty || _submitting) {
+    if (_submitting) {
+      return;
+    }
+    if (title.isEmpty) {
+      setState(() {
+        _error = '请输入收藏夹名称。';
+      });
       return;
     }
     setState(() {
@@ -875,7 +952,7 @@ class _FolderCreateSheetState extends State<_FolderCreateSheet> {
     if (id == null) {
       setState(() {
         _submitting = false;
-        _error = '创建失败，请稍后重试。';
+        _error = widget.readError?.call() ?? '创建失败，请稍后重试。';
       });
       return;
     }
@@ -885,80 +962,141 @@ class _FolderCreateSheetState extends State<_FolderCreateSheet> {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '新建收藏夹',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: visualTheme.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey('bili-favorites-folder-title'),
-          controller: _controller,
-          autofocus: true,
-          maxLength: 40,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => unawaited(_submit()),
-          decoration: InputDecoration(
-            hintText: '收藏夹名称',
-            filled: true,
-            fillColor: visualTheme.surfaceRaised,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppVisualTokens.controlRadius,
-              ),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        SwitchListTile(
-          key: const ValueKey('bili-favorites-folder-private'),
-          value: _isPrivate,
-          onChanged: _submitting
-              ? null
-              : (value) => setState(() => _isPrivate = value),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('设为私密'),
-          subtitle: const Text('私密收藏夹只有自己可见'),
-        ),
-        if (_error case final String message) ...[
-          const SizedBox(height: 4),
-          Text(message, style: TextStyle(color: visualTheme.destructive)),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: TextButton(
-                onPressed: _submitting
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(44, AppVisualTokens.minimumTapTarget),
+    final highContrast = MediaQuery.highContrastOf(context);
+    return PopScope<void>(
+      canPop: !_submitting,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final formFields = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const ValueKey('bili-favorites-folder-title'),
+                controller: _controller,
+                enabled: !_submitting,
+                autofocus: true,
+                maxLength: 40,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) {
+                  if (_error != null) {
+                    setState(() {
+                      _error = null;
+                    });
+                  }
+                },
+                onSubmitted: (_) => unawaited(_submit()),
+                decoration: InputDecoration(
+                  hintText: '收藏夹名称',
+                  filled: true,
+                  fillColor: visualTheme.surfaceRaised,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(
+                      AppVisualTokens.controlRadius,
+                    ),
+                    borderSide: highContrast
+                        ? BorderSide(color: visualTheme.textPrimary)
+                        : BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(
+                      AppVisualTokens.controlRadius,
+                    ),
+                    borderSide: highContrast
+                        ? BorderSide(color: visualTheme.textPrimary)
+                        : BorderSide.none,
+                  ),
                 ),
-                child: const Text('取消'),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton(
-                onPressed: _submitting || widget.isBusy()
+              SwitchListTile(
+                key: const ValueKey('bili-favorites-folder-private'),
+                value: _isPrivate,
+                onChanged: _submitting
                     ? null
-                    : () => unawaited(_submit()),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(44, AppVisualTokens.minimumTapTarget),
-                ),
-                child: Text(_submitting ? '创建中' : '创建'),
+                    : (value) => setState(() => _isPrivate = value),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('设为私密'),
+                subtitle: const Text('私密收藏夹只有自己可见'),
               ),
-            ),
-          ],
-        ),
-      ],
+              if (_error case final String message) ...[
+                const SizedBox(height: 4),
+                Text(message, style: TextStyle(color: visualTheme.destructive)),
+              ],
+            ],
+          );
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '新建收藏夹',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: visualTheme.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (constraints.hasBoundedHeight)
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: formFields,
+                  ),
+                )
+              else
+                formFields,
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(
+                          44,
+                          AppVisualTokens.minimumTapTarget,
+                        ),
+                      ),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _controller,
+                      builder: (context, value, _) {
+                        final isEmpty = value.text.trim().isEmpty;
+                        final canSubmit = !_submitting && !widget.isBusy();
+                        return FilledButton(
+                          onPressed: canSubmit
+                              ? () => unawaited(_submit())
+                              : null,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(
+                              44,
+                              AppVisualTokens.minimumTapTarget,
+                            ),
+                            backgroundColor: isEmpty
+                                ? visualTheme.surfaceRaised
+                                : null,
+                            foregroundColor: isEmpty
+                                ? visualTheme.textTertiary
+                                : null,
+                          ),
+                          child: Text(_submitting ? '创建中' : '创建'),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

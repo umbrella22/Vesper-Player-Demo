@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../common/services/bili_playback_target.dart';
+
 import 'package:vesper_media/media/diagnostics/media_playback_startup_timing.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -12,6 +13,7 @@ import 'package:signals/signals_flutter.dart';
 
 import 'package:vesper_media/media/design/app_visual_theme.dart';
 import 'package:vesper_media/app/app_version.dart';
+import 'package:vesper_media/app/design/app_theme_controller.dart';
 import 'package:vesper_media/app/updates/app_update_widgets.dart';
 import 'package:vesper_media/app/system_presentation.dart';
 import 'package:vesper_media/bili/common/models/bili_models.dart';
@@ -29,7 +31,6 @@ import 'package:vesper_media/bili/common/view_models/bili_hub_view_model.dart';
 import 'package:vesper_media/bili/common/pages/bili_playback_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_favorites_page.dart';
 import 'package:vesper_media/bili/app_mode/pages/bili_library_page.dart';
-import 'package:vesper_media/app/design/app_glass_controls.dart';
 import 'package:vesper_media/media/tv/media_tv_focusable.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_card.dart';
 import 'package:vesper_media/bili/tv_mode/widgets/bili_tv_video_grid_layout.dart';
@@ -243,7 +244,7 @@ extension on _TvNavItem {
     return switch (this) {
       _TvNavItem.recommend => AppIcons.home5Fill,
       _TvNavItem.following => AppIcons.groupFill,
-      _TvNavItem.regions => AppIcons.gridLine,
+      _TvNavItem.regions => AppIcons.listUnordered,
       _TvNavItem.search => AppIcons.searchLine,
       _TvNavItem.history => AppIcons.historyLine,
       _TvNavItem.mine => AppIcons.user3Fill,
@@ -302,6 +303,7 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   bool _regionLoadMoreQueued = false;
   int _presentationGeneration = 0;
   int _regionPage = 1;
+  int _regionRequestId = 0;
   String _appVersion = '';
 
   List<BiliPlaybackHistoryEntry> _history = const [];
@@ -309,9 +311,10 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
   List<BiliRegionVideo> _regionItems = const <BiliRegionVideo>[];
   bool _regionLoading = false;
   bool _regionLoadingMore = false;
-  bool _hasMoreRegion = true;
+  bool _hasMoreRegion = false;
   String? _regionErrorMessage;
   bool _restorePresentationOnDispose = true;
+  late SystemUiOverlayStyle _appOverlayStyle;
   bool _exitDialogVisible = false;
   TvFocusArea? _activeFocusArea = TvFocusArea.homeRail;
   _TvHeroItem? _heroItem;
@@ -351,6 +354,22 @@ class _BiliTvHomePageState extends State<BiliTvHomePage> {
     if (!widget.skipBootstrap) {
       unawaited(_bootstrap());
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The TV MaterialApp forces dark even when the destination app theme is light.
+    final mode = context
+        .dependOnInheritedWidgetOfExactType<AppThemeScope>()
+        ?.notifier
+        ?.themeMode;
+    _appOverlayStyle = appSystemUiStyleForBrightness(switch (mode) {
+      ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.light => Brightness.light,
+      null => Theme.of(context).brightness,
+    });
   }
 
   @override

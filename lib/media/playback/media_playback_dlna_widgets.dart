@@ -49,37 +49,32 @@ class ProjectionPickerContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final visualTheme = AppVisualTheme.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '投屏',
+          style: theme.textTheme.titleLarge?.copyWith(
+            color: visualTheme.textPrimary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
           children: [
-            Text(
-              '投屏',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: visualTheme.textPrimary,
-                fontWeight: FontWeight.w900,
+            const Expanded(child: ProjectionCastOption()),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ProjectionOptionCard(
+                icon: AppIcons.castLine,
+                label: 'DLNA',
+                onTap: onDlna,
               ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const Expanded(child: ProjectionCastOption()),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ProjectionOptionCard(
-                    icon: AppIcons.castLine,
-                    label: 'DLNA',
-                    onTap: onDlna,
-                  ),
-                ),
-              ],
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
@@ -133,8 +128,13 @@ class ProjectionOptionCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 34, color: AppVisualTokens.primaryBlue),
-          const SizedBox(height: 20),
+          SizedBox.square(
+            dimension: 56,
+            child: Center(
+              child: Icon(icon, size: 34, color: visualTheme.accent),
+            ),
+          ),
+          const SizedBox(height: 10),
           Text(
             label,
             maxLines: 1,
@@ -153,11 +153,7 @@ class ProjectionOptionCard extends StatelessWidget {
 }
 
 class ProjectionOptionShell extends StatelessWidget {
-  const ProjectionOptionShell({
-    super.key,
-    required this.child,
-    this.onTap,
-  });
+  const ProjectionOptionShell({super.key, required this.child, this.onTap});
 
   final Widget child;
   final VoidCallback? onTap;
@@ -257,21 +253,12 @@ class DlnaPickerContentState extends State<DlnaPickerContent> {
     final routes = widget.manager.routes;
     final message = widget.manager.message;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
-        child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final body = Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'DLNA 投屏',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: visualTheme.textPrimary,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 16),
             if (state == MediaDlnaState.discovering) ...[
               Row(
                 children: [
@@ -324,13 +311,32 @@ class DlnaPickerContentState extends State<DlnaPickerContent> {
                 routes.isEmpty &&
                 (message == null || message.isEmpty))
               Text(
+                '请确保投屏设备和手机连接在同一个局域网内。',
+                style: TextStyle(
+                  color: visualTheme.textTertiary,
+                  fontWeight: FontWeight.w600,
+                ),
+              )
+            else if ((state == MediaDlnaState.idle ||
+                    state == MediaDlnaState.error) &&
+                routes.isEmpty &&
+                (message == null || message.isEmpty))
+              Text(
                 '未发现 DLNA 设备，请确保设备和手机在同一网络下。',
                 style: TextStyle(
                   color: visualTheme.textTertiary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            if (routes.isNotEmpty)
+            if (state == MediaDlnaState.error || state == MediaDlnaState.idle)
+              TextButton.icon(
+                onPressed: widget.manager.startDiscovery,
+                icon: const Icon(AppIcons.refreshLine),
+                label: const Text('重新搜索'),
+              ),
+            if (routes.isNotEmpty &&
+                state != MediaDlnaState.error &&
+                state != MediaDlnaState.idle)
               ...routes.map(
                 (route) => DlnaRouteTile(
                   route: route,
@@ -341,7 +347,31 @@ class DlnaPickerContentState extends State<DlnaPickerContent> {
                   },
                 ),
               ),
+          ],
+        );
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'DLNA 投屏',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: visualTheme.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             const SizedBox(height: 12),
+            if (constraints.hasBoundedHeight)
+              Flexible(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: body,
+                ),
+              )
+            else
+              body,
+            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -350,8 +380,8 @@ class DlnaPickerContentState extends State<DlnaPickerContent> {
               ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -369,9 +399,7 @@ class DlnaStatusMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visualTheme = AppVisualTheme.of(context);
-    final color = isError
-        ? visualTheme.destructive
-        : AppVisualTokens.primaryBlue;
+    final color = isError ? visualTheme.destructive : visualTheme.accent;
     final background = Color.alphaBlend(
       color.withValues(alpha: 0.12),
       visualTheme.surfaceRaised,
@@ -387,9 +415,7 @@ class DlnaStatusMessage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              isError
-                  ? AppIcons.errorWarningLine
-                  : AppIcons.informationLine,
+              isError ? AppIcons.errorWarningLine : AppIcons.informationLine,
               size: 18,
               color: color,
             ),
@@ -429,58 +455,62 @@ class DlnaRouteTile extends StatelessWidget {
     final visualTheme = AppVisualTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: visualTheme.surfaceRaised,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: isLoading ? null : onTap,
+      child: Opacity(
+        opacity: isLoading ? 0.6 : 1,
+        child: Material(
+          color: visualTheme.surfaceRaised,
           borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                const Icon(
-                  AppIcons.tvLine,
-                  size: 24,
-                  color: AppVisualTokens.primaryBlue,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        route.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: visualTheme.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (route.manufacturer != null || route.modelName != null)
+          child: InkWell(
+            onTap: isLoading ? null : onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(
+                    AppIcons.tvLine,
+                    size: 24,
+                    color: visualTheme.accent,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          [
-                            route.manufacturer,
-                            route.modelName,
-                          ].whereType<String>().join(' · '),
+                          route.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: visualTheme.textTertiary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            color: visualTheme.textPrimary,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                    ],
+                        if (route.manufacturer != null ||
+                            route.modelName != null)
+                          Text(
+                            [
+                              route.manufacturer,
+                              route.modelName,
+                            ].whereType<String>().join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: visualTheme.textTertiary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                Icon(
-                  AppIcons.arrowRightSLine,
-                  size: 22,
-                  color: visualTheme.textTertiary,
-                ),
-              ],
+                  Icon(
+                    AppIcons.arrowRightSLine,
+                    size: 22,
+                    color: visualTheme.textTertiary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
